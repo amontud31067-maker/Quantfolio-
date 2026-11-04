@@ -7,6 +7,9 @@ import os
 import time
 import tempfile
 import threading
+import xml.etree.ElementTree as ET
+from datetime import datetime, timezone
+import requests
 import numpy as np
 import pandas as pd
 
@@ -244,10 +247,12 @@ _yf_lock = threading.Lock()
 _price_cache: Dict[Tuple, Tuple[float, pd.DataFrame, List[str], List[str]]] = {}
 _rf_cache: Dict[str, Tuple[float, float]] = {}
 _fx_cache: Dict[str, Tuple[float, float]] = {}
+_news_cache: Dict[str, Tuple[float, Dict[str, Any]]] = {}
 
 PRICE_CACHE_TTL = 900   # 15 minutes
 RF_CACHE_TTL = 3600     # 1 hour
 FX_CACHE_TTL = 1800     # 30 minutes
+NEWS_CACHE_TTL = 600    # 10 minutes
 
 # Well-known asset display names for institutional look
 KNOWN_NAMES = {
@@ -558,6 +563,7 @@ def compute_discrete_allocation(
             raw_native_price = float(latest_prices[ticker])
             native_curr = get_ticker_currency(ticker)
             price_thb = round(raw_native_price * usd_thb_rate, 2) if native_curr == "USD" else round(raw_native_price, 2)
+            price_usd = round(raw_native_price, 2) if native_curr == "USD" else (round(raw_native_price / usd_thb_rate, 2) if usd_thb_rate > 0 else round(raw_native_price, 2))
 
             target_amount = budget * float(active_weights[ticker])
             fractional = round(target_amount / price_in_budget_curr, 4) if price_in_budget_curr > 0 else 0.0
@@ -569,6 +575,7 @@ def compute_discrete_allocation(
                 "native_currency": native_curr,
                 "native_price": round(raw_native_price, 2),
                 "price_thb": price_thb,
+                "price_usd": price_usd,
                 "current_price": round(price_in_budget_curr, 2),
                 "target_weight": round(float(active_weights[ticker]), 4),
                 "target_value": round(target_amount, 2),
@@ -590,6 +597,403 @@ def compute_discrete_allocation(
         return {"shares": {}, "leftover": budget, "cash_spent": 0, "allocated_percent": 0, "allocations": []}
 
 
+POSITIVE_NEWS_KEYWORDS = [
+    "beat", "beats", "surge", "surges", "soar", "soars", "record", "upgrade", "upgraded",
+    "bullish", "outperform", "growth", "profit", "gain", "gains", "rally", "rallies",
+    "buy", "strong", "optimism", "breakthrough", "partnership", "dividend", "buyback",
+    "demand", "accumulate", "upside", "positive", "jump", "jumps", "high", "boom",
+    "กำไรพุ่ง", "นิวไฮ", "เติบโต", "โดดเด่น", "ปันผล", "แนะซื้อ", "บวก", "ขาขึ้น", "ทะยาน",
+    "แข็งแกร่ง", "หนุน", "ฟื้นตัว", "สดใส", "เป้าใหม่", "สูงสุด"
+]
+
+NEGATIVE_NEWS_KEYWORDS = [
+    "miss", "misses", "plunge", "plunges", "drop", "drops", "fall", "falls", "downgrade",
+    "downgraded", "bearish", "underperform", "loss", "decline", "declines", "lawsuit",
+    "probe", "investigation", "recall", "delay", "warning", "cut", "cuts", "tariff",
+    "layoff", "layoffs", "weak", "risk", "sell", "slump", "crash", "concern", "headwind",
+    "ขาดทุน", "ร่วง", "ดิ่ง", "ลดเป้า", "กังวล", "กดดัน", "ชะลอตัว", "เสี่ยง", "หั่นเป้า", "ลบ", "ขาลง", "ผันผวน"
+]
+
+
+def analyze_headline_sentiment(title: str) -> Tuple[str, float, str]:
+    """
+    Analyze financial news headline sentiment (English & Thai).
+    Returns (sentiment_type, score_in_[-1,1], thai_label).
+    """
+    lower_t = (title or "").lower()
+    pos_hits = sum(1 for kw in POSITIVE_NEWS_KEYWORDS if kw in lower_t)
+    neg_hits = sum(1 for kw in NEGATIVE_NEWS_KEYWORDS if kw in lower_t)
+
+    if pos_hits > neg_hits:
+        score = min(1.0, 0.45 + 0.25 * (pos_hits - neg_hits))
+        return "positive", round(score, 2), "ข่าวหนุนเชิงบวก"
+    elif neg_hits > pos_hits:
+        score = -min(1.0, 0.45 + 0.25 * (neg_hits - pos_hits))
+        return "negative", round(score, 2), "ข่าวกดดัน/ควรระวัง"
+    return "neutral", 0.0, "ข่าวติดตามสภาวะตลาด"
+
+
+def fetch_market_news_for_ticker(ticker: str, max_items: int = 4) -> Dict[str, Any]:
+    """
+    Fetch live market news for a ticker from Yahoo Finance Search API and Google News RSS.
+    Thread-safe and cached for 10 minutes.
+    """
+    clean_t = ticker.strip().upper()
+    now = time.time()
+    if clean_t in _news_cache:
+        ts, cached_val = _news_cache[clean_t]
+        if now - ts < NEWS_CACHE_TTL:
+            return cached_val
+
+    articles: List[Dict[str, Any]] = []
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+    }
+
+    # 1. Try Yahoo Finance Search News first for non-.BK tickers
+    if not clean_t.endswith(".BK"):
+        try:
+            yf_url = f"https://query2.finance.yahoo.com/v1/finance/search?q={requests.utils.quote(clean_t)}&quotesCount=1&newsCount=6"
+            res = requests.get(yf_url, headers=headers, timeout=3.5)
+            if res.status_code == 200:
+                raw_news = res.json().get("news", [])
+                for item in raw_news:
+                    title = (item.get("title") or "").strip()
+                    if not title:
+                        continue
+                    pub_ts = item.get("providerPublishTime")
+                    pub_str = (
+                        datetime.fromtimestamp(pub_ts, tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+                        if pub_ts else "ล่าสุด"
+                    )
+                    sent_type, sent_score, sent_label = analyze_headline_sentiment(title)
+                    articles.append({
+                        "ticker": clean_t,
+                        "title": title,
+                        "publisher": item.get("publisher") or "Yahoo Finance",
+                        "link": item.get("link") or f"https://finance.yahoo.com/quote/{clean_t}",
+                        "published_at": pub_str,
+                        "sentiment": sent_type,
+                        "sentiment_score": sent_score,
+                        "sentiment_label_th": sent_label
+                    })
+                    if len(articles) >= max_items:
+                        break
+        except Exception:
+            pass
+
+    # 2. Fallback / Supplement via Google News Financial RSS (supports both Thai .BK and Global stocks)
+    if len(articles) < 2:
+        try:
+            is_thai = clean_t.endswith(".BK")
+            base_sym = clean_t.replace(".BK", "")
+            query_str = f"{base_sym} หุ้น" if is_thai else f"{clean_t} stock market"
+            hl_param = "th&gl=TH&ceid=TH:th" if is_thai else "en-US&gl=US&ceid=US:en"
+            rss_url = f"https://news.google.com/rss/search?q={requests.utils.quote(query_str)}&hl={hl_param}"
+            res = requests.get(rss_url, headers=headers, timeout=3.5)
+            if res.status_code == 200:
+                root = ET.fromstring(res.content)
+                for item in root.findall(".//item"):
+                    raw_title = (item.findtext("title") or "").strip()
+                    if not raw_title:
+                        continue
+                    source_el = item.find("source")
+                    publisher = source_el.text.strip() if (source_el is not None and source_el.text) else "Google Finance News"
+                    if " - " in raw_title and raw_title.endswith(publisher):
+                        raw_title = raw_title[: -len(publisher) - 3].strip()
+                    link = (item.findtext("link") or f"https://finance.yahoo.com/quote/{clean_t}").strip()
+                    pub_date = (item.findtext("pubDate") or "")[:16].strip() or "ล่าสุด"
+                    sent_type, sent_score, sent_label = analyze_headline_sentiment(raw_title)
+                    articles.append({
+                        "ticker": clean_t,
+                        "title": raw_title,
+                        "publisher": publisher,
+                        "link": link,
+                        "published_at": pub_date,
+                        "sentiment": sent_type,
+                        "sentiment_score": sent_score,
+                        "sentiment_label_th": sent_label
+                    })
+                    if len(articles) >= max_items:
+                        break
+        except Exception:
+            pass
+
+    pos_cnt = sum(1 for a in articles if a["sentiment"] == "positive")
+    neg_cnt = sum(1 for a in articles if a["sentiment"] == "negative")
+    neu_cnt = sum(1 for a in articles if a["sentiment"] == "neutral")
+
+    if articles:
+        avg_score = sum(float(a["sentiment_score"]) for a in articles) / len(articles)
+    else:
+        avg_score = 0.0
+
+    result = {
+        "ticker": clean_t,
+        "name": get_asset_name(clean_t),
+        "news_sentiment_score": round(float(np.clip(avg_score, -1.0, 1.0)), 3),
+        "positive_count": pos_cnt,
+        "negative_count": neg_cnt,
+        "neutral_count": neu_cnt,
+        "articles": articles[:max_items]
+    }
+    if len(_news_cache) > 200:
+        _news_cache.clear()
+    _news_cache[clean_t] = (now, result)
+    return result
+
+
+def fetch_portfolio_market_news(tickers: List[str]) -> Dict[str, Dict[str, Any]]:
+    """Fetch market news concurrently for all tickers in portfolio."""
+    from concurrent.futures import ThreadPoolExecutor
+    results: Dict[str, Dict[str, Any]] = {}
+    clean_list = [t.strip().upper() for t in tickers if t.strip()]
+    if not clean_list:
+        return results
+
+    with ThreadPoolExecutor(max_workers=min(6, len(clean_list))) as executor:
+        future_map = {executor.submit(fetch_market_news_for_ticker, t): t for t in clean_list}
+        for fut, t in future_map.items():
+            try:
+                results[t] = fut.result(timeout=4.5)
+            except Exception:
+                results[t] = {
+                    "ticker": t,
+                    "name": get_asset_name(t),
+                    "news_sentiment_score": 0.0,
+                    "positive_count": 0,
+                    "negative_count": 0,
+                    "neutral_count": 0,
+                    "articles": []
+                }
+    return results
+
+
+def compute_technical_signals(price_series: pd.Series) -> Dict[str, Any]:
+    """
+    Compute credible technical indicators from historical close prices:
+    - 14-day RSI
+    - 50-day & 200-day Simple Moving Averages (SMA)
+    - 1-Month (21d) & 3-Month (63d) price momentum
+    """
+    s = price_series.dropna()
+    if len(s) < 15:
+        return {
+            "rsi_14": 50.0,
+            "sma_50": float(s.iloc[-1]) if len(s) else 0.0,
+            "sma_200": float(s.iloc[-1]) if len(s) else 0.0,
+            "price_vs_sma50_pct": 0.0,
+            "price_vs_sma200_pct": 0.0,
+            "momentum_1m": 0.0,
+            "momentum_3m": 0.0,
+            "trend_status": "CONSOLIDATION",
+            "trend_label_th": "แกว่งตัวสะสมกำลัง",
+            "rsi_status_th": "ระดับสมดุลปกติ",
+            "technical_score": 0.0
+        }
+
+    latest = float(s.iloc[-1])
+    delta = s.diff()
+    gain = delta.clip(lower=0.0)
+    loss = -delta.clip(upper=0.0)
+    avg_gain = gain.rolling(window=14, min_periods=14).mean().iloc[-1]
+    avg_loss = loss.rolling(window=14, min_periods=14).mean().iloc[-1]
+    if avg_loss == 0:
+        rsi_14 = 75.0 if avg_gain > 0 else 50.0
+    else:
+        rs = float(avg_gain / avg_loss)
+        rsi_14 = 100.0 - (100.0 / (1.0 + rs))
+
+    w50 = min(50, len(s))
+    w200 = min(200, len(s))
+    sma_50 = float(s.iloc[-w50:].mean())
+    sma_200 = float(s.iloc[-w200:].mean())
+    vs_50 = (latest / sma_50 - 1.0) if sma_50 > 0 else 0.0
+    vs_200 = (latest / sma_200 - 1.0) if sma_200 > 0 else 0.0
+
+    idx_1m = max(0, len(s) - 22)
+    idx_3m = max(0, len(s) - 64)
+    mom_1m = (latest / float(s.iloc[idx_1m]) - 1.0) if float(s.iloc[idx_1m]) > 0 else 0.0
+    mom_3m = (latest / float(s.iloc[idx_3m]) - 1.0) if float(s.iloc[idx_3m]) > 0 else 0.0
+
+    # Trend classification
+    if latest >= sma_50 and sma_50 >= sma_200:
+        trend_status = "UPTREND"
+        trend_label_th = "ขาขึ้นแข็งแกร่ง (ราคาเหนือค่าเฉลี่ย 50 และ 200 วัน)"
+        trend_score = 0.55
+    elif latest >= sma_50 and sma_50 < sma_200:
+        trend_status = "RECOVERY"
+        trend_label_th = "ฟื้นตัวระยะสั้น (กลับมายืนเหนือเส้น 50 วัน)"
+        trend_score = 0.25
+    elif latest < sma_50 and latest >= sma_200:
+        trend_status = "CONSOLIDATION"
+        trend_label_th = "ย่อตัวพักฐานบนแนวโน้มหลัก"
+        trend_score = 0.05
+    else:
+        trend_status = "DOWNTREND"
+        trend_label_th = "ชะลอตัว (ราคาต่ำกว่าค่าเฉลี่ย 50 และ 200 วัน)"
+        trend_score = -0.45
+
+    # RSI interpretation for prudent entry
+    if rsi_14 >= 72.0:
+        rsi_status_th = f"RSI {rsi_14:.0f} (ซื้อมากเกินไป ระวังการไล่ราคา)"
+        rsi_adj = -0.20
+    elif rsi_14 <= 32.0:
+        rsi_status_th = f"RSI {rsi_14:.0f} (ขายมากเกินไป โซนราคาอ่อนตัวสะสม)"
+        rsi_adj = 0.20
+    else:
+        rsi_status_th = f"RSI {rsi_14:.0f} (ระดับสมดุลปกติ)"
+        rsi_adj = 0.10 if 45.0 <= rsi_14 <= 65.0 else 0.0
+
+    tech_score = float(np.clip(trend_score + rsi_adj, -1.0, 1.0))
+
+    return {
+        "rsi_14": round(float(rsi_14), 1),
+        "sma_50": round(sma_50, 2),
+        "sma_200": round(sma_200, 2),
+        "price_vs_sma50_pct": round(float(vs_50), 4),
+        "price_vs_sma200_pct": round(float(vs_200), 4),
+        "momentum_1m": round(float(mom_1m), 4),
+        "momentum_3m": round(float(mom_3m), 4),
+        "trend_status": trend_status,
+        "trend_label_th": trend_label_th,
+        "rsi_status_th": rsi_status_th,
+        "technical_score": round(tech_score, 3)
+    }
+
+
+def build_asset_decision_intelligence(
+    ticker: str,
+    raw_expected_return: float,
+    volatility: float,
+    tech_info: Dict[str, Any],
+    news_info: Dict[str, Any]
+) -> Dict[str, Any]:
+    """
+    Combine historical stats, live market news sentiment, and technical trend/RSI
+    into a prudent, actionable buy/hold/reduce decision recommendation and Black-Litterman return tilt.
+    """
+    news_score = float(news_info.get("news_sentiment_score", 0.0))
+    tech_score = float(tech_info.get("technical_score", 0.0))
+    rsi = float(tech_info.get("rsi_14", 50.0))
+    trend = tech_info.get("trend_status", "CONSOLIDATION")
+
+    # Composite confidence score in [-1, +1]
+    composite = round(float(np.clip(0.55 * news_score + 0.45 * tech_score, -1.0, 1.0)), 3)
+
+    # Prudent Bayesian / Black-Litterman expected return adjustment (capped at +/- 4.5% annual)
+    max_tilt = min(0.045, max(0.015, 0.12 * volatility))
+    return_tilt = round(float(composite * max_tilt), 4)
+    adjusted_return = round(float(raw_expected_return + return_tilt), 4)
+
+    if composite >= 0.20 and rsi < 72.0:
+        signal_level = "POSITIVE_BUY"
+        signal_badge_th = "สัญญาณบวกหนุนซื้อ"
+        execution_tactic_th = "ทยอยซื้อเข้าพอร์ตได้ตามสัดส่วนเป้าหมาย"
+        decision_reason_th = f"{tech_info['trend_label_th']} ประกอบกับกระแสข่าวตลาดอยู่ในเกณฑ์บวก ({tech_info['rsi_status_th']})"
+    elif rsi >= 72.0:
+        signal_level = "OVERBOUGHT_TRANCHE"
+        signal_badge_th = "ราคาตึงตัว (แบ่งไม้ซื้อ)"
+        execution_tactic_th = "แนะนำแบ่งเงินซื้อเป็น 2-3 ไม้ ไม่ไล่ราคาครั้งเดียว"
+        decision_reason_th = f"แนวโน้มระยะยาวยังดี แต่ระยะสั้น {tech_info['rsi_status_th']} จึงควรแบ่งไม้เข้าซื้อเพื่อลดต้นทุนเฉลี่ย"
+    elif composite <= -0.18 or trend == "DOWNTREND":
+        signal_level = "CAUTIOUS_SHIELD"
+        signal_badge_th = "ชะลอตัว/ลดเพดานเสี่ยง"
+        execution_tactic_th = "ลดน้ำหนักลงบางส่วน หรือรอจังหวะราคาสร้างฐาน"
+        decision_reason_th = f"{tech_info['trend_label_th']} และมีปัจจัยข่าวระยะสั้นที่ต้องเฝ้าระวัง ระบบจึงปรับลดน้ำหนักลงอย่างรอบคอบ"
+    else:
+        signal_level = "NEUTRAL_ACCUMULATE"
+        signal_badge_th = "สมดุล/สะสมตามแผน"
+        execution_tactic_th = "จัดสรรตามสัดส่วนมาตรฐานของกลยุทธ์"
+        decision_reason_th = f"{tech_info['trend_label_th']} และ {tech_info['rsi_status_th']} เหมาะสำหรับการถือครองตามแผนระยะยาว"
+
+    return {
+        "ticker": ticker,
+        "news_sentiment_score": news_score,
+        "technical_score": tech_score,
+        "composite_signal_score": composite,
+        "raw_expected_return": round(raw_expected_return, 4),
+        "return_tilt": return_tilt,
+        "adjusted_expected_return": adjusted_return,
+        "signal_level": signal_level,
+        "signal_badge_th": signal_badge_th,
+        "execution_tactic_th": execution_tactic_th,
+        "decision_reason_th": decision_reason_th
+    }
+
+
+def _solve_all_strategies(
+    mu_vec: pd.Series,
+    S_mat: pd.DataFrame,
+    returns_df: pd.DataFrame,
+    valid_tickers: List[str],
+    weight_bounds: Tuple[float, float],
+    rf_rate: float,
+    signal_scores: Optional[Dict[str, float]] = None
+) -> Dict[str, Dict[str, Any]]:
+    """Solve Max Sharpe, Min Volatility, HRP, and Equal Weight for a given expected return vector."""
+    # 1. Min Volatility
+    ef_min = EfficientFrontier(mu_vec, S_mat, weight_bounds=weight_bounds)
+    ef_min.min_volatility()
+    w_min = ef_min.clean_weights()
+    if signal_scores:
+        # Apply gentle risk-shield tilt on Min Volatility when news/trend signals are negative
+        adj_min = {}
+        for t in valid_tickers:
+             tilt_factor = 1.0 + 0.15 * float(signal_scores.get(t, 0.0))
+             adj_min[t] = max(weight_bounds[0], float(w_min.get(t, 0.0)) * max(0.75, min(1.25, tilt_factor)))
+        s_min = sum(adj_min.values())
+        if s_min > 0:
+            w_min = {t: round(adj_min[t] / s_min, 5) for t in valid_tickers}
+    w_min_s = pd.Series(w_min).reindex(valid_tickers).fillna(0.0)
+    ret_min = float(w_min_s @ mu_vec)
+    vol_min = float(np.sqrt(max(1e-12, w_min_s @ S_mat @ w_min_s)))
+    sr_min = (ret_min - rf_rate) / vol_min if vol_min > 0 else 0.0
+
+    # 2. Max Sharpe
+    max_sharpe_error = None
+    try:
+        ef_max = EfficientFrontier(mu_vec, S_mat, weight_bounds=weight_bounds)
+        ef_max.max_sharpe(risk_free_rate=rf_rate)
+        w_max = ef_max.clean_weights()
+        ret_max, vol_max, sr_max = ef_max.portfolio_performance(risk_free_rate=rf_rate)
+    except Exception as e:
+        max_sharpe_error = str(e)
+        w_max = dict(w_min)
+        ret_max, vol_max, sr_max = ret_min, vol_min, sr_min
+
+    # 3. Equal Weight (1/N)
+    w_eq = {t: 1.0 / len(valid_tickers) for t in valid_tickers}
+    w_eq_s = pd.Series(w_eq)
+    ret_eq = float(w_eq_s @ mu_vec)
+    vol_eq = float(np.sqrt(max(1e-12, w_eq_s @ S_mat @ w_eq_s)))
+    sr_eq = (ret_eq - rf_rate) / vol_eq if vol_eq > 0 else 0.0
+
+    # 4. HRP (with optional signal tilt)
+    hrp = HRPOpt(returns_df)
+    w_hrp_raw = hrp.optimize()
+    w_hrp = {t: float(w_hrp_raw.get(t, 0.0)) for t in valid_tickers}
+    if signal_scores:
+        adj_hrp = {}
+        for t in valid_tickers:
+            tilt_factor = 1.0 + 0.18 * float(signal_scores.get(t, 0.0))
+            adj_hrp[t] = max(0.0, w_hrp[t] * max(0.75, min(1.25, tilt_factor)))
+        s_hrp = sum(adj_hrp.values())
+        if s_hrp > 0:
+            w_hrp = {t: round(adj_hrp[t] / s_hrp, 5) for t in valid_tickers}
+    w_hrp_s = pd.Series(w_hrp).reindex(valid_tickers).fillna(0.0)
+    ret_hrp = float(w_hrp_s @ mu_vec)
+    vol_hrp = float(np.sqrt(max(1e-12, w_hrp_s @ S_mat @ w_hrp_s)))
+    sr_hrp = (ret_hrp - rf_rate) / vol_hrp if vol_hrp > 0 else 0.0
+
+    return {
+        "max_sharpe": {"weights": w_max, "ret": ret_max, "vol": vol_max, "sr": sr_max, "error": max_sharpe_error},
+        "min_volatility": {"weights": w_min, "ret": ret_min, "vol": vol_min, "sr": sr_min, "error": None},
+        "hrp": {"weights": w_hrp, "ret": ret_hrp, "vol": vol_hrp, "sr": sr_hrp, "error": None},
+        "equal_weight": {"weights": w_eq, "ret": ret_eq, "vol": vol_eq, "sr": sr_eq, "error": None}
+    }
+
+
 def run_portfolio_optimization(
     tickers: List[str],
     start_date: str,
@@ -601,10 +1005,11 @@ def run_portfolio_optimization(
     num_simulations: int = 3500,
     backtest_split: Optional[str] = None,
     currency: str = "THB",
-    fx_rate: Optional[float] = None
+    fx_rate: Optional[float] = None,
+    use_news_adjustment: bool = True
 ) -> Dict[str, Any]:
     """
-    Execute full Markowitz, HRP, Monte Carlo, and Portfolio Growth calculations.
+    Execute full Markowitz, HRP, Monte Carlo, Portfolio Growth, and Live Market News & Technical Intelligence.
     """
     prices, valid_tickers, missing_tickers = fetch_historical_prices(tickers, start_date, end_date)
 
@@ -620,9 +1025,15 @@ def run_portfolio_optimization(
     S = risk_models.CovarianceShrinkage(prices, frequency=TRADING_DAYS).ledoit_wolf()
     returns_df = prices.pct_change().dropna()
 
+    # Fetch live market news & compute technical signals for each ticker
+    news_map = fetch_portfolio_market_news(valid_tickers)
+
     vols = np.sqrt(np.diag(S))
     asset_stats = []
     latest_prices = get_latest_prices(prices)
+    mu_adjusted_dict: Dict[str, float] = {}
+    signal_scores_map: Dict[str, float] = {}
+    all_news_articles: List[Dict[str, Any]] = []
 
     for i, t in enumerate(valid_tickers):
         ret_val = float(mu[t])
@@ -634,9 +1045,17 @@ def run_portfolio_optimization(
         raw_p = float(latest_prices[t])
         native_curr = get_ticker_currency(t)
         price_thb = round(raw_p * usd_thb, 2) if native_curr == "USD" else round(raw_p, 2)
-        price_in_budget_curr = price_thb if currency.upper() == "THB" else (
-            round(raw_p / usd_thb, 2) if (currency.upper() == "USD" and native_curr == "THB") else round(raw_p, 2)
-        )
+        price_usd = round(raw_p, 2) if native_curr == "USD" else (round(raw_p / usd_thb, 2) if usd_thb > 0 else round(raw_p, 2))
+        price_in_budget_curr = price_thb if currency.upper() == "THB" else price_usd
+
+        tech_info = compute_technical_signals(prices[t])
+        t_news = news_map.get(t, {"news_sentiment_score": 0.0, "positive_count": 0, "negative_count": 0, "neutral_count": 0, "articles": []})
+        decision_info = build_asset_decision_intelligence(t, ret_val, vol_val, tech_info, t_news)
+
+        mu_adjusted_dict[t] = decision_info["adjusted_expected_return"]
+        signal_scores_map[t] = decision_info["composite_signal_score"]
+        for art in t_news.get("articles", []):
+            all_news_articles.append(art)
 
         asset_stats.append({
             "ticker": t,
@@ -644,16 +1063,24 @@ def run_portfolio_optimization(
             "native_currency": native_curr,
             "native_price": round(raw_p, 2),
             "price_thb": price_thb,
+            "price_usd": price_usd,
             "latest_price": price_in_budget_curr,
             "expected_return": round(ret_val, 4),
+            "adjusted_expected_return": decision_info["adjusted_expected_return"],
+            "return_tilt": decision_info["return_tilt"],
             "total_return": round(total_cum_return, 4),
             "volatility": round(vol_val, 4),
             "max_drawdown": asset_dd["max_drawdown_pct"],
             "max_drawdown_amount": asset_dd["max_drawdown_amount"],
             "min_capital_remaining": asset_dd["min_capital_remaining"],
             "drawdown_details": asset_dd,
-            "sharpe_ratio": round(sr_val, 3)
+            "sharpe_ratio": round(sr_val, 3),
+            "technical": tech_info,
+            "news": t_news,
+            "decision": decision_info
         })
+
+    mu_adjusted = pd.Series(mu_adjusted_dict).reindex(valid_tickers)
 
     corr_df = risk_models.cov_to_corr(S)
     correlation_data = {
@@ -662,51 +1089,32 @@ def run_portfolio_optimization(
         "matrix": [[round(float(corr_df.loc[r, c]), 3) for c in valid_tickers] for r in valid_tickers]
     }
 
-    # 2. Optimization Models
+    # 2. Optimization Models (Compute BOTH Pure Historical AND News/Trend-Adjusted)
     min_feasible_max_weight = round(1.0 / len(valid_tickers) + 0.01, 2)
     effective_max_weight = max(max_weight, min_feasible_max_weight)
     weight_bounds = (min_weight, min(1.0, effective_max_weight))
 
-    # Model A: Minimum Volatility
-    ef_min = EfficientFrontier(mu, S, weight_bounds=weight_bounds)
-    ef_min.min_volatility()
-    w_min = ef_min.clean_weights()
-    ret_min, vol_min, sr_min = ef_min.portfolio_performance(risk_free_rate=rf_rate)
-    da_min = compute_discrete_allocation(w_min, latest_prices, budget, currency, usd_thb)
+    hist_solutions = _solve_all_strategies(mu, S, returns_df, valid_tickers, weight_bounds, rf_rate, None)
+    adj_solutions = _solve_all_strategies(mu_adjusted, S, returns_df, valid_tickers, weight_bounds, rf_rate, signal_scores_map)
 
-    # Model B: Maximum Sharpe Ratio
-    max_sharpe_error = None
-    try:
-        ef_max = EfficientFrontier(mu, S, weight_bounds=weight_bounds)
-        ef_max.max_sharpe(risk_free_rate=rf_rate)
-        w_max = ef_max.clean_weights()
-        ret_max, vol_max, sr_max = ef_max.portfolio_performance(risk_free_rate=rf_rate)
-    except Exception as e:
-        max_sharpe_error = str(e)
-        ef_max = EfficientFrontier(mu, S, weight_bounds=weight_bounds)
-        ef_max.min_volatility()
-        w_max = ef_max.clean_weights()
-        ret_max, vol_max, sr_max = ef_max.portfolio_performance(risk_free_rate=rf_rate)
+    active_solutions = adj_solutions if use_news_adjustment else hist_solutions
 
+    w_max = active_solutions["max_sharpe"]["weights"]
+    ret_max, vol_max, sr_max = active_solutions["max_sharpe"]["ret"], active_solutions["max_sharpe"]["vol"], active_solutions["max_sharpe"]["sr"]
+    max_sharpe_error = active_solutions["max_sharpe"]["error"]
     da_max = compute_discrete_allocation(w_max, latest_prices, budget, currency, usd_thb)
 
-    # Model C: Equal Weight (1/N)
-    w_eq = {t: 1.0 / len(valid_tickers) for t in valid_tickers}
-    w_eq_series = pd.Series(w_eq)
-    ret_eq = float(w_eq_series @ mu)
-    vol_eq = float(np.sqrt(w_eq_series @ S @ w_eq_series))
-    sr_eq = (ret_eq - rf_rate) / vol_eq if vol_eq > 0 else 0
-    da_eq = compute_discrete_allocation(w_eq, latest_prices, budget, currency, usd_thb)
+    w_min = active_solutions["min_volatility"]["weights"]
+    ret_min, vol_min, sr_min = active_solutions["min_volatility"]["ret"], active_solutions["min_volatility"]["vol"], active_solutions["min_volatility"]["sr"]
+    da_min = compute_discrete_allocation(w_min, latest_prices, budget, currency, usd_thb)
 
-    # Model D: Hierarchical Risk Parity (HRP)
-    hrp = HRPOpt(returns_df)
-    w_hrp_raw = hrp.optimize()
-    w_hrp = {t: float(w_hrp_raw.get(t, 0.0)) for t in valid_tickers}
-    w_hrp_series = pd.Series(w_hrp)
-    ret_hrp = float(w_hrp_series @ mu)
-    vol_hrp = float(np.sqrt(w_hrp_series @ S @ w_hrp_series))
-    sr_hrp = (ret_hrp - rf_rate) / vol_hrp if vol_hrp > 0 else 0
+    w_hrp = active_solutions["hrp"]["weights"]
+    ret_hrp, vol_hrp, sr_hrp = active_solutions["hrp"]["ret"], active_solutions["hrp"]["vol"], active_solutions["hrp"]["sr"]
     da_hrp = compute_discrete_allocation(w_hrp, latest_prices, budget, currency, usd_thb)
+
+    w_eq = active_solutions["equal_weight"]["weights"]
+    ret_eq, vol_eq, sr_eq = active_solutions["equal_weight"]["ret"], active_solutions["equal_weight"]["vol"], active_solutions["equal_weight"]["sr"]
+    da_eq = compute_discrete_allocation(w_eq, latest_prices, budget, currency, usd_thb)
 
     # 3. Historical Portfolio Wealth Simulation & Drawdown Analytics (Starting with `budget` capital)
     strat_weights_map = {
@@ -809,6 +1217,22 @@ def run_portfolio_optimization(
         "series": {t: growth_sampled[t].tolist() for t in valid_tickers}
     }
 
+    cov_matrix_data = {
+        "tickers": valid_tickers,
+        "matrix": [[round(float(S.loc[r, c]), 6) for c in valid_tickers] for r in valid_tickers]
+    }
+
+    pos_assets = [a["ticker"] for a in asset_stats if a["decision"]["signal_level"] == "POSITIVE_BUY"]
+    caution_assets = [a["ticker"] for a in asset_stats if a["decision"]["signal_level"] in ("CAUTIOUS_SHIELD", "OVERBOUGHT_TRANCHE")]
+
+    market_intelligence = {
+        "use_news_adjustment": bool(use_news_adjustment),
+        "positive_signal_tickers": pos_assets,
+        "caution_signal_tickers": caution_assets,
+        "total_articles_analyzed": len(all_news_articles),
+        "articles": all_news_articles[:16]
+    }
+
     return {
         "status": "success",
         "metadata": {
@@ -821,10 +1245,13 @@ def run_portfolio_optimization(
             "budget": budget,
             "currency": currency.upper(),
             "usd_thb_rate": usd_thb,
-            "max_weight": effective_max_weight
+            "max_weight": effective_max_weight,
+            "use_news_adjustment": bool(use_news_adjustment)
         },
         "asset_stats": asset_stats,
         "correlation": correlation_data,
+        "covariance": cov_matrix_data,
+        "market_intelligence": market_intelligence,
         "growth_100": growth_chart_data,
         "portfolio_growth": portfolio_growth_chart,
         "strategies": {
@@ -834,6 +1261,18 @@ def run_portfolio_optimization(
                 "short_name": "Max Sharpe Ratio",
                 "tagline": "เหมาะสำหรับผู้ที่ต้องการผลตอบแทนเติบโตสูงสุดเมื่อเทียบกับความเสี่ยงที่รับได้",
                 "weights": {k: round(float(v), 4) for k, v in w_max.items()},
+                "historical_weights": {k: round(float(v), 4) for k, v in hist_solutions["max_sharpe"]["weights"].items()},
+                "news_adjusted_weights": {k: round(float(v), 4) for k, v in adj_solutions["max_sharpe"]["weights"].items()},
+                "historical_metrics": {
+                    "expected_return": round(float(hist_solutions["max_sharpe"]["ret"]), 4),
+                    "volatility": round(float(hist_solutions["max_sharpe"]["vol"]), 4),
+                    "sharpe_ratio": round(float(hist_solutions["max_sharpe"]["sr"]), 2)
+                },
+                "news_adjusted_metrics": {
+                    "expected_return": round(float(adj_solutions["max_sharpe"]["ret"]), 4),
+                    "volatility": round(float(adj_solutions["max_sharpe"]["vol"]), 4),
+                    "sharpe_ratio": round(float(adj_solutions["max_sharpe"]["sr"]), 2)
+                },
                 "expected_return": round(float(ret_max), 4),
                 "expected_annual_profit": round(float(ret_max * budget), 2),
                 "volatility": round(float(vol_max), 4),
@@ -852,6 +1291,18 @@ def run_portfolio_optimization(
                 "short_name": "Min Volatility",
                 "tagline": "เหมาะสำหรับผู้ที่เน้นรักษาเงินต้น ลดการแกว่งตัวของพอร์ตในช่วงตลาดผันผวน",
                 "weights": {k: round(float(v), 4) for k, v in w_min.items()},
+                "historical_weights": {k: round(float(v), 4) for k, v in hist_solutions["min_volatility"]["weights"].items()},
+                "news_adjusted_weights": {k: round(float(v), 4) for k, v in adj_solutions["min_volatility"]["weights"].items()},
+                "historical_metrics": {
+                    "expected_return": round(float(hist_solutions["min_volatility"]["ret"]), 4),
+                    "volatility": round(float(hist_solutions["min_volatility"]["vol"]), 4),
+                    "sharpe_ratio": round(float(hist_solutions["min_volatility"]["sr"]), 2)
+                },
+                "news_adjusted_metrics": {
+                    "expected_return": round(float(adj_solutions["min_volatility"]["ret"]), 4),
+                    "volatility": round(float(adj_solutions["min_volatility"]["vol"]), 4),
+                    "sharpe_ratio": round(float(adj_solutions["min_volatility"]["sr"]), 2)
+                },
                 "expected_return": round(float(ret_min), 4),
                 "expected_annual_profit": round(float(ret_min * budget), 2),
                 "volatility": round(float(vol_min), 4),
@@ -869,6 +1320,18 @@ def run_portfolio_optimization(
                 "short_name": "Risk Parity (HRP)",
                 "tagline": "จัดกลุ่มสินทรัพย์ด้วย Machine Learning เพื่อกระจายความเสี่ยงอย่างสมดุล ไม่กระจุกตัว",
                 "weights": {k: round(float(v), 4) for k, v in w_hrp.items()},
+                "historical_weights": {k: round(float(v), 4) for k, v in hist_solutions["hrp"]["weights"].items()},
+                "news_adjusted_weights": {k: round(float(v), 4) for k, v in adj_solutions["hrp"]["weights"].items()},
+                "historical_metrics": {
+                    "expected_return": round(float(hist_solutions["hrp"]["ret"]), 4),
+                    "volatility": round(float(hist_solutions["hrp"]["vol"]), 4),
+                    "sharpe_ratio": round(float(hist_solutions["hrp"]["sr"]), 2)
+                },
+                "news_adjusted_metrics": {
+                    "expected_return": round(float(adj_solutions["hrp"]["ret"]), 4),
+                    "volatility": round(float(adj_solutions["hrp"]["vol"]), 4),
+                    "sharpe_ratio": round(float(adj_solutions["hrp"]["sr"]), 2)
+                },
                 "expected_return": round(float(ret_hrp), 4),
                 "expected_annual_profit": round(float(ret_hrp * budget), 2),
                 "volatility": round(float(vol_hrp), 4),
@@ -886,6 +1349,18 @@ def run_portfolio_optimization(
                 "short_name": "Equal Weight (1/N)",
                 "tagline": "แบ่งเงินลงทุนเท่ากันในสินทรัพย์ทุกตัว ใช้เป็นเกณฑ์มาตรฐานเปรียบเทียบ",
                 "weights": {k: round(float(v), 4) for k, v in w_eq.items()},
+                "historical_weights": {k: round(float(v), 4) for k, v in hist_solutions["equal_weight"]["weights"].items()},
+                "news_adjusted_weights": {k: round(float(v), 4) for k, v in adj_solutions["equal_weight"]["weights"].items()},
+                "historical_metrics": {
+                    "expected_return": round(float(hist_solutions["equal_weight"]["ret"]), 4),
+                    "volatility": round(float(hist_solutions["equal_weight"]["vol"]), 4),
+                    "sharpe_ratio": round(float(hist_solutions["equal_weight"]["sr"]), 2)
+                },
+                "news_adjusted_metrics": {
+                    "expected_return": round(float(adj_solutions["equal_weight"]["ret"]), 4),
+                    "volatility": round(float(adj_solutions["equal_weight"]["vol"]), 4),
+                    "sharpe_ratio": round(float(adj_solutions["equal_weight"]["sr"]), 2)
+                },
                 "expected_return": round(float(ret_eq), 4),
                 "expected_annual_profit": round(float(ret_eq * budget), 2),
                 "volatility": round(float(vol_eq), 4),

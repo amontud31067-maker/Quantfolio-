@@ -1,4 +1,4 @@
-/* QuantFolio Pro - Institutional Financial Portal Theme */
+/* QuantFolio Pro - Animated Quantitative Theme & Color-Coded Visual Hierarchy */
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
 :root {
@@ -8,10 +8,12 @@
 
 body {
   font-family: var(--font-sans);
-  background-color: #f3f5f8;
+  background-color: #eef3f9;
   color: #0f172a;
   -webkit-font-smoothing: antialiased;
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  position: relative;
+  overflow-x: hidden;
 }
 
 .font-mono, .tabular-nums {
@@ -19,24 +21,154 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* Institutional Financial Card */
+/* ==========================================================================
+   ANIMATED QUANTITATIVE BACKGROUND (ขยับช้าๆ สวยงาม เหมาะกับธีม QuantFolio)
+   ========================================================================== */
+.qf-ambient-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: linear-gradient(135deg, #eef4fc 0%, #f3f7fc 45%, #eaf5f2 100%);
+}
+
+/* Moving Quantitative Coordinate Grid */
+.qf-grid-motion {
+  position: absolute;
+  inset: -100px;
+  background-image:
+    linear-gradient(to right, rgba(37, 99, 235, 0.065) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(37, 99, 235, 0.065) 1px, transparent 1px);
+  background-size: 52px 52px;
+  animation: qfGridDrift 28s linear infinite;
+}
+
+@keyframes qfGridDrift {
+  0% { transform: translate3d(0, 0, 0); }
+  100% { transform: translate3d(52px, 52px, 0); }
+}
+
+.qf-orb {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(70px);
+  will-change: transform;
+  pointer-events: none;
+}
+
+.qf-orb-1 {
+  width: 620px;
+  height: 620px;
+  top: -140px;
+  left: -120px;
+  background: radial-gradient(circle, rgba(37, 99, 235, 0.28) 0%, rgba(37, 99, 235, 0.02) 70%);
+  animation: qfFloatOrb1 18s ease-in-out infinite alternate;
+}
+
+.qf-orb-2 {
+  width: 640px;
+  height: 640px;
+  top: 20%;
+  right: -160px;
+  background: radial-gradient(circle, rgba(5, 150, 105, 0.24) 0%, rgba(5, 150, 105, 0.02) 70%);
+  animation: qfFloatOrb2 22s ease-in-out infinite alternate;
+}
+
+.qf-orb-3 {
+  width: 580px;
+  height: 580px;
+  bottom: -160px;
+  left: 22%;
+  background: radial-gradient(circle, rgba(79, 70, 229, 0.22) 0%, rgba(14, 165, 233, 0.02) 70%);
+  animation: qfFloatOrb3 20s ease-in-out infinite alternate;
+}
+
+/* Dark Luxury Animated Background for Login Gate */
+.qf-login-ambient {
+  background: radial-gradient(ellipse at 50% 15%, #0f172a 0%, #091022 60%, #050811 100%);
+}
+
+.qf-login-orb-1 {
+  width: 540px;
+  height: 540px;
+  top: -8%;
+  left: -6%;
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.34) 0%, transparent 70%);
+  filter: blur(75px);
+  animation: qfFloatOrb1 16s ease-in-out infinite alternate;
+}
+
+.qf-login-orb-2 {
+  width: 540px;
+  height: 540px;
+  bottom: -10%;
+  right: -6%;
+  background: radial-gradient(circle, rgba(16, 185, 129, 0.28) 0%, transparent 70%);
+  filter: blur(75px);
+  animation: qfFloatOrb2 20s ease-in-out infinite alternate;
+}
+
+@keyframes qfFloatOrb1 {
+  0% { transform: translate3d(0px, 0px, 0) scale(1); }
+  50% { transform: translate3d(90px, 55px, 0) scale(1.08); }
+  100% { transform: translate3d(-45px, 100px, 0) scale(0.95); }
+}
+
+@keyframes qfFloatOrb2 {
+  0% { transform: translate3d(0px, 0px, 0) scale(1); }
+  50% { transform: translate3d(-95px, 65px, 0) scale(1.07); }
+  100% { transform: translate3d(55px, -85px, 0) scale(0.94); }
+}
+
+@keyframes qfFloatOrb3 {
+  0% { transform: translate3d(0px, 0px, 0) scale(1); }
+  50% { transform: translate3d(75px, -65px, 0) scale(1.06); }
+  100% { transform: translate3d(-75px, 45px, 0) scale(0.96); }
+}
+
+/* ==========================================================================
+   INSTITUTIONAL CARDS & COLOR-CODED SECTION HEADERS
+   ========================================================================== */
 .fin-card {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
-  box-shadow: 0 1px 2px 0 rgba(15, 23, 42, 0.03);
+  position: relative;
+  z-index: 1;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid #dbe3ef;
+  border-radius: 14px;
+  box-shadow: 0 8px 24px -8px rgba(15, 23, 42, 0.06), 0 2px 6px -1px rgba(15, 23, 42, 0.03);
+  overflow: hidden;
 }
 
 .fin-card-header {
-  border-bottom: 1px solid #f1f5f9;
-  padding: 14px 20px;
+  border-bottom: 1px solid #e2e8f0;
+  padding: 16px 20px;
+}
+
+/* Color-Coded Step & Section Top Accents */
+.step-accent-blue {
+  border-top: 4px solid #2563eb;
+}
+.step-accent-indigo {
+  border-top: 4px solid #4f46e5;
+}
+.step-accent-emerald {
+  border-top: 4px solid #059669;
+}
+.step-accent-rose {
+  border-top: 4px solid #e11d48;
+}
+.step-accent-slate {
+  border-top: 4px solid #0f172a;
 }
 
 /* Goal Selector Radio Cards */
 .goal-option {
   border: 1px solid #e2e8f0;
   background: #ffffff;
-  transition: all 0.15s ease;
+  transition: all 0.16s ease;
   cursor: pointer;
 }
 
@@ -53,21 +185,22 @@ body {
 
 /* Rebalance Mode Buttons */
 .rebal-mode-btn {
-  border: 1px solid #e2e8f0;
+  border: 1px solid #cbd5e1;
   background: #ffffff;
-  color: #475569;
-  transition: all 0.15s ease;
+  color: #334155;
+  transition: all 0.16s ease;
 }
 
 .rebal-mode-btn:hover {
   background: #f8fafc;
-  border-color: #cbd5e1;
+  border-color: #94a3b8;
 }
 
 .rebal-mode-btn.active {
-  background: #0f172a;
+  background: #059669;
   color: #ffffff;
-  border-color: #0f172a;
+  border-color: #059669;
+  box-shadow: 0 2px 8px -2px rgba(5, 150, 105, 0.35);
 }
 
 /* Custom Scrollbar */
@@ -92,9 +225,9 @@ body {
 /* Financial Table Styling */
 .fin-table th {
   font-weight: 600;
-  color: #475569;
-  background-color: #f8fafc;
-  border-bottom: 1px solid #e2e8f0;
+  color: #334155;
+  background-color: #f1f5f9;
+  border-bottom: 1px solid #cbd5e1;
   white-space: nowrap;
 }
 
@@ -113,8 +246,8 @@ body {
 /* Trade Flow Pairing Card */
 .flow-pair-card {
   background: linear-gradient(90deg, #fff1f2 0%, #ffffff 48%, #ecfdf5 100%);
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
 }
 
 /* Plotly Modebar Clean Style */

@@ -1,32 +1,57 @@
 /**
  * ============================================================================
- * QuantFolio - ระบบยืนยันตัวตนจริง (Real Supabase Auth) และฐานข้อมูลจริง (Real Supabase DB)
- * เชื่อมต่อตรงกับโปรเจกต์: https://lxnmugciuddpqjhjwxoh.supabase.co
+ * QuantFolio - ระบบยืนยันตัวตน (Authentication) และจัดการพอร์ตการลงทุน (Portfolio Storage)
+ * ทำงานร่วมกันแบบ Dual-Engine: Supabase Cloud (lxnmugciuddpqjhjwxoh.supabase.co) + Server Auth API
+ * เพื่อให้เข้าสู่ระบบและบันทึกพอร์ตได้ 100% แม้กรณี Supabase ติด Email Rate Limit (429)
  * ============================================================================
  */
 
 const SUPABASE_URL = 'https://lxnmugciuddpqjhjwxoh.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_BIzSoBWXPoDAkNCsJONajQ_keCu4r5D';
 
-// ล้างค่าเก่าที่อาจค้างใน localStorage จากการทดสอบก่อนหน้า
 localStorage.removeItem('qf_demo_user');
-localStorage.removeItem('qf_demo_portfolios');
 localStorage.setItem('qf_supabase_url', SUPABASE_URL);
 localStorage.setItem('qf_supabase_anon_key', SUPABASE_ANON_KEY);
 
-const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const supabaseClient = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 let currentUser = null;
+let hasSupabaseJwtSession = false;
 let savedPortfoliosList = [];
+let authTabMode = 'signin'; // 'signin' | 'signup'
 
 /**
- * ตรวจสอบสถานะการเปิดใช้งาน Google Provider บนเซิร์ฟเวอร์ Supabase จริง
+ * สลับแท็บระหว่าง "เข้าสู่ระบบ (Sign In)" และ "สมัครสมาชิกใหม่ (Sign Up)"
+ */
+function switchAuthTab(mode) {
+  authTabMode = mode === 'signup' ? 'signup' : 'signin';
+  const signInTab = document.getElementById('auth-tab-signin');
+  const signUpTab = document.getElementById('auth-tab-signup');
+  const nameWrap = document.getElementById('real-auth-name-wrap');
+  const submitBtn = document.getElementById('btn-real-email-auth');
+  const msgBox = document.getElementById('modal-diagnostic-alert');
+
+  if (msgBox) msgBox.classList.add('hidden');
+
+  if (authTabMode === 'signup') {
+    if (signUpTab) signUpTab.className = 'py-2 text-xs font-bold rounded-lg bg-white text-slate-900 shadow-xs transition';
+    if (signInTab) signInTab.className = 'py-2 text-xs font-semibold rounded-lg text-slate-600 hover:text-slate-900 transition';
+    if (nameWrap) nameWrap.classList.remove('hidden');
+    if (submitBtn) submitBtn.innerText = 'สมัครสมาชิกและเข้าใช้งาน';
+  } else {
+    if (signInTab) signInTab.className = 'py-2 text-xs font-bold rounded-lg bg-white text-slate-900 shadow-xs transition';
+    if (signUpTab) signUpTab.className = 'py-2 text-xs font-semibold rounded-lg text-slate-600 hover:text-slate-900 transition';
+    if (nameWrap) nameWrap.classList.add('hidden');
+    if (submitBtn) submitBtn.innerText = 'เข้าสู่ระบบเพื่อใช้งาน';
+  }
+}
+
+/**
+ * ตรวจสอบสถานะการตั้งค่าบนเซิร์ฟเวอร์ Supabase
  */
 async function checkSupabaseAuthSettings() {
   try {
     const res = await fetch(`${SUPABASE_URL}/auth/v1/settings`, {
-      headers: {
-        apikey: SUPABASE_ANON_KEY
-      }
+      headers: { apikey: SUPABASE_ANON_KEY }
     });
     if (!res.ok) return { ok: false, googleEnabled: false };
     const settings = await res.json();
@@ -42,56 +67,72 @@ async function checkSupabaseAuthSettings() {
 }
 
 /**
- * เริ่มต้นตรวจสอบ Session จริงจาก Supabase เมื่อเปิดหน้าเว็บ (รวมถึงตอน Redirect กลับมาจาก Google)
+ * โหลด Session ของผู้ใช้เมื่อเปิดหน้าเว็บ
  */
 async function initSupabaseAuth() {
   try {
-    const { data: { session }, error } = await supabaseClient.auth.getSession();
-    if (error) throw error;
+    if (supabaseClient) {
+      const { data: { session }, error } = await supabaseClient.auth.getSession();
+      if (!error && session && session.user) {
+        currentUser = session.user;
+        hasSupabaseJwtSession = true;
+        localStorage.setItem('qf_verified_session_user', JSON.stringify(currentUser));
+        updateAuthUI(currentUser);
+        await fetchUserPortfolios();
+      }
+    }
 
-    if (session && session.user) {
-      currentUser = session.user;
-      updateAuthUI(currentUser);
-      await fetchUserPortfolios();
-    } else {
+    // หากยังไม่มี Supabase JWT Session ให้ตรวจสอบ Session ที่ยืนยันผ่าน Backend Server แล้ว
+    if (!currentUser) {
+      const savedUserJson = localStorage.getItem('qf_verified_session_user');
+      if (savedUserJson) {
+        try {
+          const parsedUser = JSON.parse(savedUserJson);
+          if (parsedUser && parsedUser.id && parsedUser.email) {
+            currentUser = parsedUser;
+            hasSupabaseJwtSession = false;
+            updateAuthUI(currentUser);
+            await fetchUserPortfolios();
+          }
+        } catch (e) {
+          localStorage.removeItem('qf_verified_session_user');
+        }
+      }
+    }
+
+    if (!currentUser) {
       updateAuthUI(null);
       renderSavedPortfoliosList([]);
     }
 
-    // ดักจับเมื่อ Login สำเร็จ หรือกด Logout
-    supabaseClient.auth.onAuthStateChange(async (event, session) => {
-      if (session && session.user) {
-        currentUser = session.user;
-        closeSupabaseConfigModal();
-        updateAuthUI(currentUser);
-        await fetchUserPortfolios();
-        if (event === 'SIGNED_IN') {
-          const meta = currentUser.user_metadata || {};
-          const name = meta.full_name || meta.name || currentUser.email;
-          showPortfolioToast(`เข้าสู่ระบบจริงสำเร็จในชื่อ ${name}`);
+    if (supabaseClient) {
+      supabaseClient.auth.onAuthStateChange(async (event, session) => {
+        if (session && session.user) {
+          currentUser = session.user;
+          hasSupabaseJwtSession = true;
+          localStorage.setItem('qf_verified_session_user', JSON.stringify(currentUser));
+          updateAuthUI(currentUser);
+          await fetchUserPortfolios();
+          if (event === 'SIGNED_IN') {
+            const meta = currentUser.user_metadata || {};
+            const name = meta.full_name || meta.name || currentUser.email;
+            showPortfolioToast(`เข้าสู่ระบบสำเร็จในชื่อ ${name}`);
+          }
         }
-      } else {
-        currentUser = null;
-        savedPortfoliosList = [];
-        updateAuthUI(null);
-        renderSavedPortfoliosList([]);
-      }
-    });
+      });
+    }
   } catch (err) {
-    console.error('Supabase Auth Init Error:', err);
-    updateAuthUI(null);
+    console.error('Auth Init Error:', err);
+    if (!currentUser) updateAuthUI(null);
   }
 }
 
 /**
- * [Requirement 1] เมื่อผู้ใช้กดปุ่ม "Login with Google"
- * วิ่งไปหน้ายืนยันของ Google จริงทันที หากเปิด Google Provider บน Supabase แล้ว
+ * เมื่อกดปุ่ม Login with Google
  */
 async function loginWithGoogle() {
   const status = await checkSupabaseAuthSettings();
-
-  // หากในหน้าเว็บ Supabase เปิดสวิตช์ Google และกด Save แล้ว -> วิ่งไปหน้า Google ทันที!
-  if (status.googleEnabled) {
+  if (status.googleEnabled && supabaseClient) {
     const { error } = await supabaseClient.auth.signInWithOAuth({
       provider: 'google',
       options: {
@@ -103,37 +144,72 @@ async function loginWithGoogle() {
       }
     });
     if (error) {
-      alert('เกิดข้อผิดพลาดในการเชื่อมต่อ Google OAuth: ' + error.message);
+      showAuthAlert('เกิดข้อผิดพลาดในการเชื่อมต่อ Google OAuth: ' + error.message, 'error');
     }
     return;
   }
 
-  // หากในหน้าเว็บ Supabase ยังไม่ได้ใส่ Client ID / กด Save ที่หน้า Google Provider
   openSupabaseConfigModal();
+  showAuthAlert(
+    'ระบบตรวจพบว่าบน Supabase ยังไม่ได้บันทึก Google Client ID จึงยังไม่สามารถเปิดหน้าต่าง Google OAuth ได้ กรุณากรอกอีเมลและรหัสผ่านด้านบนเพื่อเข้าสู่ระบบและใช้งานได้ทันที',
+    'info'
+  );
+  const emailInput = document.getElementById('real-auth-email');
+  if (emailInput) emailInput.focus();
 }
 
 /**
- * บังคับวิ่งไปหน้า Google OAuth โดยตรง (สำหรับกดทดสอบหลังกด Save บน Supabase แล้ว)
+ * ปุ่มกดเชื่อมต่อ Google OAuth ในหน้าต่าง Login
  */
 async function forceGoogleOAuthRedirect() {
-  const { error } = await supabaseClient.auth.signInWithOAuth({
-    provider: 'google',
-    options: {
-      redirectTo: window.location.origin + window.location.pathname,
-      queryParams: {
-        access_type: 'offline',
-        prompt: 'consent'
+  const status = await checkSupabaseAuthSettings();
+  if (!status.googleEnabled) {
+    showAuthAlert(
+      'บนโปรเจกต์ Supabase ของคุณยังไม่ได้เปิดใช้งาน Google Provider (หรือยังไม่ได้ใส่ Client ID และกด Save) กรุณากรอกอีเมลและรหัสผ่านในช่องด้านบนเพื่อเข้าสู่ระบบทันที',
+      'info'
+    );
+    const emailInput = document.getElementById('real-auth-email');
+    if (emailInput) emailInput.focus();
+    return;
+  }
+
+  if (supabaseClient) {
+    const { error } = await supabaseClient.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin + window.location.pathname,
+        queryParams: {
+          access_type: 'offline',
+          prompt: 'consent'
+        }
       }
+    });
+    if (error) {
+      showAuthAlert('ไม่สามารถเชื่อมต่อ Google OAuth ได้: ' + error.message, 'error');
     }
-  });
-  if (error) {
-    alert('ยังเข้าหน้า Google ไม่ได้ เนื่องจากบน Supabase ยังไม่ได้กด Save ค่า Client ID: ' + error.message);
   }
 }
 
+function showAuthAlert(message, type = 'info') {
+  const msgBox = document.getElementById('modal-diagnostic-alert');
+  if (!msgBox) {
+    alert(message);
+    return;
+  }
+  if (type === 'error') {
+    msgBox.className = 'p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs leading-relaxed';
+  } else if (type === 'success') {
+    msgBox.className = 'p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs leading-relaxed';
+  } else {
+    msgBox.className = 'p-3 rounded-lg bg-blue-50 border border-blue-200 text-blue-900 text-xs leading-relaxed';
+  }
+  msgBox.innerText = message;
+  msgBox.classList.remove('hidden');
+}
+
 /**
- * เข้าสู่ระบบหรือสมัครสมาชิกจริงด้วยอีเมล Gmail ผ่านระบบ Supabase Auth จริง (auth.users)
- * ข้อมูลผู้ใช้และพอร์ตจะถูกบันทึกลงฐานข้อมูล Supabase จริง 100%
+ * เข้าสู่ระบบหรือสมัครสมาชิกด้วยอีเมลและรหัสผ่าน
+ * ทำงานแบบ Dual-Engine: เชื่อมต่อทั้ง Supabase Auth และ Backend Auth API
  */
 async function loginOrSignUpWithRealGmail() {
   const nameInput = document.getElementById('real-auth-name');
@@ -142,17 +218,19 @@ async function loginOrSignUpWithRealGmail() {
   const msgBox = document.getElementById('modal-diagnostic-alert');
   const submitBtn = document.getElementById('btn-real-email-auth');
 
-  const fullName = (nameInput?.value || '').trim() || 'นักลงทุน QuantFolio';
-  const email = (emailInput?.value || '').trim();
+  const email = (emailInput?.value || '').trim().toLowerCase();
   const password = (passwordInput?.value || '').trim();
+  const fullName = (nameInput?.value || '').trim() || (email ? email.split('@')[0] : 'ผู้ใช้งาน QuantFolio');
+
+  if (msgBox) msgBox.classList.add('hidden');
 
   if (!email || !email.includes('@')) {
-    alert('กรุณากรอกอีเมล Gmail ของคุณให้ถูกต้อง');
+    showAuthAlert('กรุณากรอกอีเมลของคุณให้ถูกต้อง เช่น yourname@gmail.com', 'error');
     emailInput?.focus();
     return;
   }
   if (!password || password.length < 6) {
-    alert('กรุณาตั้งรหัสผ่านอย่างน้อย 6 ตัวอักษร');
+    showAuthAlert('กรุณากรอกรหัสผ่านอย่างน้อย 6 ตัวอักษร', 'error');
     passwordInput?.focus();
     return;
   }
@@ -160,83 +238,109 @@ async function loginOrSignUpWithRealGmail() {
   try {
     if (submitBtn) {
       submitBtn.disabled = true;
-      submitBtn.innerText = 'กำลังเชื่อมต่อ Supabase Auth จริง...';
+      submitBtn.innerText = 'กำลังตรวจสอบและเข้าสู่ระบบ...';
     }
 
-    // 1. ลองเข้าสู่ระบบก่อน (กรณีเคยสมัครไว้แล้ว)
-    const signInRes = await supabaseClient.auth.signInWithPassword({
-      email,
-      password
-    });
+    // ขั้นตอนที่ 1: ลองเข้าสู่ระบบผ่าน Supabase Auth ก่อน
+    if (supabaseClient) {
+      const signInRes = await supabaseClient.auth.signInWithPassword({ email, password });
+      if (!signInRes.error && signInRes.data?.session) {
+        currentUser = signInRes.data.session.user;
+        hasSupabaseJwtSession = true;
+        localStorage.setItem('qf_verified_session_user', JSON.stringify(currentUser));
+        // ซิงค์บัญชีไว้ใน Backend ด้วย
+        fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password, full_name: fullName, mode: authTabMode })
+        }).catch(() => {});
+        updateAuthUI(currentUser);
+        await fetchUserPortfolios();
+        showPortfolioToast(`เข้าสู่ระบบสำเร็จในชื่อ ${fullName}`);
+        return;
+      }
 
-    if (!signInRes.error && signInRes.data?.session) {
-      closeSupabaseConfigModal();
-      return;
-    }
-
-    // 2. หากยังไม่มีบัญชี ให้สร้างบัญชีใหม่ใน auth.users ของ Supabase จริงทันที
-    const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(fullName)}&background=1d4ed8&color=fff&bold=true`;
-    const signUpRes = await supabaseClient.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: window.location.origin + window.location.pathname,
-        data: {
-          full_name: fullName,
-          name: fullName,
-          avatar_url: avatarUrl
+      // หากยังไม่มีใน Supabase หรือเป็นโหมดสมัครสมาชิก ลองเรียก signUp บน Supabase
+      const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(fullName)}&background=1d4ed8&color=fff&bold=true`;
+      const signUpRes = await supabaseClient.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: window.location.origin + window.location.pathname,
+          data: { full_name: fullName, name: fullName, avatar_url: avatarUrl }
         }
+      });
+
+      if (!signUpRes.error && signUpRes.data?.session) {
+        currentUser = signUpRes.data.session.user;
+        hasSupabaseJwtSession = true;
+        localStorage.setItem('qf_verified_session_user', JSON.stringify(currentUser));
+        updateAuthUI(currentUser);
+        await fetchUserPortfolios();
+        showPortfolioToast(`สมัครสมาชิกและเข้าสู่ระบบสำเร็จในชื่อ ${fullName}`);
+        return;
       }
+    }
+
+    // ขั้นตอนที่ 2: กรณี Supabase ติด Email Rate Limit (429) หรือรอ Confirm Email
+    // ให้ยืนยันตัวตนผ่านระบบ Server Auth API (/api/auth/login) เพื่อให้เข้าใช้งานได้ทันทีโดยไม่ค้างหน้า Login
+    const backendRes = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email,
+        password,
+        full_name: fullName,
+        mode: authTabMode
+      })
     });
 
-    if (signUpRes.error) {
-      throw signUpRes.error;
+    const backendData = await backendRes.json();
+    if (!backendRes.ok) {
+      throw new Error(backendData.detail || 'ไม่สามารถเข้าสู่ระบบได้ กรุณาตรวจสอบอีเมลและรหัสผ่าน');
     }
 
-    if (signUpRes.data?.session) {
-      // เข้าสู่ระบบสำเร็จทันที!
-      closeSupabaseConfigModal();
-    } else if (signUpRes.data?.user) {
-      // กรณี Supabase เปิด Confirm Email ไว้ ระบบจะส่งลิงก์ยืนยันไปที่ Gmail จริงของผู้ใช้
-      if (msgBox) {
-        msgBox.className = 'p-3 rounded-lg bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs leading-relaxed';
-        msgBox.innerHTML = `
-          <b>✅ สร้างบัญชีผู้ใช้ใน Supabase จริงสำเร็จแล้ว!</b><br>
-          ระบบได้ส่งอีเมลยืนยันไปที่ <b>${email}</b> แล้ว กรุณาเปิด Gmail ของคุณแล้วกดลิงก์ยืนยัน (หรือหากไม่ต้องการรอกดลิงก์ในอีเมล ให้ไปที่หน้า Supabase ➔ Authentication ➔ Providers ➔ Email ➔ ปิดสวิตช์ <b>Confirm email</b> แล้วกดปุ่มเข้าสู่ระบบอีกครั้งได้เลยครับ)
-        `;
-        msgBox.classList.remove('hidden');
-      }
-    }
+    currentUser = backendData.user;
+    hasSupabaseJwtSession = false;
+    localStorage.setItem('qf_verified_session_user', JSON.stringify(currentUser));
+    updateAuthUI(currentUser);
+    await fetchUserPortfolios();
+
+    const displayName = currentUser.user_metadata?.full_name || currentUser.email;
+    showPortfolioToast(`เข้าสู่ระบบสำเร็จในชื่อ ${displayName}`);
   } catch (err) {
-    if (msgBox) {
-      msgBox.className = 'p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs leading-relaxed';
-      msgBox.innerText = 'ไม่สามารถเข้าสู่ระบบได้: ' + err.message;
-      msgBox.classList.remove('hidden');
-    } else {
-      alert('ไม่สามารถเข้าสู่ระบบได้: ' + err.message);
-    }
+    showAuthAlert(err.message || 'ไม่สามารถเข้าสู่ระบบได้', 'error');
   } finally {
     if (submitBtn) {
       submitBtn.disabled = false;
-      submitBtn.innerText = 'เข้าสู่ระบบ / สมัครใช้งานจริงด้วย Gmail นี้';
+      submitBtn.innerText = authTabMode === 'signup' ? 'สมัครสมาชิกและเข้าใช้งาน' : 'เข้าสู่ระบบเพื่อใช้งาน';
     }
   }
 }
 
 /**
- * ฟังก์ชันออกจากระบบ (Logout จริงจาก Supabase)
+ * ออกจากระบบ (Logout) และล็อกหน้าจอกลับสู่หน้า Login ทันที
  */
 async function logoutUser() {
-  await supabaseClient.auth.signOut();
+  try {
+    if (supabaseClient) {
+      await supabaseClient.auth.signOut();
+    }
+  } catch (e) {}
+  localStorage.removeItem('qf_verified_session_user');
   currentUser = null;
+  hasSupabaseJwtSession = false;
+  savedPortfoliosList = [];
   updateAuthUI(null);
   renderSavedPortfoliosList([]);
 }
 
 /**
- * [Requirement 2] อัปเดต UI แสดงชื่อ อีเมล และรูปโปรไฟล์ของผู้ใช้บน Dashboard
+ * อัปเดตสถานะการล็อกหน้าจอและข้อมูลโปรไฟล์บนแถบด้านบน
  */
 function updateAuthUI(user) {
+  const modal = document.getElementById('supabase-config-modal');
+  const mainWorkspace = document.getElementById('main-app-workspace');
   const loggedOutBox = document.getElementById('auth-logged-out-box');
   const loggedInBox = document.getElementById('auth-logged-in-box');
   const userNameEl = document.getElementById('user-profile-name');
@@ -245,6 +349,12 @@ function updateAuthUI(user) {
   const savePanelBadge = document.getElementById('portfolio-storage-auth-badge');
 
   if (!user) {
+    if (modal) modal.classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+    if (mainWorkspace) {
+      mainWorkspace.classList.add('pointer-events-none', 'select-none', 'blur-xs');
+    }
+
     if (loggedOutBox) loggedOutBox.classList.remove('hidden');
     if (loggedInBox) loggedInBox.classList.add('hidden');
     if (savePanelBadge) {
@@ -254,8 +364,15 @@ function updateAuthUI(user) {
     return;
   }
 
+  // ปลดล็อกหน้าจอเมื่อเข้าสู่ระบบสำเร็จแล้ว
+  if (modal) modal.classList.add('hidden');
+  document.body.style.overflow = '';
+  if (mainWorkspace) {
+    mainWorkspace.classList.remove('pointer-events-none', 'select-none', 'blur-xs');
+  }
+
   const meta = user.user_metadata || {};
-  const displayName = meta.full_name || meta.name || (user.email ? user.email.split('@')[0] : 'นักลงทุน QuantFolio');
+  const displayName = meta.full_name || meta.name || (user.email ? user.email.split('@')[0] : 'ผู้ใช้งาน QuantFolio');
   const email = user.email || '';
   const avatarUrl = meta.avatar_url || meta.picture || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=1d4ed8&color=fff&bold=true`;
 
@@ -270,17 +387,17 @@ function updateAuthUI(user) {
   if (loggedInBox) loggedInBox.classList.remove('hidden');
 
   if (savePanelBadge) {
-    savePanelBadge.innerText = `เชื่อมต่อบัญชีจริง: ${email}`;
+    savePanelBadge.innerText = `บัญชีที่ใช้งาน: ${email}`;
     savePanelBadge.className = 'text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200';
   }
 }
 
 /**
- * [Requirement 4 - Save Data] บันทึกข้อมูลพอร์ตลงตาราง user_portfolios บน Supabase จริง
+ * บันทึกข้อมูลพอร์ตการลงทุนของผู้ใช้
  */
 async function saveUserPortfolio() {
   if (!currentUser) {
-    loginWithGoogle();
+    openSupabaseConfigModal();
     return;
   }
 
@@ -290,7 +407,8 @@ async function saveUserPortfolio() {
   const saveBtn = document.getElementById('btn-save-portfolio');
 
   const portfolioName = (nameInput?.value || '').trim();
-  const targetAmount = parseFloat(targetInput?.value) || (state?.optData?.metadata?.budget || 100000);
+  const rawTargetStr = String(targetInput?.value || '').replace(/,/g, '').trim();
+  const targetAmount = parseFloat(rawTargetStr) || (window.state?.optData?.metadata?.budget || 100000);
   const investmentPeriodYears = parseInt(yearsInput?.value, 10) || 5;
 
   if (!portfolioName) {
@@ -312,6 +430,7 @@ async function saveUserPortfolio() {
 
   const payload = {
     user_id: currentUser.id,
+    email: currentUser.email || '',
     portfolio_name: portfolioName,
     target_amount: targetAmount,
     investment_period_years: investmentPeriodYears,
@@ -325,17 +444,42 @@ async function saveUserPortfolio() {
       saveBtn.innerText = 'กำลังบันทึก...';
     }
 
-    const { data, error } = await supabaseClient
-      .from('user_portfolios')
-      .insert([payload])
-      .select()
-      .single();
+    let savedSuccessfully = false;
 
-    if (error) throw error;
+    // 1. บันทึกลง Supabase ถ้าระบบมี JWT Session
+    if (hasSupabaseJwtSession && supabaseClient) {
+      const { error } = await supabaseClient
+        .from('user_portfolios')
+        .insert([{
+          user_id: payload.user_id,
+          portfolio_name: payload.portfolio_name,
+          target_amount: payload.target_amount,
+          investment_period_years: payload.investment_period_years,
+          asset_weights: payload.asset_weights,
+          strategy_key: payload.strategy_key
+        }]);
+      if (!error) {
+        savedSuccessfully = true;
+      }
+    }
+
+    // 2. บันทึกลง Server API เสมอเพื่อให้ข้อมูลไม่สูญหาย
+    const res = await fetch('/api/portfolios', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (res.ok) {
+      savedSuccessfully = true;
+    }
+
+    if (!savedSuccessfully) {
+      throw new Error('ไม่สามารถบันทึกข้อมูลพอร์ตได้');
+    }
 
     if (nameInput) nameInput.value = '';
     await fetchUserPortfolios();
-    showPortfolioToast(`บันทึกพอร์ต "${portfolioName}" ลงตาราง user_portfolios บน Supabase สำเร็จ!`);
+    showPortfolioToast(`บันทึกพอร์ต "${portfolioName}" เรียบร้อยแล้ว`);
   } catch (err) {
     console.error('Save portfolio error:', err);
     alert('เกิดข้อผิดพลาดในการบันทึกพอร์ต: ' + err.message);
@@ -348,7 +492,7 @@ async function saveUserPortfolio() {
 }
 
 /**
- * [Requirement 4 - Fetch Data] ดึงข้อมูลพอร์ตจากตาราง user_portfolios บน Supabase จริง
+ * ดึงรายการพอร์ตที่บันทึกไว้ของผู้ใช้
  */
 async function fetchUserPortfolios() {
   if (!currentUser) {
@@ -357,15 +501,34 @@ async function fetchUserPortfolios() {
   }
 
   try {
-    const { data, error } = await supabaseClient
-      .from('user_portfolios')
-      .select('id, user_id, portfolio_name, target_amount, investment_period_years, asset_weights, strategy_key, created_at')
-      .eq('user_id', currentUser.id)
-      .order('created_at', { ascending: false });
+    let combined = [];
 
-    if (error) throw error;
+    if (hasSupabaseJwtSession && supabaseClient) {
+      const { data, error } = await supabaseClient
+        .from('user_portfolios')
+        .select('id, user_id, portfolio_name, target_amount, investment_period_years, asset_weights, strategy_key, created_at')
+        .eq('user_id', currentUser.id)
+        .order('created_at', { ascending: false });
+      if (!error && Array.isArray(data)) {
+        combined = data;
+      }
+    }
 
-    savedPortfoliosList = data || [];
+    const res = await fetch(`/api/portfolios?user_id=${encodeURIComponent(currentUser.id)}&email=${encodeURIComponent(currentUser.email || '')}`);
+    if (res.ok) {
+      const serverData = await res.json();
+      if (Array.isArray(serverData.portfolios)) {
+        const existingNames = new Set(combined.map(p => `${p.portfolio_name}|${p.target_amount}`));
+        serverData.portfolios.forEach(sp => {
+          const key = `${sp.portfolio_name}|${sp.target_amount}`;
+          if (!existingNames.has(key)) {
+            combined.push(sp);
+          }
+        });
+      }
+    }
+
+    savedPortfoliosList = combined;
     renderSavedPortfoliosList(savedPortfoliosList);
     return savedPortfoliosList;
   } catch (err) {
@@ -375,19 +538,24 @@ async function fetchUserPortfolios() {
 }
 
 /**
- * ลบพอร์ตออกจากตาราง user_portfolios บน Supabase จริง
+ * ลบพอร์ตที่บันทึกไว้
  */
 async function deleteUserPortfolio(portfolioId) {
   if (!currentUser) return;
 
   try {
-    const { error } = await supabaseClient
-      .from('user_portfolios')
-      .delete()
-      .eq('id', portfolioId)
-      .eq('user_id', currentUser.id);
+    if (hasSupabaseJwtSession && supabaseClient) {
+      await supabaseClient
+        .from('user_portfolios')
+        .delete()
+        .eq('id', portfolioId)
+        .eq('user_id', currentUser.id);
+    }
 
-    if (error) throw error;
+    await fetch(`/api/portfolios/${encodeURIComponent(portfolioId)}?user_id=${encodeURIComponent(currentUser.id)}`, {
+      method: 'DELETE'
+    });
+
     await fetchUserPortfolios();
   } catch (err) {
     alert('ไม่สามารถลบพอร์ตได้: ' + err.message);
@@ -411,10 +579,11 @@ function loadSavedPortfolioToDashboard(portfolioId) {
   }
 
   if (item.target_amount) {
+    const formattedTarget = Number(item.target_amount).toLocaleString('en-US', { maximumFractionDigits: 2 });
     const budgetEl = document.getElementById('budget-input');
-    if (budgetEl) budgetEl.value = item.target_amount;
+    if (budgetEl) budgetEl.value = formattedTarget;
     const saveTargetEl = document.getElementById('save-target-amount');
-    if (saveTargetEl) saveTargetEl.value = item.target_amount;
+    if (saveTargetEl) saveTargetEl.value = formattedTarget;
   }
 
   if (item.investment_period_years) {
@@ -439,7 +608,7 @@ function renderSavedPortfoliosList(portfolios) {
   if (!currentUser) {
     container.innerHTML = `
       <div class="p-4 text-center rounded-lg bg-slate-50 border border-dashed border-slate-300 text-xs text-slate-500">
-        กรุณากดปุ่ม <b>"Login with Google"</b> ด้านบนขวา เพื่อเข้าสู่ระบบและดึงข้อมูลพอร์ตของคุณจากฐานข้อมูล Supabase จริง
+        กรุณาเข้าสู่ระบบเพื่อดูและจัดการรายการพอร์ตการลงทุนของคุณ
       </div>
     `;
     return;
@@ -448,7 +617,7 @@ function renderSavedPortfoliosList(portfolios) {
   if (portfolios.length === 0) {
     container.innerHTML = `
       <div class="p-4 text-center rounded-lg bg-slate-50 border border-dashed border-slate-300 text-xs text-slate-500">
-        คุณเข้าสู่ระบบจริงเรียบร้อยแล้ว! ลองพิมพ์ชื่อพอร์ต (เช่น "พอร์ตเงินเกษียณ") แล้วกดปุ่ม <b>"บันทึกพอร์ตนี้"</b> ข้อมูลจะถูกบันทึกลงตาราง <code>user_portfolios</code> บน Supabase ทันทีครับ
+        ยังไม่มีพอร์ตที่บันทึกไว้ คุณสามารถตั้งชื่อพอร์ตด้านบนแล้วกดปุ่ม <b>"บันทึกพอร์ตนี้"</b> ได้ทันที
       </div>
     `;
     return;
@@ -510,19 +679,19 @@ async function openSupabaseConfigModal() {
 
   const statusBadge = document.getElementById('google-provider-status-badge');
   if (statusBadge) {
-    statusBadge.innerText = 'กำลังตรวจสอบสถานะบน Supabase...';
     const st = await checkSupabaseAuthSettings();
     if (st.googleEnabled) {
-      statusBadge.innerText = '✅ เปิดใช้งาน Google OAuth บน Supabase แล้ว (พร้อมใช้งาน)';
-      statusBadge.className = 'text-[11px] font-semibold px-2.5 py-1 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 inline-block';
+      statusBadge.innerText = 'สถานะ: เชื่อมต่อระบบยืนยันตัวตนพร้อมใช้งาน';
+      statusBadge.className = 'text-[11px] font-medium px-2.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 inline-block';
     } else {
-      statusBadge.innerText = '⚠️ Google OAuth บน Supabase ยังรอใส่ Client ID (แต่ใช้ Gmail Login จริงด้านล่างได้ทันที)';
-      statusBadge.className = 'text-[11px] font-semibold px-2.5 py-1 rounded bg-amber-50 text-amber-800 border border-amber-200 inline-block';
+      statusBadge.innerText = 'สถานะ: พร้อมเข้าสู่ระบบด้วยอีเมลและรหัสผ่านทันที';
+      statusBadge.className = 'text-[11px] font-medium px-2.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 inline-block';
     }
   }
 }
 
 function closeSupabaseConfigModal() {
+  if (!currentUser) return;
   const modal = document.getElementById('supabase-config-modal');
   if (modal) modal.classList.add('hidden');
 }
