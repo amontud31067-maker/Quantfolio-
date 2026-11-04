@@ -475,8 +475,10 @@ function selectPrimaryInvestmentMode(modeKey) {
 
   if (modeKey === 'new_capital') {
     setRebalanceMode('cash');
+    if (typeof switchMainCategory === 'function') switchMainCategory('orders', false);
   } else if (modeKey === 'existing_portfolio') {
     setRebalanceMode('custom');
+    if (typeof switchMainCategory === 'function') switchMainCategory('orders', false);
     const customPanel = document.getElementById('custom-holdings-panel');
     if (customPanel) {
       customPanel.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -2750,8 +2752,83 @@ function scrollToSectionById(sectionId) {
   }
 }
 
+function switchMainCategory(catKey, shouldScroll = false) {
+  state.activeMainCategory = catKey;
+
+  const sections = {
+    orders: document.getElementById('step-3-execution-card'),
+    news: document.getElementById('section-market-news'),
+    backtest: document.getElementById('section-backtest-analytics'),
+    goals: document.getElementById('section-goal-builder')
+  };
+
+  Object.entries(sections).forEach(([k, el]) => {
+    if (!el) return;
+    if (catKey === 'all' || catKey === k) {
+      el.classList.remove('hidden');
+    } else {
+      el.classList.add('hidden');
+    }
+  });
+
+  const btnConfigs = {
+    orders: {
+      active: 'p-2.5 rounded-xl border-2 border-emerald-600 bg-emerald-600 text-white text-left transition flex flex-col justify-between shadow-xs',
+      inactive: 'p-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-emerald-50/60 text-slate-800 text-left transition flex flex-col justify-between'
+    },
+    news: {
+      active: 'p-2.5 rounded-xl border-2 border-blue-600 bg-blue-600 text-white text-left transition flex flex-col justify-between shadow-xs',
+      inactive: 'p-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-blue-50/60 text-slate-800 text-left transition flex flex-col justify-between'
+    },
+    backtest: {
+      active: 'p-2.5 rounded-xl border-2 border-rose-600 bg-rose-600 text-white text-left transition flex flex-col justify-between shadow-xs',
+      inactive: 'p-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-rose-50/60 text-slate-800 text-left transition flex flex-col justify-between'
+    },
+    goals: {
+      active: 'p-2.5 rounded-xl border-2 border-indigo-600 bg-indigo-600 text-white text-left transition flex flex-col justify-between shadow-xs',
+      inactive: 'p-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-indigo-50/60 text-slate-800 text-left transition flex flex-col justify-between'
+    }
+  };
+
+  Object.entries(btnConfigs).forEach(([k, styles]) => {
+    const btn = document.getElementById(`main-cat-btn-${k}`);
+    if (btn) {
+      btn.className = (catKey === k) ? styles.active : styles.inactive;
+    }
+  });
+
+  const btnAll = document.getElementById('main-cat-btn-all');
+  if (btnAll) {
+    btnAll.className = catKey === 'all'
+      ? 'px-2.5 py-1 rounded-md text-[11px] font-bold bg-slate-900 text-white border border-slate-900 transition self-start sm:self-center shrink-0'
+      : 'px-2.5 py-1 rounded-md text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition self-start sm:self-center shrink-0';
+  }
+
+  // Trigger Plotly resize when revealing hidden chart containers
+  setTimeout(() => {
+    if (catKey === 'backtest' || catKey === 'all') {
+      if (state.optData) {
+        renderPortfolioGrowthChart();
+        renderEfficientFrontierPlot();
+        renderCorrelationAndGrowthPlots();
+      }
+    }
+    if (catKey === 'goals' || catKey === 'all') {
+      recalculateGoalProjection();
+    }
+    window.dispatchEvent(new Event('resize'));
+  }, 40);
+
+  if (shouldScroll) {
+    const targetEl = sections[catKey] || document.getElementById('main-category-tabs-bar');
+    if (targetEl) {
+      targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }
+}
+
 function scrollToGoalBuilderSection() {
-  scrollToSectionById('section-goal-builder');
+  switchMainCategory('goals', true);
 }
 
 function applyGoalBasedTemplate(templateKey, shouldScroll = false) {

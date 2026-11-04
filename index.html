@@ -191,28 +191,28 @@
       </div>
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
         <button type="button" onclick="scrollToSectionById('step-1-config-card')" class="text-left p-2.5 rounded-lg bg-blue-50/70 hover:bg-blue-100/80 border border-blue-200 transition flex items-start gap-2.5">
-          <span class="px-2 py-0.5 rounded bg-blue-600 text-white text-[10px] font-bold shrink-0 mt-0.5">ขั้นที่ 1</span>
+          <span class="px-2 py-0.5 rounded bg-blue-600 text-white text-[10px] font-bold shrink-0 mt-0.5">หมวดซ้าย</span>
           <div>
             <div class="text-xs font-bold text-slate-900">ตั้งค่างบประมาณ &amp; เลือกหุ้น</div>
             <div class="text-[11px] text-slate-600">เลือกหุ้นไทย/สหรัฐฯ กำหนดเงินทุน และสกุลเงิน THB/USD</div>
           </div>
         </button>
-        <button type="button" onclick="scrollToSectionById('step-2-strategy-card')" class="text-left p-2.5 rounded-lg bg-sky-50/70 hover:bg-sky-100/80 border border-sky-200 transition flex items-start gap-2.5">
-          <span class="px-2 py-0.5 rounded bg-sky-600 text-white text-[10px] font-bold shrink-0 mt-0.5">ขั้นที่ 2</span>
+        <button type="button" onclick="switchMainCategory('orders', true)" class="text-left p-2.5 rounded-lg bg-emerald-50/70 hover:bg-emerald-100/80 border border-emerald-200 transition flex items-start gap-2.5">
+          <span class="px-2 py-0.5 rounded bg-emerald-600 text-white text-[10px] font-bold shrink-0 mt-0.5">หมวดที่ 1</span>
           <div>
-            <div class="text-xs font-bold text-slate-900">เปรียบเทียบกลยุทธ์ &amp; ข่าวตลาด</div>
-            <div class="text-[11px] text-slate-600">เทียบ 4 โมเดลคณิตศาสตร์ + สัญญาณข่าวและ RSI/SMA</div>
+            <div class="text-xs font-bold text-slate-900">ใบสั่งซื้อ-ขาย &amp; ปรับพอร์ต</div>
+            <div class="text-[11px] text-slate-600">ดูสัดส่วนหุ้นและจำนวนหุ้นที่ต้องซื้อ-ขายจริงทันที</div>
           </div>
         </button>
-        <button type="button" onclick="scrollToSectionById('step-3-execution-card')" class="text-left p-2.5 rounded-lg bg-emerald-50/70 hover:bg-emerald-100/80 border border-emerald-200 transition flex items-start gap-2.5">
-          <span class="px-2 py-0.5 rounded bg-emerald-600 text-white text-[10px] font-bold shrink-0 mt-0.5">ขั้นที่ 3</span>
+        <button type="button" onclick="switchMainCategory('news', true)" class="text-left p-2.5 rounded-lg bg-sky-50/70 hover:bg-sky-100/80 border border-sky-200 transition flex items-start gap-2.5">
+          <span class="px-2 py-0.5 rounded bg-sky-600 text-white text-[10px] font-bold shrink-0 mt-0.5">หมวดที่ 2-3</span>
           <div>
-            <div class="text-xs font-bold text-slate-900">ใบสั่งซื้อขายหุ้น &amp; เงินปันผล</div>
-            <div class="text-[11px] text-slate-600">คำนวณจำนวนหุ้นที่ต้องซื้อ-ขายจริงตามราคาตลาดสด</div>
+            <div class="text-xs font-bold text-slate-900">ข่าวตลาด &amp; ทดสอบวิกฤตย้อนหลัง</div>
+            <div class="text-[11px] text-slate-600">สัญญาณข่าว RSI/SMA และจำลองความเสี่ยง Max Drawdown</div>
           </div>
         </button>
-        <button type="button" onclick="scrollToGoalBuilderSection()" class="text-left p-2.5 rounded-lg bg-indigo-50/80 hover:bg-indigo-100 border border-indigo-200 transition flex items-start gap-2.5">
-          <span class="px-2 py-0.5 rounded bg-indigo-600 text-white text-[10px] font-bold shrink-0 mt-0.5">ขั้นที่ 4</span>
+        <button type="button" onclick="switchMainCategory('goals', true)" class="text-left p-2.5 rounded-lg bg-indigo-50/80 hover:bg-indigo-100 border border-indigo-200 transition flex items-start gap-2.5">
+          <span class="px-2 py-0.5 rounded bg-indigo-600 text-white text-[10px] font-bold shrink-0 mt-0.5">หมวดที่ 4</span>
           <div>
             <div class="text-xs font-bold text-slate-900">สร้างพอร์ตตามเป้าหมาย &amp; บันทึก</div>
             <div class="text-[11px] text-slate-600">จำลองแผนออม DCA พิชิตเป้าหมาย บันทึกและดึงพอร์ตกลับมาใช้</div>
@@ -720,6 +720,78 @@
             </div>
           </div>
 
+          <!-- MAIN CATEGORY NAVIGATION TABS (จัดหมวดหมู่ให้ดูง่าย สบายตา เลือกเปิดดูทีละหมวดโดยข้อมูลครบ 100%) -->
+          <div id="main-category-tabs-bar" class="fin-card p-3 bg-white border-2 border-slate-900 shadow-sm space-y-2">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-1">
+              <div class="flex items-center gap-2">
+                <span class="px-2 py-0.5 rounded bg-slate-900 text-white text-[10px] font-bold">เลือกหมวดหมู่ที่ต้องการดู</span>
+                <span class="text-xs font-bold text-slate-900">กดเลือกดูทีละหมวดหมู่เพื่อให้หน้าจอกระชับสบายตา (ข้อมูลละเอียดครบทุกจุด)</span>
+              </div>
+              <button
+                type="button"
+                id="main-cat-btn-all"
+                onclick="switchMainCategory('all', false)"
+                class="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition self-start sm:self-center shrink-0"
+              >
+                แสดงทุกหมวดหมู่พร้อมกัน
+              </button>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+              <button
+                type="button"
+                id="main-cat-btn-orders"
+                onclick="switchMainCategory('orders', false)"
+                class="p-2.5 rounded-xl border-2 border-emerald-600 bg-emerald-600 text-white text-left transition flex flex-col justify-between"
+              >
+                <div class="flex items-center justify-between">
+                  <span class="text-[10px] font-bold uppercase opacity-90">หมวดหมู่ที่ 1</span>
+                  <span class="px-1.5 py-0.2 rounded bg-white/20 text-[10px] font-bold">หน้าหลัก</span>
+                </div>
+                <div class="text-xs font-bold mt-1">แผนจัดพอร์ต &amp; ใบสั่งซื้อ-ขายจริง</div>
+              </button>
+
+              <button
+                type="button"
+                id="main-cat-btn-news"
+                onclick="switchMainCategory('news', false)"
+                class="p-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-blue-50/60 text-slate-800 text-left transition flex flex-col justify-between"
+              >
+                <div class="flex items-center justify-between">
+                  <span class="text-[10px] font-bold text-blue-700 uppercase">หมวดหมู่ที่ 2</span>
+                  <span class="text-[10px] text-slate-500 font-semibold">RSI &amp; SMA</span>
+                </div>
+                <div class="text-xs font-bold mt-1">ข่าวสารตลาด &amp; สัญญาณซื้อขาย</div>
+              </button>
+
+              <button
+                type="button"
+                id="main-cat-btn-backtest"
+                onclick="switchMainCategory('backtest', false)"
+                class="p-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-rose-50/60 text-slate-800 text-left transition flex flex-col justify-between"
+              >
+                <div class="flex items-center justify-between">
+                  <span class="text-[10px] font-bold text-rose-700 uppercase">หมวดหมู่ที่ 3</span>
+                  <span class="text-[10px] text-slate-500 font-semibold">Max Drawdown</span>
+                </div>
+                <div class="text-xs font-bold mt-1">ทดสอบวิกฤตย้อนหลัง &amp; กราฟสถิติ</div>
+              </button>
+
+              <button
+                type="button"
+                id="main-cat-btn-goals"
+                onclick="switchMainCategory('goals', false)"
+                class="p-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-indigo-50/60 text-slate-800 text-left transition flex flex-col justify-between"
+              >
+                <div class="flex items-center justify-between">
+                  <span class="text-[10px] font-bold text-indigo-700 uppercase">หมวดหมู่ที่ 4</span>
+                  <span class="text-[10px] text-slate-500 font-semibold">DCA &amp; Save</span>
+                </div>
+                <div class="text-xs font-bold mt-1">สร้างพอร์ตตามเป้าหมาย &amp; บันทึกพอร์ต</div>
+              </button>
+            </div>
+          </div>
+
           <!-- SECTION 2: DASHBOARD & REBALANCE (ธีมสีเขียวมรกต แยก 3 ขั้นตอนย่อยชัดเจน) -->
           <div id="step-3-execution-card" class="fin-card step-accent-emerald">
             <div class="fin-card-header bg-emerald-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -979,7 +1051,7 @@
           </div>
 
           <!-- SECTION 2.5: MARKET NEWS & QUANTITATIVE DECISION SIGNALS (ข้อมูลข่าวตามตลาดจริงและสัญญาณตัดสินใจซื้ออย่างรอบคอบ) -->
-          <div class="fin-card step-accent-blue">
+          <div id="section-market-news" class="hidden fin-card step-accent-blue">
             <div class="fin-card-header bg-blue-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <div class="flex items-center gap-2">
@@ -1072,7 +1144,7 @@
           </div>
 
           <!-- SECTION 3: BACKTEST & VISUAL ANALYTICS (ธีมสีแดงเข้ม-น้ำเงิน วิเคราะห์ความเสี่ยงย้อนหลัง) -->
-          <div class="fin-card step-accent-rose">
+          <div id="section-backtest-analytics" class="hidden fin-card step-accent-rose">
             <div class="fin-card-header bg-rose-50/40 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div class="flex items-center gap-2">
                 <span class="px-2.5 py-0.5 text-[11px] font-bold rounded bg-rose-600 text-white">ส่วนที่ 3: ทดสอบพอร์ตย้อนหลัง (Backtest)</span>
@@ -1259,7 +1331,7 @@
           </div>
 
           <!-- SECTION 4: GOAL-BASED PORTFOLIO BUILDER, DCA SIMULATOR & SAVED PORTFOLIOS (ธีมสีคราม Indigo) -->
-          <div id="section-goal-builder" class="fin-card step-accent-indigo">
+          <div id="section-goal-builder" class="hidden fin-card step-accent-indigo">
             <div class="fin-card-header bg-indigo-50/70 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div>
                 <div class="flex items-center gap-2 flex-wrap">
@@ -1746,7 +1818,7 @@
     })();
   </script>
 
-  <script src="/static/app.js?v=4.2"></script>
-  <script src="/static/supabase_auth.js?v=4.2"></script>
+  <script src="/static/app.js?v=4.3"></script>
+  <script src="/static/supabase_auth.js?v=4.3"></script>
 </body>
 </html>
