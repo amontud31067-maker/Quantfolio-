@@ -1,0 +1,1053 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuantFolio Analytics | ระบบวิเคราะห์และจัดพอร์ตการลงทุน</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Plotly.js -->
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <!-- Supabase JS SDK v2 -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- TOP INSTITUTIONAL MARKET UTILITY BAR -->
+  <div class="bg-slate-900 text-slate-300 text-[11px] border-b border-slate-800">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-8 flex items-center justify-between">
+      <div class="flex items-center gap-4 overflow-x-auto whitespace-nowrap">
+        <div class="flex items-center gap-1.5">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+          <span class="font-medium text-white">Yahoo Finance Live Market</span>
+        </div>
+        <span class="text-slate-600">|</span>
+        <div>
+          <span class="text-slate-400">อัตราแลกเปลี่ยนอ้างอิง (USD/THB):</span>
+          <span id="top-fx-rate" class="font-mono font-semibold text-amber-400 ml-1">34.50 บาท/$</span>
+        </div>
+        <span class="text-slate-600 hidden sm:inline">|</span>
+        <div class="hidden sm:block">
+          <span class="text-slate-400">ดอกเบี้ยพันธบัตรสหรัฐฯ (US 13W T-Bill):</span>
+          <span id="top-rf-rate" class="font-mono font-semibold text-emerald-400 ml-1">4.03%</span>
+        </div>
+        <span class="text-slate-600 hidden md:inline">|</span>
+        <div class="hidden md:block">
+          <span class="text-slate-400">ข้อมูลคำนวณ:</span>
+          <span id="top-trading-days" class="font-mono font-semibold text-white ml-1">--</span>
+          <span class="text-slate-400">วันทำการ</span>
+        </div>
+      </div>
+      <div class="hidden lg:flex items-center gap-2 text-slate-400">
+        <span>โมเดลคำนวณ: Markowitz Mean-Variance &amp; Hierarchical Risk Parity</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN NAVIGATION HEADER -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
+      <!-- Brand -->
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-lg bg-slate-900 flex items-center justify-center text-white">
+          <i data-lucide="bar-chart-2" class="w-5 h-5"></i>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="font-bold text-lg tracking-tight text-slate-900">QuantFolio</span>
+            <span class="text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">Wealth &amp; Rebalance</span>
+          </div>
+          <p class="text-xs text-slate-500 hidden sm:block">ระบบวิเคราะห์สัดส่วนพอร์ต จำลองความเสี่ยงเป็นเงินบาท และออกคำสั่งซื้อ-ขายปรับพอร์ตอัตโนมัติ</p>
+        </div>
+      </div>
+
+      <!-- Right Header Area: Preset Portfolios + Google Login / User Profile -->
+      <div class="flex items-center gap-3">
+        <!-- Preset Portfolios (Clean Financial Style) -->
+        <div class="hidden xl:flex items-center gap-1.5 overflow-x-auto py-1">
+          <span class="text-xs text-slate-500 font-medium mr-1">ชุดพอร์ตตัวอย่าง:</span>
+          <button onclick="applyPreset('colab_original')" id="preset-btn-colab_original" class="preset-btn px-2.5 py-1.5 text-xs rounded-md bg-blue-50 text-blue-700 font-semibold border border-blue-200 transition whitespace-nowrap">
+            US Tech + BTC
+          </button>
+          <button onclick="applyPreset('tech_titans')" id="preset-btn-tech_titans" class="preset-btn px-2.5 py-1.5 text-xs rounded-md bg-white hover:bg-slate-50 text-slate-700 font-medium border border-slate-200 transition whitespace-nowrap">
+            Big Tech 7
+          </button>
+          <button onclick="applyPreset('all_weather')" id="preset-btn-all_weather" class="preset-btn px-2.5 py-1.5 text-xs rounded-md bg-white hover:bg-slate-50 text-slate-700 font-medium border border-slate-200 transition whitespace-nowrap">
+            All-Weather
+          </button>
+          <button onclick="applyPreset('thai_set50')" id="preset-btn-thai_set50" class="preset-btn px-2.5 py-1.5 text-xs rounded-md bg-white hover:bg-slate-50 text-slate-700 font-medium border border-slate-200 transition whitespace-nowrap">
+            หุ้นไทย SET50
+          </button>
+        </div>
+
+        <div class="h-6 w-px bg-slate-200 hidden xl:block"></div>
+
+        <!-- [Requirement 1] ปุ่ม Login with Google (แสดงเมื่อยังไม่ได้เข้าสู่ระบบ) -->
+        <div id="auth-logged-out-box" class="flex items-center gap-1.5">
+          <button
+            type="button"
+            onclick="loginWithGoogle()"
+            class="inline-flex items-center gap-2.5 px-3.5 py-2 rounded-lg bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-800 font-semibold text-xs border border-slate-300 shadow-sm transition"
+          >
+            <!-- Official Google G SVG Icon -->
+            <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+              <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
+              <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.11-6.72-4.96H1.29v3.14C3.26 21.3 7.31 24 12 24z"/>
+              <path fill="#FBBC05" d="M5.28 14.24c-.24-.72-.38-1.49-.38-2.24s.14-1.52.38-2.24V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.99-3.14z"/>
+              <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.99 3.14c.95-2.85 3.6-4.96 6.72-4.96z"/>
+            </svg>
+            <span>Login with Google</span>
+          </button>
+          <button
+            type="button"
+            onclick="openSupabaseConfigModal()"
+            title="ตั้งค่ากุญแจ API Supabase"
+            class="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 border border-transparent hover:border-slate-200 transition"
+          >
+            <i data-lucide="settings" class="w-4 h-4"></i>
+          </button>
+        </div>
+
+        <!-- [Requirement 2] กล่องแสดงชื่อและรูปโปรไฟล์ของผู้ใช้เมื่อ Login สำเร็จแล้ว -->
+        <div id="auth-logged-in-box" class="hidden flex items-center gap-2.5 pl-2 pr-2.5 py-1 rounded-full bg-slate-50 border border-slate-200">
+          <img
+            id="user-profile-avatar"
+            src="https://ui-avatars.com/api/?name=User&background=1d4ed8&color=fff"
+            alt="Profile"
+            class="w-7 h-7 rounded-full object-cover border border-blue-200"
+          />
+          <div class="hidden sm:block text-left leading-tight">
+            <div id="user-profile-name" class="text-xs font-bold text-slate-900 truncate max-w-[140px]">ผู้ใช้งาน</div>
+            <div id="user-profile-email" class="text-[10px] text-slate-500 truncate max-w-[140px]">user@gmail.com</div>
+          </div>
+          <button
+            type="button"
+            onclick="logoutUser()"
+            title="ออกจากระบบ"
+            class="ml-1 px-2 py-1 text-[11px] font-semibold text-rose-600 hover:bg-rose-50 rounded-full transition"
+          >
+            ออก
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN WORKSPACE -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+
+      <!-- LEFT SIDEBAR: 3-STEP GOAL-ORIENTED SETUP (4 cols) -->
+      <div class="lg:col-span-4 space-y-5">
+
+        <!-- STEP 1: SELECT ASSETS -->
+        <div class="fin-card">
+          <div class="fin-card-header flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="w-5 h-5 rounded-full bg-slate-900 text-white text-[11px] font-bold flex items-center justify-center">1</span>
+              <h2 class="text-sm font-bold text-slate-900">เลือกหุ้นและสินทรัพย์ในพอร์ต (<span id="asset-count" class="text-blue-700">0</span>)</h2>
+            </div>
+            <button onclick="clearAllTickers()" class="text-xs text-slate-400 hover:text-rose-600 font-medium transition">
+              ล้างรายการ
+            </button>
+          </div>
+
+          <div class="p-4 space-y-3">
+            <!-- Search Input -->
+            <div class="relative">
+              <div class="relative">
+                <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-2.5"></i>
+                <input
+                  type="text"
+                  id="ticker-search-input"
+                  placeholder="ค้นหาชื่อย่อหุ้น เช่น NVDA, AAPL, PTT.BK, GLD..."
+                  autocomplete="off"
+                  class="w-full pl-9 pr-16 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 text-slate-900 placeholder-slate-400 font-medium transition"
+                  oninput="handleSearchInput(event)"
+                  onkeydown="handleSearchKeyDown(event)"
+                />
+                <button
+                  onclick="addTickerFromInput()"
+                  class="absolute right-1.5 top-1.5 px-2.5 py-1 text-xs font-semibold bg-slate-900 hover:bg-blue-700 text-white rounded-md transition"
+                >
+                  เพิ่มหุ้น
+                </button>
+              </div>
+
+              <!-- Autocomplete Dropdown -->
+              <div
+                id="search-dropdown"
+                class="hidden absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto divide-y divide-slate-100"
+              ></div>
+            </div>
+
+            <!-- Selected Tickers List -->
+            <div id="selected-tickers-container" class="divide-y divide-slate-100 border border-slate-200 rounded-lg bg-white max-h-60 overflow-y-auto">
+              <!-- Populated by JS -->
+            </div>
+          </div>
+        </div>
+
+        <!-- STEP 2: CHOOSE INVESTMENT GOAL -->
+        <div class="fin-card">
+          <div class="fin-card-header flex items-center gap-2">
+            <span class="w-5 h-5 rounded-full bg-slate-900 text-white text-[11px] font-bold flex items-center justify-center">2</span>
+            <h2 class="text-sm font-bold text-slate-900">เลือกเป้าหมายการจัดพอร์ต</h2>
+          </div>
+
+          <div class="p-4 space-y-2">
+            <!-- Goal 1: Max Sharpe -->
+            <div onclick="selectGoal('max_sharpe')" id="goal-card-max_sharpe" class="goal-option active rounded-lg p-3">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-slate-900">เน้นผลตอบแทนคุ้มความเสี่ยงที่สุด</span>
+                <span class="text-[10px] font-semibold px-2 py-0.5 rounded bg-blue-100 text-blue-800">แนะนำ (Max Sharpe)</span>
+              </div>
+              <p class="text-[11px] text-slate-500 mt-1">คำนวณสัดส่วนที่ให้ผลตอบแทนคาดหวังสูงสุดต่อหนึ่งหน่วยความเสี่ยง</p>
+            </div>
+
+            <!-- Goal 2: Min Volatility -->
+            <div onclick="selectGoal('min_volatility')" id="goal-card-min_volatility" class="goal-option rounded-lg p-3">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-slate-900">เน้นความเสี่ยงต่ำ เงินต้นแกว่งน้อย</span>
+                <span class="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-700">Min Volatility</span>
+              </div>
+              <p class="text-[11px] text-slate-500 mt-1">เน้นรักษาเงินต้น ลดโอกาสที่เงินต้นจะหดหายในช่วงวิกฤตตลาด</p>
+            </div>
+
+            <!-- Goal 3: HRP -->
+            <div onclick="selectGoal('hrp')" id="goal-card-hrp" class="goal-option rounded-lg p-3">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-slate-900">เน้นกระจายความเสี่ยงสมดุล</span>
+                <span class="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-700">Risk Parity (HRP)</span>
+              </div>
+              <p class="text-[11px] text-slate-500 mt-1">กระจายเงินลงทุกกลุ่มสินทรัพย์อย่างเป็นระบบ ป้องกันพอร์ตกระจุกตัว</p>
+            </div>
+
+            <!-- Goal 4: Equal Weight -->
+            <div onclick="selectGoal('equal_weight')" id="goal-card-equal_weight" class="goal-option rounded-lg p-3">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-slate-900">เฉลี่ยสัดส่วนเท่ากันทุกตัว</span>
+                <span class="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-700">Equal Weight (1/N)</span>
+              </div>
+              <p class="text-[11px] text-slate-500 mt-1">แบ่งเงินลงทุนในหุ้นทุกตัวเท่าๆ กัน ใช้เป็นเกณฑ์มาตรฐานเปรียบเทียบ</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- STEP 3: BUDGET & PARAMETERS -->
+        <div class="fin-card">
+          <div class="fin-card-header flex items-center gap-2">
+            <span class="w-5 h-5 rounded-full bg-slate-900 text-white text-[11px] font-bold flex items-center justify-center">3</span>
+            <h2 class="text-sm font-bold text-slate-900">เงินต้น (บาท) และกรอบการคำนวณ</h2>
+          </div>
+
+          <div class="p-4 space-y-4">
+            <!-- Budget Input in Baht -->
+            <div>
+              <label class="text-xs font-semibold text-slate-700 block mb-1">
+                เงินต้นของคุณ (ใช้วิเคราะห์เงินหายสูงสุดในอดีต &amp; คำนวณยอดซื้อ/ขาย)
+              </label>
+              <div class="relative">
+                <span class="absolute left-3 top-2.5 text-xs font-bold text-slate-500 font-mono" id="currency-symbol">฿</span>
+                <input
+                  type="number"
+                  id="budget-input"
+                  value="100000"
+                  min="1000"
+                  step="5000"
+                  oninput="handleBudgetQuickUpdate()"
+                  class="w-full pl-8 pr-28 py-2 text-sm font-mono font-bold bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:bg-white focus:outline-none focus:border-blue-600"
+                />
+                <select
+                  id="currency-select"
+                  onchange="updateCurrencySymbol()"
+                  class="absolute right-1.5 top-1.5 py-1 px-2 text-xs font-semibold bg-white border border-slate-200 rounded text-slate-700 focus:outline-none cursor-pointer"
+                >
+                  <option value="THB" selected>บาท (THB)</option>
+                  <option value="USD">ดอลลาร์ (USD)</option>
+                </select>
+              </div>
+              <!-- Quick Budget Presets -->
+              <div class="flex flex-wrap gap-1.5 mt-2">
+                <span class="text-[10px] text-slate-400 self-center mr-0.5">เลือกเร็ว:</span>
+                <button type="button" onclick="setQuickBudget(50000)" class="px-2 py-0.5 text-[11px] font-mono rounded bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-slate-600 transition">50,000</button>
+                <button type="button" onclick="setQuickBudget(100000)" class="px-2 py-0.5 text-[11px] font-mono rounded bg-blue-50 text-blue-700 font-semibold border border-blue-200 transition">100,000</button>
+                <button type="button" onclick="setQuickBudget(500000)" class="px-2 py-0.5 text-[11px] font-mono rounded bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-slate-600 transition">500,000</button>
+                <button type="button" onclick="setQuickBudget(1000000)" class="px-2 py-0.5 text-[11px] font-mono rounded bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-slate-600 transition">1,000,000</button>
+              </div>
+            </div>
+
+            <!-- FX Rate Box (For US Stocks -> Baht Conversion) -->
+            <div class="p-2.5 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-between gap-2">
+              <div>
+                <div class="text-[11px] font-semibold text-slate-700">เรทแปลงค่าเงินหุ้นต่างประเทศ (USD ➔ บาท)</div>
+                <div class="text-[10px] text-slate-500">ปรับให้ตรงกับเรทในแอปโบรกเกอร์ของคุณได้</div>
+              </div>
+              <div class="flex items-center gap-1">
+                <input
+                  type="number"
+                  id="fx-rate-input"
+                  value="34.50"
+                  min="20"
+                  max="60"
+                  step="0.05"
+                  onchange="handleFxRateChange()"
+                  class="w-20 px-2 py-1 text-xs font-mono font-bold text-right bg-white border border-slate-300 rounded text-slate-900 focus:outline-none focus:border-blue-600"
+                />
+                <span class="text-[11px] text-slate-500 font-medium">฿/$</span>
+              </div>
+            </div>
+
+            <!-- Historical Period -->
+            <div>
+              <div class="flex items-center justify-between mb-1.5">
+                <label class="text-xs font-semibold text-slate-700">ช่วงข้อมูลย้อนหลังที่ใช้ทำ Backtest</label>
+                <div class="flex gap-1 text-[11px]">
+                  <button type="button" onclick="setTimeframe('1Y', this)" class="tf-btn px-2 py-0.5 rounded bg-slate-100 text-slate-600 hover:bg-slate-200 font-medium">1 ปี</button>
+                  <button type="button" onclick="setTimeframe('3Y', this)" class="tf-btn px-2 py-0.5 rounded bg-slate-100 text-slate-600 hover:bg-slate-200 font-medium">3 ปี</button>
+                  <button type="button" onclick="setTimeframe('4Y', this)" class="tf-btn px-2 py-0.5 rounded bg-slate-900 text-white font-semibold">4 ปี</button>
+                  <button type="button" onclick="setTimeframe('5Y', this)" class="tf-btn px-2 py-0.5 rounded bg-slate-100 text-slate-600 hover:bg-slate-200 font-medium">5 ปี</button>
+                </div>
+              </div>
+              <div class="grid grid-cols-2 gap-2">
+                <div>
+                  <span class="text-[10px] text-slate-500 block mb-0.5">ตั้งแต่</span>
+                  <input type="date" id="start-date-input" value="2020-01-01" class="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-md text-slate-800 font-mono focus:bg-white focus:outline-none focus:border-blue-600">
+                </div>
+                <div>
+                  <span class="text-[10px] text-slate-500 block mb-0.5">ถึงวันที่</span>
+                  <input type="date" id="end-date-input" value="2024-01-01" class="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-md text-slate-800 font-mono focus:bg-white focus:outline-none focus:border-blue-600">
+                </div>
+              </div>
+            </div>
+
+            <!-- Max Weight Cap -->
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <label class="text-xs font-semibold text-slate-700">จำกัดสัดส่วนสูงสุดต่อหุ้น 1 ตัว</label>
+                <span id="max-weight-val" class="text-xs font-mono font-bold text-blue-700">ไม่จำกัด (100%)</span>
+              </div>
+              <input
+                type="range"
+                id="max-weight-slider"
+                min="25"
+                max="100"
+                step="5"
+                value="100"
+                oninput="updateMaxWeightLabel(this.value)"
+                class="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-700"
+              />
+              <div class="flex justify-between text-[10px] text-slate-500 mt-1">
+                <button type="button" onclick="setMaxWeight(35)" class="hover:text-blue-700 underline">ไม่เกิน 35% (กระจายตัว)</button>
+                <button type="button" onclick="setMaxWeight(50)" class="hover:text-blue-700 underline">ไม่เกิน 50%</button>
+                <button type="button" onclick="setMaxWeight(100)" class="hover:text-blue-700 underline">ไม่จำกัด (100%)</button>
+              </div>
+            </div>
+
+            <!-- Action Button -->
+            <button
+              id="run-optimize-btn"
+              onclick="runOptimization()"
+              class="w-full py-3 px-4 rounded-lg font-semibold text-xs uppercase tracking-wider bg-slate-900 hover:bg-blue-700 text-white shadow-sm transition flex items-center justify-center gap-2"
+            >
+              <i data-lucide="calculator" class="w-4 h-4"></i>
+              <span>คำนวณพอร์ต &amp; สร้างใบสั่งซื้อ-ขาย (บาท)</span>
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- RIGHT MAIN WORKSPACE: CLEAR, ACTIONABLE FINANCIAL RESULTS (8 cols) -->
+      <div class="lg:col-span-8 space-y-5">
+
+        <!-- ERROR BANNER -->
+        <div id="error-banner" class="hidden p-4 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-start gap-3">
+          <i data-lucide="alert-triangle" class="w-4 h-4 text-rose-600 shrink-0 mt-0.5"></i>
+          <div>
+            <div class="font-bold text-rose-900">ไม่สามารถคำนวณพอร์ตได้</div>
+            <p id="error-message" class="mt-0.5 text-rose-700"></p>
+          </div>
+        </div>
+
+        <!-- LOADING STATE -->
+        <div id="loading-card" class="hidden fin-card p-10 text-center space-y-3">
+          <div class="w-10 h-10 mx-auto rounded-full border-2 border-slate-200 border-t-blue-600 animate-spin"></div>
+          <h3 class="text-sm font-bold text-slate-900">กำลังดึงข้อมูลตลาดและคำนวณแผนปรับพอร์ตเป็นเงินบาท...</h3>
+          <p class="text-xs text-slate-500">วิเคราะห์ราคาปิดย้อนหลัง คำนวณจำนวนเงินบาทที่เคยลดลงสูงสุดในอดีต และสรุปยอดซื้อ-ขายตามงบประมาณ</p>
+        </div>
+
+        <!-- RESULTS CONTAINER -->
+        <div id="results-dashboard" class="space-y-5">
+
+          <!-- 1. EXECUTIVE PORTFOLIO SUMMARY & KPI CARDS -->
+          <div class="fin-card overflow-hidden">
+            <!-- Strategy Title Bar -->
+            <div class="bg-slate-900 text-white px-5 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <div class="flex items-center gap-2">
+                  <span class="text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-400/30">กลยุทธ์ที่เลือก</span>
+                  <span id="analysis-period-badge" class="text-[11px] text-slate-400 font-mono">ข้อมูล: 2020-01-01 ถึง 2024-01-01</span>
+                </div>
+                <h2 id="active-goal-title" class="text-base font-bold text-white mt-1">พอร์ตผลตอบแทนคุ้มความเสี่ยงสูงสุด (Max Sharpe)</h2>
+                <p id="active-goal-desc" class="text-xs text-slate-300 mt-0.5">เหมาะสำหรับผู้ที่ต้องการผลตอบแทนเติบโตสูงสุดเมื่อเทียบกับความเสี่ยงที่รับได้</p>
+              </div>
+
+              <!-- Quick Goal Switcher Pills -->
+              <div class="flex items-center gap-1 bg-slate-800 p-1 rounded-lg self-start sm:self-center">
+                <button onclick="selectGoal('max_sharpe')" id="top-pill-max_sharpe" class="top-goal-pill px-2.5 py-1 rounded text-[11px] font-semibold bg-blue-600 text-white transition">Max Sharpe</button>
+                <button onclick="selectGoal('min_volatility')" id="top-pill-min_volatility" class="top-goal-pill px-2.5 py-1 rounded text-[11px] font-medium text-slate-300 hover:text-white transition">ความเสี่ยงต่ำ</button>
+                <button onclick="selectGoal('hrp')" id="top-pill-hrp" class="top-goal-pill px-2.5 py-1 rounded text-[11px] font-medium text-slate-300 hover:text-white transition">กระจายสมดุล</button>
+                <button onclick="selectGoal('equal_weight')" id="top-pill-equal_weight" class="top-goal-pill px-2.5 py-1 rounded text-[11px] font-medium text-slate-300 hover:text-white transition">เท่ากัน 1/N</button>
+              </div>
+            </div>
+
+            <!-- 4 Core KPI Metrics -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-slate-200 bg-white">
+              <!-- KPI 1: Expected Annual Return -->
+              <div class="p-4">
+                <div class="text-xs text-slate-500 font-medium flex items-center justify-between">
+                  <span>ผลตอบแทนคาดหวังต่อปี</span>
+                  <i data-lucide="trending-up" class="w-3.5 h-3.5 text-emerald-600"></i>
+                </div>
+                <div id="kpi-return" class="text-xl font-bold font-mono text-emerald-700 mt-1">--%</div>
+                <div id="kpi-profit-money" class="text-[11px] text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5 mt-1.5 inline-block font-semibold">เฉลี่ย -- บาท/ปี</div>
+              </div>
+
+              <!-- KPI 2: Annual Volatility (Risk) -->
+              <div class="p-4">
+                <div class="text-xs text-slate-500 font-medium flex items-center justify-between">
+                  <span>ความผันผวน (ความเสี่ยง/ปี)</span>
+                  <i data-lucide="activity" class="w-3.5 h-3.5 text-amber-600"></i>
+                </div>
+                <div id="kpi-volatility" class="text-xl font-bold font-mono text-slate-900 mt-1">--%</div>
+                <div class="mt-1.5">
+                  <span id="kpi-risk-badge" class="inline-block text-[10px] font-semibold px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200">--</span>
+                </div>
+              </div>
+
+              <!-- KPI 3: Historical Max Drawdown in BAHT (Requirement 1) -->
+              <div class="p-4 bg-rose-50/35">
+                <div class="text-xs text-rose-900 font-bold flex items-center justify-between">
+                  <span>เงินต้นที่เคยหายไปสูงสุดในอดีต</span>
+                  <i data-lucide="trending-down" class="w-3.5 h-3.5 text-rose-600"></i>
+                </div>
+                <div id="kpi-mdd-baht" class="text-xl font-bold font-mono text-rose-700 mt-1">-0 บาท</div>
+                <div class="flex items-center justify-between text-[11px] mt-1">
+                  <span id="kpi-mdd" class="font-mono font-bold text-rose-600">(--%)</span>
+                  <span id="kpi-mdd-remaining" class="text-slate-600 font-medium">เหลือต่ำสุด --</span>
+                </div>
+              </div>
+
+              <!-- KPI 4: Sharpe Ratio -->
+              <div class="p-4">
+                <div class="text-xs text-slate-500 font-medium flex items-center justify-between">
+                  <span>ความคุ้มค่า (Sharpe Ratio)</span>
+                  <i data-lucide="award" class="w-3.5 h-3.5 text-blue-600"></i>
+                </div>
+                <div id="kpi-sharpe" class="text-xl font-bold font-mono text-blue-700 mt-1">--</div>
+                <div class="mt-1.5">
+                  <span id="kpi-sharpe-badge" class="inline-block text-[10px] font-semibold px-2 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200">--</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 2. DASHBOARD & REBALANCE: ACTIONABLE BUY/SELL INSTRUCTIONS IN BAHT (Requirement 2) -->
+          <div class="fin-card">
+            <div class="fin-card-header flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <div class="flex items-center gap-2">
+                  <span class="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded bg-emerald-100 text-emerald-800 border border-emerald-200">Dashboard &amp; Rebalance</span>
+                  <h3 class="text-sm font-bold text-slate-900">
+                    สรุปคำแนะนำการปรับพอร์ตและคำสั่งซื้อ-ขาย (ระบุยอดเงินบาทชัดเจน)
+                  </h3>
+                </div>
+                <p class="text-xs text-slate-500 mt-0.5">
+                  ระบบคำนวณให้เสร็จสรรพว่าต้อง <b>ขายตัวไหนกี่บาท</b> แล้วนำเงินไป <b>ซื้อตัวไหนกี่บาท</b> เพื่อให้นำตัวเลขไปส่งคำสั่งจริงได้ทันทีโดยไม่ต้องคิดเลขเอง
+                </p>
+              </div>
+              <div class="flex items-center gap-2 shrink-0">
+                <button
+                  onclick="copyOrderSheet()"
+                  class="px-3 py-1.5 text-xs font-semibold bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-md transition flex items-center gap-1.5"
+                >
+                  <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                  <span>คัดลอกคำสั่งซื้อ-ขาย</span>
+                </button>
+                <button
+                  onclick="downloadOrderCSV()"
+                  class="px-3 py-1.5 text-xs font-semibold bg-slate-900 hover:bg-blue-700 text-white rounded-md transition flex items-center gap-1.5"
+                >
+                  <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                  <span>ดาวน์โหลด CSV</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="p-5 space-y-5">
+
+              <!-- REBALANCE MODE & PRUDENT EXECUTION CONTROLS BAR -->
+              <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+                <div class="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                  <div>
+                    <div class="text-xs font-bold text-slate-800">เลือกรูปแบบพอร์ตตั้งต้นของคุณ (เพื่อคำนวณยอดซื้อ/ขายปรับพอร์ต):</div>
+                    <div class="text-[11px] text-slate-500">เลือกสถานการณ์ที่ตรงกับพอร์ตของคุณเพื่อให้ระบบคำนวณยอดขายและยอดซื้อเป็นเงินบาท</div>
+                  </div>
+                  <!-- 3 Mode Buttons -->
+                  <div class="flex flex-wrap gap-1.5">
+                    <button
+                      type="button"
+                      id="rebal-mode-equal"
+                      onclick="setRebalanceMode('equal_weight')"
+                      class="rebal-mode-btn active px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5"
+                    >
+                      <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+                      <span>ปรับจากพอร์ตถือเท่ากัน (Rebalance)</span>
+                    </button>
+                    <button
+                      type="button"
+                      id="rebal-mode-custom"
+                      onclick="setRebalanceMode('custom')"
+                      class="rebal-mode-btn px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5"
+                    >
+                      <i data-lucide="edit-3" class="w-3.5 h-3.5"></i>
+                      <span>กรอกยอดเงินที่ถืออยู่จริง</span>
+                    </button>
+                    <button
+                      type="button"
+                      id="rebal-mode-cash"
+                      onclick="setRebalanceMode('cash')"
+                      class="rebal-mode-btn px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5"
+                    >
+                      <i data-lucide="wallet" class="w-3.5 h-3.5"></i>
+                      <span>ซื้อใหม่จากเงินสด 100%</span>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- CUSTOM CURRENT HOLDINGS EDITOR (Visible when 'custom' mode is active) -->
+                <div id="custom-holdings-panel" class="hidden pt-3 border-t border-slate-200 space-y-3">
+                  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                      <h4 class="text-xs font-bold text-slate-900">กรอกมูลค่าสินทรัพย์ที่คุณถืออยู่ในปัจจุบัน (หน่วย: บาท)</h4>
+                      <p class="text-[11px] text-slate-500">กรอกยอดเงินบาทของหุ้นแต่ละตัวที่มีในพอร์ตตอนนี้ (หากไม่มีตัวไหนให้ใส่ 0) ระบบจะคำนวณให้ทันทีว่าต้องขายตัวไหนกี่บาทไปซื้อตัวไหนกี่บาท</p>
+                    </div>
+                    <div class="flex flex-wrap gap-1.5 text-[11px]">
+                      <button type="button" onclick="prefillCustomHoldings('equal_weight')" class="px-2.5 py-1 rounded bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 font-medium">ดึงค่าพอร์ตถือเท่ากัน</button>
+                      <button type="button" onclick="prefillCustomHoldings('min_volatility')" class="px-2.5 py-1 rounded bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 font-medium">ดึงค่าพอร์ตเสี่ยงต่ำ</button>
+                      <button type="button" onclick="prefillCustomHoldings('zero')" class="px-2.5 py-1 rounded bg-white border border-rose-200 hover:bg-rose-50 text-rose-700 font-medium">ตั้งเป็น 0 ทุกตัว</button>
+                    </div>
+                  </div>
+
+                  <div id="custom-holdings-inputs" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+                    <!-- Populated dynamically by JS -->
+                  </div>
+
+                  <div class="p-2.5 rounded-lg bg-white border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div class="flex items-center gap-2">
+                      <label class="text-xs font-semibold text-slate-700">เงินสดเติมเพิ่ม (+) หรือถอนออก (-):</label>
+                      <input
+                        type="number"
+                        id="custom-cash-injection"
+                        value="0"
+                        step="1000"
+                        oninput="recalculateRebalanceFromCustom()"
+                        class="w-32 px-2.5 py-1 text-xs font-mono font-bold bg-slate-50 border border-slate-300 rounded text-slate-900 focus:bg-white focus:outline-none focus:border-blue-600"
+                      />
+                      <span class="text-xs text-slate-500 font-medium">บาท</span>
+                    </div>
+                    <div class="text-xs text-slate-700">
+                      มูลค่าพอร์ตรวมหลังปรับ: <span id="custom-total-portfolio-val" class="font-mono font-bold text-blue-700">฿100,000.00</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- PRUDENT SAFEGUARDS BAR (ความรอบคอบในการส่งคำสั่งจริง) -->
+                <div class="pt-2.5 border-t border-slate-200/80 flex flex-wrap items-center justify-between gap-3 text-xs">
+                  <div class="flex flex-wrap items-center gap-4">
+                    <label class="inline-flex items-center gap-2 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        id="fee-buffer-toggle"
+                        checked
+                        onchange="renderActiveGoalView()"
+                        class="rounded border-slate-300 text-blue-700 focus:ring-blue-500"
+                      />
+                      <span class="text-slate-700 font-medium">
+                        กันสำรองค่าธรรมเนียมซื้อขาย <span class="font-mono font-bold text-slate-900">0.20%</span> (ป้องกันเงินสดไม่พอตอนสั่งซื้อจริง)
+                      </span>
+                    </label>
+
+                    <div class="flex items-center gap-1.5">
+                      <span class="text-slate-600">ตัดคำสั่งซื้อขายจุกจิกที่ยอดต่ำกว่า:</span>
+                      <select
+                        id="min-trade-threshold"
+                        onchange="renderActiveGoalView()"
+                        class="px-2 py-0.5 text-xs font-mono font-semibold bg-white border border-slate-300 rounded text-slate-800"
+                      >
+                        <option value="0">0 บาท (แสดงทุกยอด)</option>
+                        <option value="100" selected>100 บาท (แนะนำ)</option>
+                        <option value="500">500 บาท</option>
+                        <option value="1000">1,000 บาท</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div id="prudent-status-note" class="text-[11px] text-emerald-700 font-medium flex items-center gap-1">
+                    <i data-lucide="shield-check" class="w-3.5 h-3.5"></i>
+                    <span>คำนวณแบบรอบคอบ: หักเผื่อค่าคอมมิชชันและปัดเศษปลอดภัยแล้ว</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- STEP-BY-STEP REBALANCE & DIRECT CASH-FLOW PAIRING SUMMARY BOX -->
+              <div id="rebalance-action-summary-box" class="rounded-xl border border-blue-200 bg-gradient-to-br from-blue-50/50 via-white to-emerald-50/30 p-4 space-y-4">
+                <!-- Populated by JS: Direct "Sell A X Baht -> Buy B Y Baht" instructions -->
+              </div>
+
+              <!-- DONUT CHART & FULL EXECUTION TABLE -->
+              <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start pt-1">
+                <!-- Left: Donut Allocation Chart + Budget Breakdown (4 cols) -->
+                <div class="lg:col-span-4 flex flex-col items-center">
+                  <div class="text-xs font-bold text-slate-700 mb-1">สัดส่วนพอร์ตเป้าหมายใหม่</div>
+                  <div id="allocation-donut-chart" class="w-full h-[210px]"></div>
+
+                  <!-- Cash Deployment Summary Box -->
+                  <div class="w-full mt-2 p-3 rounded-lg bg-slate-50 border border-slate-200 space-y-1.5 text-xs">
+                    <div class="flex justify-between items-center">
+                      <span class="text-slate-500">มูลค่าพอร์ตรวมที่ใช้คำนวณ:</span>
+                      <span id="order-kpi-budget" class="font-mono font-bold text-slate-900">฿100,000.00</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                      <span class="text-slate-500">รวมยอดสั่งขาย (ได้เงินสด):</span>
+                      <span id="order-kpi-total-sell" class="font-mono font-bold text-rose-700">฿0.00</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                      <span class="text-slate-500">รวมยอดสั่งซื้อสุทธิ:</span>
+                      <span id="order-kpi-total-buy" class="font-mono font-bold text-emerald-700">฿0.00</span>
+                    </div>
+                    <div class="flex justify-between items-center pt-1.5 border-t border-slate-200">
+                      <span class="text-slate-700 font-semibold">เงินสดสำรองคงเหลือ (กันค่าธรรมเนียม):</span>
+                      <span id="order-kpi-leftover" class="font-mono font-bold text-blue-700">฿0.00</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Right: Actionable Rebalance & Buy/Sell Order Table (8 cols) -->
+                <div class="lg:col-span-8 overflow-x-auto">
+                  <div class="flex items-center justify-between mb-2">
+                    <h4 class="text-xs font-bold text-slate-800">ตารางใบสั่งซื้อ-ขายปรับพอร์ตรายตัว (นำยอดเงินบาทไปคีย์ส่งคำสั่งได้ทันที)</h4>
+                    <span class="text-[11px] text-slate-500">แสดงทั้งยอดเงินบาทและจำนวนหุ้น</span>
+                  </div>
+                  <table class="w-full text-xs text-left fin-table border border-slate-200 rounded-lg overflow-hidden">
+                    <thead>
+                      <tr>
+                        <th class="py-2.5 px-3">สินทรัพย์</th>
+                        <th class="py-2.5 px-3 text-right">ราคาล่าสุด</th>
+                        <th class="py-2.5 px-3 text-right">มูลค่าเดิม ➔ เป้าหมาย</th>
+                        <th class="py-2.5 px-3 text-right">คำสั่งซื้อ/ขาย (ยอดเงินบาทชัดเจน)</th>
+                        <th class="py-2.5 px-3 text-right">จำนวนหุ้นที่ต้องซื้อ/ขาย</th>
+                      </tr>
+                    </thead>
+                    <tbody id="orders-table-body" class="font-mono">
+                      <!-- Populated by JS -->
+                    </tbody>
+                  </table>
+                  <p class="text-[11px] text-slate-500 mt-2 leading-relaxed">
+                    * <b>คำแนะนำเพื่อความรอบคอบ:</b> ให้ทำรายการ <b>"สั่งขาย (SELL)"</b> ให้เสร็จสิ้นก่อนเพื่อรับเงินสดเข้าพอร์ต จากนั้นจึงนำเงินสดที่ได้ไปส่งคำสั่ง <b>"สั่งซื้อ (BUY)"</b> ตามยอดเงินบาทที่ระบุในตาราง
+                  </p>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- 3. BACKTEST & VISUAL ANALYTICS (3 CLEAN TABS) -->
+          <div class="fin-card">
+            <!-- Tab Header -->
+            <div class="border-b border-slate-200 px-5 pt-3 flex items-center gap-6 overflow-x-auto">
+              <button onclick="switchTab('growth')" id="tab-btn-growth" class="tab-btn pb-3 text-xs font-bold text-blue-700 border-b-2 border-blue-700 whitespace-nowrap transition">
+                1. ผลทดสอบย้อนหลัง (Backtest) &amp; จำนวนเงินบาทสูงสุดที่เคยหายไป
+              </button>
+              <button onclick="switchTab('frontier')" id="tab-btn-frontier" class="tab-btn pb-3 text-xs font-semibold text-slate-500 hover:text-slate-800 border-b-2 border-transparent whitespace-nowrap transition">
+                2. แผนภาพความเสี่ยงเทียบผลตอบแทน (Efficient Frontier)
+              </button>
+              <button onclick="switchTab('assets')" id="tab-btn-assets" class="tab-btn pb-3 text-xs font-semibold text-slate-500 hover:text-slate-800 border-b-2 border-transparent whitespace-nowrap transition">
+                3. สถิติหุ้นรายตัวและความสัมพันธ์ (Correlation)
+              </button>
+            </div>
+
+            <!-- TAB 1: BACKTEST, MAX DRAWDOWN IN BAHT & STRATEGY COMPARISON -->
+            <div id="tab-content-growth" class="tab-pane p-5 space-y-6">
+
+              <!-- REQUIREMENT 1 HIGHLIGHT CARD: MAX DRAWDOWN IN BAHT BASED ON USER'S INITIAL CAPITAL -->
+              <div class="rounded-xl border border-rose-200 bg-rose-50/40 p-4 space-y-3">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <div class="flex items-center gap-2">
+                      <span class="px-2 py-0.5 text-[10px] font-bold uppercase rounded bg-rose-100 text-rose-800 border border-rose-200">Backtest Stress Test</span>
+                      <h4 class="text-sm font-bold text-slate-900">
+                        วิเคราะห์จุดขาดทุนสูงสุดในอดีต (แปลง Max Drawdown % เป็นจำนวนเงินบาทจากเงินต้นของคุณ)
+                      </h4>
+                    </div>
+                    <p class="text-xs text-slate-600 mt-0.5">
+                      จำลองว่าหากคุณลงทุนด้วยเงินต้นที่กรอกไว้ แล้วเจอช่วงวิกฤตตลาดที่หนักที่สุดในอดีต เงินต้นของคุณจะหายไปสูงสุดกี่บาท และเหลือต่ำสุดกี่บาท
+                    </p>
+                  </div>
+                </div>
+
+                <!-- 4 Easy-to-Understand Baht Drawdown Boxes -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  <div class="bg-white p-3 rounded-lg border border-slate-200">
+                    <div class="text-[11px] text-slate-500 font-medium">เงินต้นที่คุณตั้งไว้</div>
+                    <div id="bt-dd-initial-budget" class="text-base font-bold font-mono text-slate-900 mt-0.5">฿100,000.00</div>
+                    <div class="text-[10px] text-slate-400 mt-0.5">ฐานเงินทุนเริ่มต้นสำหรับการคำนวณ</div>
+                  </div>
+
+                  <div class="bg-white p-3 rounded-lg border border-rose-300 ring-1 ring-rose-100">
+                    <div class="text-[11px] text-rose-800 font-bold">จำนวนเงินสูงสุดที่เคยหายไปในอดีต</div>
+                    <div id="bt-dd-loss-baht" class="text-base font-bold font-mono text-rose-700 mt-0.5">-฿0.00</div>
+                    <div id="bt-dd-loss-pct" class="text-[11px] font-semibold text-rose-600 mt-0.5">คิดเป็น Max Drawdown --%</div>
+                  </div>
+
+                  <div class="bg-white p-3 rounded-lg border border-slate-200">
+                    <div class="text-[11px] text-slate-600 font-medium">เงินต้นคงเหลือต่ำสุด ณ จุดวิกฤต</div>
+                    <div id="bt-dd-remaining-baht" class="text-base font-bold font-mono text-slate-900 mt-0.5">฿0.00</div>
+                    <div class="text-[10px] text-slate-500 mt-0.5">มูลค่าพอร์ตต่ำสุดหากเข้าซื้อก่อนเกิดวิกฤต</div>
+                  </div>
+
+                  <div class="bg-white p-3 rounded-lg border border-slate-200">
+                    <div class="text-[11px] text-slate-600 font-medium">ช่วงเวลาที่เกิดจุดต่ำสุดในอดีต</div>
+                    <div id="bt-dd-period" class="text-xs font-bold font-mono text-slate-800 mt-1">-- ถึง --</div>
+                    <div id="bt-dd-recovery" class="text-[10px] text-slate-500 mt-1">--</div>
+                  </div>
+                </div>
+
+                <!-- Visual Capital Retention vs Loss Bar -->
+                <div class="bg-white p-3 rounded-lg border border-slate-200 space-y-1.5">
+                  <div class="flex items-center justify-between text-xs">
+                    <span class="font-semibold text-emerald-800">เงินต้นส่วนที่คงเหลือ ณ จุดต่ำสุด: <span id="bt-bar-keep-label" class="font-mono font-bold">--</span></span>
+                    <span class="font-semibold text-rose-700">เงินที่หายไปสูงสุดในอดีต: <span id="bt-bar-lose-label" class="font-mono font-bold">--</span></span>
+                  </div>
+                  <div class="w-full h-3 rounded-full overflow-hidden flex bg-rose-100 border border-slate-200">
+                    <div id="bt-bar-keep-fill" class="h-full bg-emerald-500 transition-all duration-300" style="width: 60%"></div>
+                    <div id="bt-bar-lose-fill" class="h-full bg-rose-500 transition-all duration-300" style="width: 40%"></div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Backtest Chart with Mode Switcher (Portfolio Wealth vs Drawdown in Baht) -->
+              <div>
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+                  <div>
+                    <h4 class="text-sm font-bold text-slate-900">กราฟจำลองพอร์ตย้อนหลัง (Historical Backtest)</h4>
+                    <p class="text-xs text-slate-500">เลือกดูได้ทั้งการเติบโตของเงินลงทุนรวม และจำนวนเงินบาทที่ย่อตัวลงในแต่ละช่วงเวลา</p>
+                  </div>
+                  <div class="flex gap-1 bg-slate-100 p-1 rounded-lg self-start sm:self-center text-xs">
+                    <button
+                      type="button"
+                      id="btn-bt-chart-wealth"
+                      onclick="switchBacktestChartMode('wealth')"
+                      class="px-3 py-1 rounded-md bg-slate-900 text-white font-semibold transition"
+                    >
+                      มูลค่าพอร์ตเติบโต (บาท)
+                    </button>
+                    <button
+                      type="button"
+                      id="btn-bt-chart-drawdown"
+                      onclick="switchBacktestChartMode('drawdown')"
+                      class="px-3 py-1 rounded-md text-slate-600 hover:text-slate-900 font-medium transition"
+                    >
+                      จำนวนเงินที่ติดลบ/ย่อตัว (บาท)
+                    </button>
+                  </div>
+                </div>
+                <div id="portfolio-growth-chart" class="w-full h-[360px] border border-slate-200 rounded-lg p-2 bg-white"></div>
+              </div>
+
+              <!-- 4-Strategy Head-to-Head Comparison Table -->
+              <div>
+                <h4 class="text-sm font-bold text-slate-900 mb-2">ตารางเปรียบเทียบผลลัพธ์ทั้ง 4 กลยุทธ์ (แสดงยอดเงินบาทสูงสุดที่เคยหายไปในอดีต)</h4>
+                <div class="overflow-x-auto border border-slate-200 rounded-lg">
+                  <table class="w-full text-xs text-left fin-table">
+                    <thead>
+                      <tr>
+                        <th class="py-2.5 px-3">กลยุทธ์การจัดพอร์ต</th>
+                        <th class="py-2.5 px-3 text-right">ผลตอบแทนเฉลี่ย/ปี</th>
+                        <th class="py-2.5 px-3 text-right">ความผันผวน/ปี</th>
+                        <th class="py-2.5 px-3 text-right bg-rose-50/60 text-rose-900">เงินที่เคยหายไปสูงสุดในอดีต (Max Drawdown)</th>
+                        <th class="py-2.5 px-3 text-right">Sharpe Ratio</th>
+                        <th class="py-2.5 px-3 text-right">มูลค่าพอร์ตปลายงวด</th>
+                        <th class="py-2.5 px-3 text-center">การเลือก</th>
+                      </tr>
+                    </thead>
+                    <tbody id="strategy-compare-table-body" class="font-mono">
+                      <!-- Populated by JS -->
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <!-- TAB 2: RISK VS RETURN MAP (EFFICIENT FRONTIER) -->
+            <div id="tab-content-frontier" class="tab-pane hidden p-5 space-y-4">
+              <div>
+                <h4 class="text-sm font-bold text-slate-900">แผนภาพเปรียบเทียบความเสี่ยงและผลตอบแทน (Efficient Frontier)</h4>
+                <p class="text-xs text-slate-500">
+                  แกนนอนคือความผันผวน (ยิ่งซ้ายยิ่งปลอดภัย) แกนตั้งคือผลตอบแทนคาดหวัง (ยิ่งสูงยิ่งดี) จุดพอร์ตที่ดีจะอยู่ด้านบนซ้ายเหนือกว่าการถือหุ้นตัวเดียว
+                </p>
+              </div>
+              <div id="frontier-plot-container" class="w-full h-[460px] border border-slate-200 rounded-lg p-2 bg-white"></div>
+            </div>
+
+            <!-- TAB 3: INDIVIDUAL ASSET STATS & CORRELATION -->
+            <div id="tab-content-assets" class="tab-pane hidden p-5 space-y-6">
+              <!-- Individual Asset Performance Table -->
+              <div>
+                <h4 class="text-sm font-bold text-slate-900 mb-2">สถิติผลตอบแทนและจำนวนเงินสูงสุดที่เคยหายไปของหุ้นแต่ละตัว (กรณีถือตัวเดียว 100%)</h4>
+                <div class="overflow-x-auto border border-slate-200 rounded-lg">
+                  <table class="w-full text-xs text-left fin-table">
+                    <thead>
+                      <tr>
+                        <th class="py-2.5 px-3">สินทรัพย์</th>
+                        <th class="py-2.5 px-3 text-right">ราคาล่าสุด</th>
+                        <th class="py-2.5 px-3 text-right">ผลตอบแทนเฉลี่ย/ปี (CAGR)</th>
+                        <th class="py-2.5 px-3 text-right">ความผันผวน/ปี</th>
+                        <th class="py-2.5 px-3 text-right bg-rose-50/60 text-rose-900">เงินที่เคยหายไปสูงสุด (หากถือตัวเดียว)</th>
+                        <th class="py-2.5 px-3 text-right">สัดส่วนในพอร์ตที่เลือก</th>
+                      </tr>
+                    </thead>
+                    <tbody id="asset-stats-table-body" class="font-mono">
+                      <!-- Populated by JS -->
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <!-- Correlation Matrix & Individual Asset Growth -->
+              <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div>
+                  <h4 class="text-sm font-bold text-slate-900 mb-1">ความสัมพันธ์ของราคาระหว่างสินทรัพย์ (Correlation)</h4>
+                  <p class="text-xs text-slate-500 mb-2">ค่าใกล้ 0 หรือสีอ่อน หมายถึงเคลื่อนไหวไม่ตามกัน ช่วยลดความเสี่ยงพอร์ตรวมได้ดี</p>
+                  <div id="correlation-plot-container" class="w-full h-[320px] border border-slate-200 rounded-lg p-2 bg-white"></div>
+                </div>
+                <div>
+                  <div class="flex items-center justify-between mb-1">
+                    <h4 class="text-sm font-bold text-slate-900">เปรียบเทียบการเติบโตของหุ้นรายตัว (ฐาน 100)</h4>
+                    <div class="flex gap-1 text-[11px]">
+                      <button id="btn-scale-log" onclick="toggleGrowthScale(true)" class="px-2 py-0.5 rounded bg-slate-900 text-white font-semibold">Log</button>
+                      <button id="btn-scale-linear" onclick="toggleGrowthScale(false)" class="px-2 py-0.5 rounded bg-slate-100 text-slate-600">ปกติ</button>
+                    </div>
+                  </div>
+                  <p class="text-xs text-slate-500 mb-2">เทียบการเติบโตเมื่อกำหนดให้ราคาวันแรกของทุกตัวเริ่มที่ 100 เท่ากัน</p>
+                  <div id="growth-plot-container" class="w-full h-[320px] border border-slate-200 rounded-lg p-2 bg-white"></div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- 4. SUPABASE CLOUD PORTFOLIO STORAGE (บันทึกและดึงข้อมูลพอร์ตของผู้ใช้แต่ละคน) -->
+          <div class="fin-card">
+            <div class="fin-card-header flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <div class="flex items-center gap-2">
+                  <span class="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded bg-indigo-100 text-indigo-800 border border-indigo-200">Supabase Auth &amp; DB</span>
+                  <h3 class="text-sm font-bold text-slate-900">บันทึกและจัดการพอร์ตการลงทุนของคุณ (My Saved Portfolios)</h3>
+                </div>
+                <p class="text-xs text-slate-500 mt-0.5">
+                  บันทึกสัดส่วนพอร์ตปัจจุบัน (`asset_weights` JSON), เงินเป้าหมาย (`target_amount`), และระยะเวลาลงทุน (`investment_period_years`) ผูกกับบัญชี Google ของคุณ
+                </p>
+              </div>
+              <span id="portfolio-storage-auth-badge" class="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 self-start sm:self-center">
+                ยังไม่ได้เข้าสู่ระบบ
+              </span>
+            </div>
+
+            <div class="p-5 space-y-4">
+              <!-- Save Portfolio Form -->
+              <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200 grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+                <div class="sm:col-span-5">
+                  <label class="text-xs font-semibold text-slate-700 block mb-1">ชื่อพอร์ต / เป้าหมายการลงทุน (`portfolio_name`)</label>
+                  <input
+                    type="text"
+                    id="save-portfolio-name"
+                    placeholder="เช่น พอร์ตเงินเกษียณ, พอร์ตเติบโต 10 ปี..."
+                    class="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-blue-600"
+                  />
+                </div>
+                <div class="sm:col-span-3">
+                  <label class="text-xs font-semibold text-slate-700 block mb-1">เงินเป้าหมาย (`target_amount`)</label>
+                  <input
+                    type="number"
+                    id="save-target-amount"
+                    value="1000000"
+                    min="1000"
+                    step="10000"
+                    class="w-full px-3 py-2 text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-blue-600"
+                  />
+                </div>
+                <div class="sm:col-span-2">
+                  <label class="text-xs font-semibold text-slate-700 block mb-1">ระยะเวลา (ปี)</label>
+                  <input
+                    type="number"
+                    id="save-period-years"
+                    value="5"
+                    min="1"
+                    max="60"
+                    class="w-full px-3 py-2 text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-blue-600"
+                  />
+                </div>
+                <div class="sm:col-span-2">
+                  <button
+                    type="button"
+                    id="btn-save-portfolio"
+                    onclick="saveUserPortfolio()"
+                    class="w-full py-2 px-3 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition flex items-center justify-center gap-1.5"
+                  >
+                    <i data-lucide="bookmark-plus" class="w-3.5 h-3.5"></i>
+                    <span>บันทึกพอร์ตนี้</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Saved Portfolios List -->
+              <div>
+                <div class="flex items-center justify-between mb-2">
+                  <h4 class="text-xs font-bold text-slate-800">
+                    รายการพอร์ตที่บันทึกไว้ของคุณ (<span id="saved-portfolios-count" class="text-blue-700">0</span>)
+                  </h4>
+                  <button
+                    type="button"
+                    onclick="fetchUserPortfolios()"
+                    class="text-[11px] text-blue-700 hover:underline font-medium flex items-center gap-1"
+                  >
+                    <span>รีเฟรชข้อมูล</span>
+                  </button>
+                </div>
+                <div id="saved-portfolios-container" class="space-y-2">
+                  <!-- Populated by supabase_auth.js -->
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+    </div>
+  </main>
+
+  <!-- TOAST NOTIFICATION -->
+  <div
+    id="portfolio-toast"
+    class="hidden fixed bottom-5 right-5 z-50 px-4 py-3 rounded-lg bg-slate-900 text-white text-xs font-semibold shadow-xl border border-slate-700"
+  ></div>
+
+  <!-- SUPABASE REAL AUTHENTICATION MODAL -->
+  <div id="supabase-config-modal" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl border border-slate-200 shadow-2xl max-w-md w-full p-5 space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div>
+          <h3 class="text-sm font-bold text-slate-900">เข้าสู่ระบบจริง (Supabase Auth — QuantFolio)</h3>
+          <p class="text-[11px] text-slate-500 mt-0.5">เชื่อมต่อฐานข้อมูลจริง: <span class="font-mono text-blue-700">lxnmugciuddpqjhjwxoh.supabase.co</span></p>
+        </div>
+        <button type="button" onclick="closeSupabaseConfigModal()" class="text-slate-400 hover:text-slate-600">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <!-- สถานะ Google Provider บน Supabase -->
+      <div>
+        <span id="google-provider-status-badge" class="text-[11px] font-semibold px-2.5 py-1 rounded bg-slate-100 text-slate-700 border border-slate-200 inline-block">
+          กำลังตรวจสอบสถานะบน Supabase...
+        </span>
+      </div>
+
+      <!-- กล่องแจ้งเตือนผลการเข้าสู่ระบบ -->
+      <div id="modal-diagnostic-alert" class="hidden p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-xs leading-relaxed"></div>
+
+      <!-- วิธีที่ 1: ปุ่มวิ่งไปหน้า Google OAuth จริง (เมื่อใส่ Client ID บน Supabase แล้ว) -->
+      <div class="p-3 rounded-lg bg-slate-50 border border-slate-200 space-y-2">
+        <div class="text-xs font-bold text-slate-800">1. เข้าสู่ระบบผ่านหน้า Google OAuth โดยตรง</div>
+        <p class="text-[11px] text-slate-500">ใช้เมื่อคุณนำ Client ID &amp; Secret ไปวางและกดปุ่ม Save ในหน้า Google ของ Supabase เรียบร้อยแล้ว</p>
+        <button
+          type="button"
+          onclick="forceGoogleOAuthRedirect()"
+          class="w-full py-2.5 px-4 rounded-lg text-xs font-semibold bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 shadow-xs transition flex items-center justify-center gap-2"
+        >
+          <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+            <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
+            <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.11-6.72-4.96H1.29v3.14C3.26 21.3 7.31 24 12 24z"/>
+            <path fill="#FBBC05" d="M5.28 14.24c-.24-.72-.38-1.49-.38-2.24s.14-1.52.38-2.24V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.99-3.14z"/>
+            <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.99 3.14c.95-2.85 3.6-4.96 6.72-4.96z"/>
+          </svg>
+          <span>ไปยังหน้ายืนยันตัวตนของ Google (OAuth)</span>
+        </button>
+      </div>
+
+      <!-- วิธีที่ 2: เข้าสู่ระบบจริงด้วยบัญชี Gmail ลง Supabase Auth ทันที (ไม่ต้องใช้ Client ID) -->
+      <div class="p-3.5 rounded-lg bg-blue-50/40 border border-blue-200 space-y-2.5">
+        <div>
+          <div class="text-xs font-bold text-slate-900">2. เข้าสู่ระบบจริงด้วยอีเมล Gmail ลงฐานข้อมูล Supabase ทันที</div>
+          <p class="text-[11px] text-slate-500">สร้างผู้ใช้จริงในตาราง <code>auth.users</code> และบันทึกพอร์ตลงตาราง <code>user_portfolios</code> จริงบน Supabase โดยไม่ต้องตั้งค่า Google Cloud</p>
+        </div>
+
+        <div class="space-y-2">
+          <div>
+            <label class="text-[11px] font-semibold text-slate-700 block mb-0.5">ชื่อที่ใช้แสดงผลบน Dashboard</label>
+            <input
+              type="text"
+              id="real-auth-name"
+              placeholder="เช่น คุณสมชาย นักลงทุน"
+              class="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-blue-600"
+            />
+          </div>
+          <div>
+            <label class="text-[11px] font-semibold text-slate-700 block mb-0.5">อีเมล Gmail ของคุณ</label>
+            <input
+              type="email"
+              id="real-auth-email"
+              placeholder="yourname@gmail.com"
+              class="w-full px-3 py-1.5 text-xs font-mono bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-blue-600"
+            />
+          </div>
+          <div>
+            <label class="text-[11px] font-semibold text-slate-700 block mb-0.5">รหัสผ่าน (อย่างน้อย 6 ตัวอักษร)</label>
+            <input
+              type="password"
+              id="real-auth-password"
+              placeholder="••••••"
+              class="w-full px-3 py-1.5 text-xs font-mono bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-blue-600"
+            />
+          </div>
+        </div>
+
+        <button
+          type="button"
+          id="btn-real-email-auth"
+          onclick="loginOrSignUpWithRealGmail()"
+          class="w-full py-2.5 px-4 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-xs transition"
+        >
+          เข้าสู่ระบบ / สมัครใช้งานจริงด้วย Gmail นี้
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <footer class="bg-white border-t border-slate-200 py-4 text-xs text-slate-500 mt-8">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2">
+      <div class="font-medium text-slate-700">QuantFolio Wealth Analytics — ระบบวิเคราะห์พอร์ตการลงทุนและออกคำสั่ง Rebalance ด้วยข้อมูลจริงจาก Yahoo Finance</div>
+      <div>ข้อมูลสถิติในอดีตใช้เพื่อประกอบการตัดสินใจวางแผนการลงทุนเท่านั้น</div>
+    </div>
+  </footer>
+
+  <script src="/static/app.js?v=2.5"></script>
+  <script src="/static/supabase_auth.js?v=2.5"></script>
+</body>
+</html>

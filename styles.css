@@ -1,0 +1,132 @@
+/* QuantFolio Pro - Institutional Financial Portal Theme */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+:root {
+  --font-sans: 'Inter', 'IBM Plex Sans Thai', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: #f3f5f8;
+  color: #0f172a;
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+.font-mono, .tabular-nums {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Institutional Financial Card */
+.fin-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  box-shadow: 0 1px 2px 0 rgba(15, 23, 42, 0.03);
+}
+
+.fin-card-header {
+  border-bottom: 1px solid #f1f5f9;
+  padding: 14px 20px;
+}
+
+/* Goal Selector Radio Cards */
+.goal-option {
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+
+.goal-option:hover {
+  border-color: #94a3b8;
+  background: #f8fafc;
+}
+
+.goal-option.active {
+  border-color: #1d4ed8;
+  background: #eff6ff;
+  box-shadow: 0 0 0 1px #1d4ed8;
+}
+
+/* Rebalance Mode Buttons */
+.rebal-mode-btn {
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  color: #475569;
+  transition: all 0.15s ease;
+}
+
+.rebal-mode-btn:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.rebal-mode-btn.active {
+  background: #0f172a;
+  color: #ffffff;
+  border-color: #0f172a;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Financial Table Styling */
+.fin-table th {
+  font-weight: 600;
+  color: #475569;
+  background-color: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+  white-space: nowrap;
+}
+
+.fin-table td {
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.fin-table tr:last-child td {
+  border-bottom: none;
+}
+
+.fin-table tbody tr:hover {
+  background-color: #f8fafc;
+}
+
+/* Trade Flow Pairing Card */
+.flow-pair-card {
+  background: linear-gradient(90deg, #fff1f2 0%, #ffffff 48%, #ecfdf5 100%);
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+/* Plotly Modebar Clean Style */
+.js-plotly-plot .plotly .modebar {
+  background: rgba(255, 255, 255, 0.85) !important;
+  border-radius: 6px;
+}
+
+.js-plotly-plot .plotly .modebar-btn path {
+  fill: #64748b !important;
+}
+
+.js-plotly-plot .plotly .modebar-btn:hover path {
+  fill: #0f172a !important;
+}
