@@ -1,0 +1,49 @@
+{
+  "users": {
+    "test_verify@gmail.com": {
+      "id": "a48cc37a-4770-5ea7-b448-65791984e5c3",
+      "email": "test_verify@gmail.com",
+      "full_name": "Test Investor",
+      "avatar_url": "https://ui-avatars.com/api/?name=Test%20Investor&background=1d4ed8&color=fff&bold=true",
+      "password_hash": "ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f",
+      "created_at": "2026-11-04T08:55:24.365681+00:00"
+    },
+    "m1xt1w4k@gmail.com": {
+      "id": "d2ca12a9-81d6-5c41-9fd1-98df06c59808",
+      "email": "m1xt1w4k@gmail.com",
+      "full_name": "m1xt1w4k",
+      "avatar_url": "https://ui-avatars.com/api/?name=mix2547&background=1d4ed8&color=fff&bold=true",
+      "password_hash": "6e3c99c240ff14dfcc1be919084e29a943b8d4e6f5f882e368556fd1200a55ed",
+      "created_at": "2026-11-04T08:56:38.245572+00:00"
+    }
+  },
+  "portfolios": [
+    {
+      "id": "8174afd6-c83d-48f6-9e45-91e0c88941a5",
+      "user_id": "d2ca12a9-81d6-5c41-9fd1-98df06c59808",
+      "email": "m1xt1w4k@gmail.com",
+      "portfolio_name": "เก็บเพื่อเกษียณ",
+      "goal_type": "retirement",
+      "goal_label": "พอร์ตเกษียณมั่นคง",
+      "target_amount": 1000000.0,
+      "initial_budget": 100000.0,
+      "monthly_dca": 5000.0,
+      "investment_period_years": 10,
+      "currency": "THB",
+      "tickers": ["NVDA", "AAPL", "AMZN", "BTC-USD", "TSLA"],
+      "asset_weights": {
+        "NVDA": 41.2,
+        "AAPL": 32.5,
+        "BTC-USD": 16.3,
+        "AMZN": 10.0
+      },
+      "strategy_key": "max_sharpe",
+      "expected_return": 0.245,
+      "expected_volatility": 0.284,
+      "dividend_yield": 0.0042,
+      "projected_final_value": 1485200.0,
+      "goal_achievement_pct": 148.5,
+      "created_at": "2026-11-04T09:13:57.663791+00:00"
+    }
+  ]
+}

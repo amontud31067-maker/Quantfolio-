@@ -306,8 +306,79 @@ KNOWN_NAMES = {
     'GULF.BK': 'บมจ. กัลฟ์ เอ็นเนอร์จี (GULF)',
     'CPN.BK': 'บมจ. เซ็นทรัลพัฒนา (CPN)',
     'BH.BK': 'บมจ. โรงพยาบาลบำรุงราษฎร์ (BH)',
-    'MINT.BK': 'บมจ. ไมเนอร์ อินเตอร์เนชั่นแนล (MINT)'
+    'MINT.BK': 'บมจ. ไมเนอร์ อินเตอร์เนชั่นแนล (MINT)',
+    'TISCO.BK': 'บมจ. ทิสโก้ไฟแนนเชียลกรุ๊ป (TISCO)',
+    'LH.BK': 'บมจ. แลนด์ แอนด์ เฮ้าส์ (LH)',
+    'INTUCH.BK': 'บมจ. อินทัช โฮลดิ้งส์ (INTUCH)'
 }
+
+KNOWN_DIVIDEND_YIELDS = {
+    'NVDA': 0.0003,
+    'AAPL': 0.0052,
+    'MSFT': 0.0072,
+    'AMZN': 0.0,
+    'TSLA': 0.0,
+    'GOOGL': 0.0045,
+    'GOOG': 0.0045,
+    'META': 0.0038,
+    'BRK-B': 0.0,
+    'JPM': 0.0215,
+    'V': 0.0078,
+    'JNJ': 0.0315,
+    'WMT': 0.0110,
+    'PG': 0.0240,
+    'MA': 0.0058,
+    'KO': 0.0310,
+    'PEP': 0.0305,
+    'COST': 0.0055,
+    'AVGO': 0.0130,
+    'AMD': 0.0,
+    'NFLX': 0.0,
+    'DIS': 0.0085,
+    'SPY': 0.0128,
+    'QQQ': 0.0058,
+    'VOO': 0.0132,
+    'VTI': 0.0135,
+    'GLD': 0.0,
+    'SLV': 0.0,
+    'TLT': 0.0385,
+    'BND': 0.0345,
+    'VNQ': 0.0390,
+    'DBC': 0.0210,
+    'BTC-USD': 0.0,
+    'ETH-USD': 0.0,
+    'SOL-USD': 0.0,
+    'BNB-USD': 0.0,
+    'PTT.BK': 0.0585,
+    'AOT.BK': 0.0125,
+    'CPALL.BK': 0.0175,
+    'DELTA.BK': 0.0065,
+    'BDMS.BK': 0.0245,
+    'ADVANC.BK': 0.0410,
+    'SCB.BK': 0.0740,
+    'KBANK.BK': 0.0460,
+    'BBL.BK': 0.0480,
+    'PTTEP.BK': 0.0620,
+    'SCC.BK': 0.0280,
+    'GULF.BK': 0.0195,
+    'CPN.BK': 0.0285,
+    'BH.BK': 0.0210,
+    'MINT.BK': 0.0180,
+    'TISCO.BK': 0.0785,
+    'LH.BK': 0.0650,
+    'INTUCH.BK': 0.0490
+}
+
+
+def get_estimated_dividend_yield(ticker: str) -> float:
+    t = ticker.strip().upper()
+    if t in KNOWN_DIVIDEND_YIELDS:
+        return KNOWN_DIVIDEND_YIELDS[t]
+    if t.endswith('-USD'):
+        return 0.0
+    if t.endswith('.BK'):
+        return 0.0320
+    return 0.0120
 
 
 def get_asset_name(ticker: str) -> str:
@@ -1057,6 +1128,7 @@ def run_portfolio_optimization(
         for art in t_news.get("articles", []):
             all_news_articles.append(art)
 
+        div_yield_val = get_estimated_dividend_yield(t)
         asset_stats.append({
             "ticker": t,
             "name": get_asset_name(t),
@@ -1065,6 +1137,7 @@ def run_portfolio_optimization(
             "price_thb": price_thb,
             "price_usd": price_usd,
             "latest_price": price_in_budget_curr,
+            "dividend_yield": round(div_yield_val, 4),
             "expected_return": round(ret_val, 4),
             "adjusted_expected_return": decision_info["adjusted_expected_return"],
             "return_tilt": decision_info["return_tilt"],
@@ -1129,6 +1202,7 @@ def run_portfolio_optimization(
     strat_drawdowns = {}
     strat_dd_details = {}
     strat_final_values = {}
+    strat_div_yields = {}
 
     for key, w_s in strat_weights_map.items():
         w_aligned = w_s.reindex(valid_tickers).fillna(0.0)
@@ -1145,6 +1219,7 @@ def run_portfolio_optimization(
         strat_drawdowns[key] = dd_info["max_drawdown_pct"]
         strat_dd_details[key] = dd_info
         strat_final_values[key] = round(float(strat_wealth_df[key].iloc[-1]), 2)
+        strat_div_yields[key] = round(float(sum(float(w_aligned[t]) * get_estimated_dividend_yield(t) for t in valid_tickers)), 4)
 
     step = max(1, len(strat_wealth_df) // 160)
     sampled_wealth = strat_wealth_df.iloc[::step]
@@ -1275,6 +1350,8 @@ def run_portfolio_optimization(
                 },
                 "expected_return": round(float(ret_max), 4),
                 "expected_annual_profit": round(float(ret_max * budget), 2),
+                "dividend_yield": strat_div_yields["max_sharpe"],
+                "expected_annual_dividend": round(float(strat_div_yields["max_sharpe"] * budget), 2),
                 "volatility": round(float(vol_max), 4),
                 "max_drawdown": strat_drawdowns["max_sharpe"],
                 "max_drawdown_amount": strat_dd_details["max_sharpe"]["max_drawdown_amount"],
@@ -1305,6 +1382,8 @@ def run_portfolio_optimization(
                 },
                 "expected_return": round(float(ret_min), 4),
                 "expected_annual_profit": round(float(ret_min * budget), 2),
+                "dividend_yield": strat_div_yields["min_volatility"],
+                "expected_annual_dividend": round(float(strat_div_yields["min_volatility"] * budget), 2),
                 "volatility": round(float(vol_min), 4),
                 "max_drawdown": strat_drawdowns["min_volatility"],
                 "max_drawdown_amount": strat_dd_details["min_volatility"]["max_drawdown_amount"],
@@ -1334,6 +1413,8 @@ def run_portfolio_optimization(
                 },
                 "expected_return": round(float(ret_hrp), 4),
                 "expected_annual_profit": round(float(ret_hrp * budget), 2),
+                "dividend_yield": strat_div_yields["hrp"],
+                "expected_annual_dividend": round(float(strat_div_yields["hrp"] * budget), 2),
                 "volatility": round(float(vol_hrp), 4),
                 "max_drawdown": strat_drawdowns["hrp"],
                 "max_drawdown_amount": strat_dd_details["hrp"]["max_drawdown_amount"],
@@ -1363,6 +1444,8 @@ def run_portfolio_optimization(
                 },
                 "expected_return": round(float(ret_eq), 4),
                 "expected_annual_profit": round(float(ret_eq * budget), 2),
+                "dividend_yield": strat_div_yields["equal_weight"],
+                "expected_annual_dividend": round(float(strat_div_yields["equal_weight"] * budget), 2),
                 "volatility": round(float(vol_eq), 4),
                 "max_drawdown": strat_drawdowns["equal_weight"],
                 "max_drawdown_amount": strat_dd_details["equal_weight"]["max_drawdown_amount"],

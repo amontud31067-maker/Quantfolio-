@@ -12,7 +12,7 @@
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   <!-- Supabase JS SDK v2 -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <link rel="stylesheet" href="/static/styles.css?v=4.1">
+  <link rel="stylesheet" href="/static/styles.css?v=4.2">
 </head>
 <body class="min-h-screen flex flex-col">
 
@@ -105,6 +105,17 @@
           <span>ทดสอบระบบ</span>
         </button>
 
+        <!-- Quick Jump to Goal Builder & Saved Portfolios -->
+        <button
+          type="button"
+          onclick="scrollToGoalBuilderSection()"
+          class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 text-xs font-semibold transition"
+        >
+          <i data-lucide="target" class="w-3.5 h-3.5 text-indigo-600"></i>
+          <span class="hidden sm:inline">พอร์ตตามเป้าหมาย</span>
+          <span id="header-saved-portfolios-count" class="px-1.5 py-0.2 rounded-full bg-indigo-600 text-white text-[10px] font-bold">0</span>
+        </button>
+
         <!-- Preset Portfolios -->
         <div class="hidden xl:flex items-center gap-1.5 overflow-x-auto py-1">
           <span class="text-xs text-slate-500 font-medium mr-1">ชุดพอร์ตตัวอย่าง:</span>
@@ -169,6 +180,47 @@
   <!-- MAIN WORKSPACE -->
   <main id="main-app-workspace" class="relative z-10 flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 pointer-events-none select-none blur-xs transition duration-300">
 
+    <!-- EXECUTIVE 4-STEP WORKFLOW OVERVIEW (สรุปภาพรวมระบบ 4 ขั้นตอนให้เข้าใจง่ายทันที) -->
+    <div class="fin-card p-3.5 bg-white/95 border border-slate-200">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2.5 pb-2 border-b border-slate-100">
+        <div class="flex items-center gap-2">
+          <span class="px-2 py-0.5 rounded bg-blue-600 text-white text-[10px] font-bold uppercase">Workflow Overview</span>
+          <span class="text-xs font-bold text-slate-900">แผนผังการใช้งานระบบ 4 ขั้นตอน (คลิกที่แต่ละขั้นตอนเพื่อเลื่อนไปยังส่วนนั้นได้ทันที)</span>
+        </div>
+        <span class="text-[11px] text-slate-500">แบ่งสีตามหมวดหมู่ชัดเจน: ตั้งค่าพอร์ต -> เลือกกลยุทธ์ -> ออกใบสั่งซื้อ -> สร้างและบันทึกเป้าหมาย</span>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+        <button type="button" onclick="scrollToSectionById('step-1-config-card')" class="text-left p-2.5 rounded-lg bg-blue-50/70 hover:bg-blue-100/80 border border-blue-200 transition flex items-start gap-2.5">
+          <span class="px-2 py-0.5 rounded bg-blue-600 text-white text-[10px] font-bold shrink-0 mt-0.5">ขั้นที่ 1</span>
+          <div>
+            <div class="text-xs font-bold text-slate-900">ตั้งค่างบประมาณ &amp; เลือกหุ้น</div>
+            <div class="text-[11px] text-slate-600">เลือกหุ้นไทย/สหรัฐฯ กำหนดเงินทุน และสกุลเงิน THB/USD</div>
+          </div>
+        </button>
+        <button type="button" onclick="scrollToSectionById('step-2-strategy-card')" class="text-left p-2.5 rounded-lg bg-sky-50/70 hover:bg-sky-100/80 border border-sky-200 transition flex items-start gap-2.5">
+          <span class="px-2 py-0.5 rounded bg-sky-600 text-white text-[10px] font-bold shrink-0 mt-0.5">ขั้นที่ 2</span>
+          <div>
+            <div class="text-xs font-bold text-slate-900">เปรียบเทียบกลยุทธ์ &amp; ข่าวตลาด</div>
+            <div class="text-[11px] text-slate-600">เทียบ 4 โมเดลคณิตศาสตร์ + สัญญาณข่าวและ RSI/SMA</div>
+          </div>
+        </button>
+        <button type="button" onclick="scrollToSectionById('step-3-execution-card')" class="text-left p-2.5 rounded-lg bg-emerald-50/70 hover:bg-emerald-100/80 border border-emerald-200 transition flex items-start gap-2.5">
+          <span class="px-2 py-0.5 rounded bg-emerald-600 text-white text-[10px] font-bold shrink-0 mt-0.5">ขั้นที่ 3</span>
+          <div>
+            <div class="text-xs font-bold text-slate-900">ใบสั่งซื้อขายหุ้น &amp; เงินปันผล</div>
+            <div class="text-[11px] text-slate-600">คำนวณจำนวนหุ้นที่ต้องซื้อ-ขายจริงตามราคาตลาดสด</div>
+          </div>
+        </button>
+        <button type="button" onclick="scrollToGoalBuilderSection()" class="text-left p-2.5 rounded-lg bg-indigo-50/80 hover:bg-indigo-100 border border-indigo-200 transition flex items-start gap-2.5">
+          <span class="px-2 py-0.5 rounded bg-indigo-600 text-white text-[10px] font-bold shrink-0 mt-0.5">ขั้นที่ 4</span>
+          <div>
+            <div class="text-xs font-bold text-slate-900">สร้างพอร์ตตามเป้าหมาย &amp; บันทึก</div>
+            <div class="text-[11px] text-slate-600">จำลองแผนออม DCA พิชิตเป้าหมาย บันทึกและดึงพอร์ตกลับมาใช้</div>
+          </div>
+        </button>
+      </div>
+    </div>
+
     <!-- PRIMARY SYSTEMATIC INVESTMENT MODE SELECTOR (เลือกรูปแบบการจัดการพอร์ตตั้งแต่เริ่มใช้งาน) -->
     <div class="fin-card p-4 bg-white/95 border-t-4 border-t-slate-900 space-y-3">
       <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-slate-200 pb-3">
@@ -178,7 +230,7 @@
             <h2 class="text-sm font-bold text-slate-900">คุณต้องการเริ่มต้นวางแผนพอร์ตในรูปแบบใด?</h2>
           </div>
           <p class="text-xs text-slate-600 mt-0.5">
-            เลือกระหว่าง <b>1. นำเงินทุนก้อนใหม่มาแบ่งสัดส่วนซื้อหุ้นเข้าพอร์ต</b> หรือ <b>2. จัดพอร์ตการลงทุนที่มีอยู่เดิมอย่างเป็นระบบให้ตรงตามเป้าหมาย</b>
+            เลือกระหว่าง <b>1. แบ่งสัดส่วนเงินทุนก้อนใหม่</b>, <b>2. ปรับสมดุลพอร์ตที่มีอยู่เดิม</b> หรือ <b>3. สร้างพอร์ตตามเป้าหมายการเงินพร้อมบันทึกเก็บไว้</b>
           </p>
         </div>
 
@@ -205,43 +257,83 @@
         </div>
       </div>
 
-      <!-- 2 Systematic Investment Mode Cards -->
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+      <!-- 3 Systematic Investment Mode Cards -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-3.5">
         <!-- Mode A: New Capital Allocation -->
         <div
           id="primary-mode-card-new_capital"
           onclick="selectPrimaryInvestmentMode('new_capital')"
-          class="cursor-pointer rounded-xl p-3.5 border-2 border-emerald-500 bg-emerald-50/40 hover:bg-emerald-50/70 transition flex items-start justify-between gap-3"
+          class="cursor-pointer rounded-xl p-3.5 border-2 border-emerald-500 bg-emerald-50/40 hover:bg-emerald-50/70 transition flex flex-col justify-between gap-2"
         >
           <div class="space-y-1">
-            <div class="flex items-center gap-2">
-              <span class="px-2 py-0.5 rounded bg-emerald-600 text-white text-[10px] font-bold">โหมดที่ 1</span>
-              <span class="text-xs font-bold text-slate-900">มีเงินทุนก้อนใหม่ เพื่อแบ่งสัดส่วนพอร์ต (New Capital Allocation)</span>
+            <div class="flex items-center justify-between gap-2">
+              <span class="px-2 py-0.5 rounded bg-emerald-600 text-white text-[10px] font-bold">โหมดที่ 1: เงินทุนก้อนใหม่</span>
+              <span id="primary-mode-badge-new_capital" class="px-2 py-0.5 rounded bg-emerald-600 text-white text-[10px] font-bold shrink-0">กำลังเลือกใช้</span>
             </div>
+            <div class="text-xs font-bold text-slate-900 pt-0.5">แบ่งสัดส่วนเงินทุนก้อนใหม่ (New Capital Allocation)</div>
             <p class="text-[11px] text-slate-600 leading-relaxed">
-              เหมาะสำหรับผู้ที่มีเงินทุนตั้งต้น และต้องการแบ่งเงินไปซื้อหุ้นแต่ละตัวตามสัดส่วนที่เหมาะสมที่สุดตามเป้าหมาย พร้อมออกใบสั่งซื้อรายตัวทันที
+              เหมาะสำหรับผู้ที่มีเงินทุนตั้งต้น และต้องการแบ่งเงินไปซื้อหุ้นแต่ละตัวตามสัดส่วนที่เหมาะสมที่สุด พร้อมออกใบสั่งซื้อรายตัวทันที
             </p>
           </div>
-          <span id="primary-mode-badge-new_capital" class="px-2.5 py-1 rounded-md bg-emerald-600 text-white text-[10px] font-bold shrink-0">กำลังเลือกใช้</span>
         </div>
 
         <!-- Mode B: Existing Portfolio Systematic Rebalance -->
         <div
           id="primary-mode-card-existing_portfolio"
           onclick="selectPrimaryInvestmentMode('existing_portfolio')"
-          class="cursor-pointer rounded-xl p-3.5 border border-slate-200 bg-white hover:bg-slate-50 transition flex items-start justify-between gap-3"
+          class="cursor-pointer rounded-xl p-3.5 border border-slate-200 bg-white hover:bg-slate-50 transition flex flex-col justify-between gap-2"
         >
           <div class="space-y-1">
-            <div class="flex items-center gap-2">
-              <span class="px-2 py-0.5 rounded bg-blue-600 text-white text-[10px] font-bold">โหมดที่ 2</span>
-              <span class="text-xs font-bold text-slate-900">จัดพอร์ตการลงทุนที่มีอยู่เดิมแบบเป็นระบบ (Existing Portfolio Rebalance)</span>
+            <div class="flex items-center justify-between gap-2">
+              <span class="px-2 py-0.5 rounded bg-blue-600 text-white text-[10px] font-bold">โหมดที่ 2: ปรับพอร์ตเดิม</span>
+              <span id="primary-mode-badge-existing_portfolio" class="px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-semibold shrink-0">คลิกเพื่อเลือก</span>
             </div>
+            <div class="text-xs font-bold text-slate-900 pt-0.5">จัดพอร์ตการลงทุนที่มีอยู่เดิม (Existing Portfolio Rebalance)</div>
             <p class="text-[11px] text-slate-600 leading-relaxed">
-              เหมาะสำหรับผู้ที่ถือหุ้นอยู่แล้ว (กรอกได้ทั้งยอดเงินหรือจำนวนหุ้นจริง) เพื่อตรวจสุขภาพพอร์ตเดิมเทียบกับเป้าหมาย และคำนวณว่าต้องขายตัวไหนไปซื้อตัวไหน
+              เหมาะสำหรับผู้ที่ถือหุ้นอยู่แล้ว (กรอกได้ทั้งยอดเงินหรือจำนวนหุ้นจริง) เพื่อตรวจสุขภาพพอร์ตเดิมเทียบกับเป้าหมาย และคำนวณใบสั่งขาย-ซื้อ
             </p>
           </div>
-          <span id="primary-mode-badge-existing_portfolio" class="px-2.5 py-1 rounded-md bg-slate-100 text-slate-600 text-[10px] font-semibold shrink-0">คลิกเพื่อเลือก</span>
         </div>
+
+        <!-- Mode C: Goal-Based Portfolio Creation & Saving -->
+        <div
+          id="primary-mode-card-goal_based"
+          onclick="selectPrimaryInvestmentMode('goal_based')"
+          class="cursor-pointer rounded-xl p-3.5 border border-slate-200 bg-white hover:bg-indigo-50/40 transition flex flex-col justify-between gap-2"
+        >
+          <div class="space-y-1">
+            <div class="flex items-center justify-between gap-2">
+              <span class="px-2 py-0.5 rounded bg-indigo-600 text-white text-[10px] font-bold">โหมดที่ 3: สร้างพอร์ตตามเป้าหมาย</span>
+              <span id="primary-mode-badge-goal_based" class="px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-semibold shrink-0">คลิกเพื่อเลือก</span>
+            </div>
+            <div class="text-xs font-bold text-slate-900 pt-0.5">สร้างพอร์ตตามเป้าหมายชีวิต &amp; บันทึกพอร์ต (Goal-Based Builder)</div>
+            <p class="text-[11px] text-slate-600 leading-relaxed">
+              เลือกเป้าหมายชีวิต (เกษียณ / สร้างเงินปันผล / ปั้นเงินล้าน) จำลองแผนเงินก้อนแรก + ออมรายเดือน (DCA) และบันทึกพอร์ตเก็บไว้ดูได้ตลอดเวลา
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Goal Template Bar (คลิกเลือกเป้าหมายเพื่อจัดพอร์ตอัตโนมัติได้ทันทีจากด้านบน) -->
+      <div class="pt-2 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div class="flex items-center gap-1.5 flex-wrap">
+          <span class="text-[11px] font-bold text-indigo-900">สร้างพอร์ตด่วนตามเป้าหมายยอดนิยม:</span>
+          <button type="button" onclick="applyGoalBasedTemplate('retirement', true)" class="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 transition">
+            1. พอร์ตเกษียณมั่นคง (10 ปี)
+          </button>
+          <button type="button" onclick="applyGoalBasedTemplate('dividend', true)" class="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 transition">
+            2. พอร์ตสร้างเงินปันผล (7 ปี)
+          </button>
+          <button type="button" onclick="applyGoalBasedTemplate('growth', true)" class="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 transition">
+            3. พอร์ตปั้นเงินล้านเติบโตสูง (5 ปี)
+          </button>
+          <button type="button" onclick="applyGoalBasedTemplate('preservation', true)" class="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 transition">
+            4. พอร์ตพักเงินปลอดภัย (5 ปี)
+          </button>
+        </div>
+        <button type="button" onclick="scrollToGoalBuilderSection()" class="text-[11px] font-bold text-indigo-700 hover:text-indigo-900 underline shrink-0">
+          ไปที่ศูนย์สร้างและบันทึกพอร์ตตามเป้าหมาย ->
+        </button>
       </div>
     </div>
 
@@ -260,47 +352,13 @@
       <div id="system-verify-results" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5 text-xs"></div>
     </div>
 
-    <!-- WORKFLOW STEP GUIDE BAR (แถบแบ่งสีแสดงลำดับขั้นตอนชัดเจนว่าต้องทำอะไรตามลำดับ) -->
-    <div class="fin-card p-3.5 bg-white/95">
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        <div class="flex items-center gap-3 p-2.5 rounded-lg bg-blue-50/70 border border-blue-200">
-          <span class="w-7 h-7 rounded-lg bg-blue-600 text-white text-xs font-bold flex items-center justify-center shrink-0">1</span>
-          <div>
-            <div class="text-xs font-bold text-blue-950">ขั้นตอนที่ 1: เลือกสินทรัพย์ &amp; สกุลเงิน</div>
-            <div class="text-[11px] text-blue-700">เพิ่มหุ้นและเลือกดูราคาเป็น THB หรือ USD</div>
-          </div>
-        </div>
-        <div class="flex items-center gap-3 p-2.5 rounded-lg bg-indigo-50/70 border border-indigo-200">
-          <span class="w-7 h-7 rounded-lg bg-indigo-600 text-white text-xs font-bold flex items-center justify-center shrink-0">2</span>
-          <div>
-            <div class="text-xs font-bold text-indigo-950">ขั้นตอนที่ 2: เลือกเป้าหมายพอร์ต</div>
-            <div class="text-[11px] text-indigo-700">เลือกระดับผลตอบแทนและความเสี่ยงที่ต้องการ</div>
-          </div>
-        </div>
-        <div class="flex items-center gap-3 p-2.5 rounded-lg bg-emerald-50/70 border border-emerald-200">
-          <span class="w-7 h-7 rounded-lg bg-emerald-600 text-white text-xs font-bold flex items-center justify-center shrink-0">3</span>
-          <div>
-            <div class="text-xs font-bold text-emerald-950">ขั้นตอนที่ 3: กรอกเงินทุน / พอร์ตเดิม</div>
-            <div class="text-[11px] text-emerald-700">ระบุงบลงทุนและเปิดปรับน้ำหนักตามข่าวตลาด</div>
-          </div>
-        </div>
-        <div class="flex items-center gap-3 p-2.5 rounded-lg bg-slate-100 border border-slate-300">
-          <span class="w-7 h-7 rounded-lg bg-slate-900 text-white text-xs font-bold flex items-center justify-center shrink-0">4</span>
-          <div>
-            <div class="text-xs font-bold text-slate-900">ขั้นตอนที่ 4: ดูข่าวตลาด &amp; ใบสั่งซื้อ-ขาย</div>
-            <div class="text-[11px] text-slate-600">ดูสัญญาณข่าวประกอบการตัดสินใจและยอดซื้อขายจริง</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
 
       <!-- LEFT SIDEBAR: 3-STEP COLOR-CODED SETUP (4 cols) -->
       <div class="lg:col-span-4 space-y-5">
 
         <!-- STEP 1: SELECT ASSETS (ธีมสีน้ำเงิน Sapphire Blue) -->
-        <div class="fin-card step-accent-blue">
+        <div id="step-1-config-card" class="fin-card step-accent-blue">
           <div class="fin-card-header bg-blue-50/50 flex items-center justify-between">
             <div class="flex items-center gap-2.5">
               <span class="px-2 py-0.5 rounded bg-blue-600 text-white text-[11px] font-bold">ขั้นที่ 1</span>
@@ -590,7 +648,7 @@
         <div id="results-dashboard" class="space-y-6">
 
           <!-- SECTION 1: EXECUTIVE PORTFOLIO SUMMARY & COLOR-CODED KPI CARDS -->
-          <div class="fin-card overflow-hidden">
+          <div id="step-2-strategy-card" class="fin-card overflow-hidden">
             <!-- Strategy Title Bar -->
             <div class="bg-slate-900 text-white px-5 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
@@ -663,7 +721,7 @@
           </div>
 
           <!-- SECTION 2: DASHBOARD & REBALANCE (ธีมสีเขียวมรกต แยก 3 ขั้นตอนย่อยชัดเจน) -->
-          <div class="fin-card step-accent-emerald">
+          <div id="step-3-execution-card" class="fin-card step-accent-emerald">
             <div class="fin-card-header bg-emerald-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <div class="flex items-center gap-2">
@@ -1200,85 +1258,283 @@
 
           </div>
 
-          <!-- SECTION 4: PORTFOLIO STORAGE (ธีมสีคราม Indigo) -->
-          <div class="fin-card step-accent-indigo">
-            <div class="fin-card-header bg-indigo-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <!-- SECTION 4: GOAL-BASED PORTFOLIO BUILDER, DCA SIMULATOR & SAVED PORTFOLIOS (ธีมสีคราม Indigo) -->
+          <div id="section-goal-builder" class="fin-card step-accent-indigo">
+            <div class="fin-card-header bg-indigo-50/70 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div>
-                <div class="flex items-center gap-2">
-                  <span class="px-2.5 py-0.5 text-[11px] font-bold rounded bg-indigo-600 text-white">ส่วนที่ 4: บันทึกพอร์ตส่วนตัว</span>
-                  <h3 class="text-sm font-bold text-slate-900">บันทึกและจัดการพอร์ตการลงทุนของคุณ (My Saved Portfolios)</h3>
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="px-2.5 py-0.5 text-[11px] font-bold rounded bg-indigo-600 text-white">ส่วนที่ 4: สร้างพอร์ตตามเป้าหมาย &amp; บันทึกพอร์ต</span>
+                  <h3 class="text-sm font-bold text-slate-900">ระบบสร้างพอร์ตการลงทุนตามเป้าหมาย จำลองการออมรายเดือน (DCA) และจัดการพอร์ตส่วนตัว</h3>
                 </div>
-                <p class="text-xs text-slate-500 mt-0.5">
-                  บันทึกสัดส่วนพอร์ตปัจจุบัน เงินเป้าหมาย และระยะเวลาลงทุนไว้ในบัญชีของคุณเพื่อดึงกลับมาดูได้ตลอดเวลา
+                <p class="text-xs text-slate-600 mt-0.5">
+                  ออกแบบพอร์ตให้ตรงกับเป้าหมายการเงินของคุณ คำนวณโอกาสบรรลุเป้าหมายจากเงินก้อนแรก + เงินออมรายเดือน (DCA) พร้อมบันทึกเก็บไว้ใช้งานจริง
                 </p>
               </div>
-              <span id="portfolio-storage-auth-badge" class="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 self-start sm:self-center">
+              <span id="portfolio-storage-auth-badge" class="text-[10px] font-semibold px-2.5 py-1 rounded bg-slate-100 text-slate-600 border border-slate-200 self-start sm:self-center shrink-0">
                 ยังไม่ได้เข้าสู่ระบบ
               </span>
             </div>
 
-            <div class="p-5 space-y-4">
-              <!-- Save Portfolio Form -->
-              <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200 grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
-                <div class="sm:col-span-5">
-                  <label class="text-xs font-semibold text-slate-700 block mb-1">ชื่อพอร์ต / เป้าหมายการลงทุน</label>
-                  <input
-                    type="text"
-                    id="save-portfolio-name"
-                    placeholder="เช่น พอร์ตเงินเกษียณ, พอร์ตเติบโต 10 ปี..."
-                    class="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-blue-600"
-                  />
+            <div class="p-5 space-y-5">
+
+              <!-- ขั้นตอนย่อย 4.1: เลือกต้นแบบเป้าหมายชีวิต (Goal Presets) -->
+              <div class="p-4 rounded-xl bg-indigo-50/40 border border-indigo-200 space-y-3">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <div class="flex items-center gap-2">
+                      <span class="px-2 py-0.5 rounded bg-indigo-600 text-white text-[10px] font-bold">ขั้นที่ 4.1</span>
+                      <span class="text-xs font-bold text-slate-900">เลือกต้นแบบพอร์ตตามเป้าหมายการเงิน (คลิกเพื่อตั้งค่าเป้าหมายและกลยุทธ์อัตโนมัติ)</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 mt-0.5">เลือกเป้าหมายที่ตรงกับคุณ หรือกรอกปรับแต่งตัวเลขเองในขั้นที่ 4.2 ด้านล่าง</p>
+                  </div>
+                  <label class="inline-flex items-center gap-1.5 cursor-pointer select-none text-[11px] font-semibold text-indigo-900 bg-white px-2.5 py-1 rounded-lg border border-indigo-200">
+                    <input type="checkbox" id="goal-template-apply-tickers" checked class="rounded border-indigo-300 text-indigo-600 focus:ring-indigo-500" />
+                    <span>ใช้ชุดหุ้นแนะนำตามเป้าหมายด้วย</span>
+                  </label>
                 </div>
-                <div class="sm:col-span-3">
-                  <label class="text-xs font-semibold text-slate-700 block mb-1">เงินเป้าหมาย (<span class="curr-unit-inline">บาท</span>)</label>
-                  <input
-                    type="text"
-                    inputmode="decimal"
-                    id="save-target-amount"
-                    value="1,000,000"
-                    oninput="formatLiveCommaInput(this, false)"
-                    class="w-full px-3 py-2 text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-blue-600"
-                  />
-                </div>
-                <div class="sm:col-span-2">
-                  <label class="text-xs font-semibold text-slate-700 block mb-1">ระยะเวลา (ปี)</label>
-                  <input
-                    type="number"
-                    id="save-period-years"
-                    value="5"
-                    min="1"
-                    max="60"
-                    class="w-full px-3 py-2 text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-blue-600"
-                  />
-                </div>
-                <div class="sm:col-span-2">
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
                   <button
                     type="button"
-                    id="btn-save-portfolio"
-                    onclick="saveUserPortfolio()"
-                    class="w-full py-2 px-3 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs transition flex items-center justify-center gap-1.5"
+                    id="goal-preset-card-retirement"
+                    onclick="applyGoalBasedTemplate('retirement', false)"
+                    class="goal-preset-card text-left p-3 rounded-xl border-2 border-indigo-600 bg-white hover:bg-indigo-50/50 transition space-y-1"
                   >
-                    <i data-lucide="bookmark-plus" class="w-3.5 h-3.5"></i>
-                    <span>บันทึกพอร์ตนี้</span>
+                    <div class="flex items-center justify-between">
+                      <span class="px-2 py-0.5 rounded bg-indigo-600 text-white text-[10px] font-bold">เป้าหมายที่ 1</span>
+                      <span class="text-[10px] font-mono font-bold text-indigo-700">Max Sharpe</span>
+                    </div>
+                    <div class="text-xs font-bold text-slate-900 pt-0.5">พอร์ตเกษียณมั่นคง</div>
+                    <p class="text-[11px] text-slate-600 leading-snug">เน้นเติบโตระยะยาว 10 ปี ผสมหุ้นเติบโต ดัชนีตลาด และสินทรัพย์มั่นคง</p>
+                  </button>
+
+                  <button
+                    type="button"
+                    id="goal-preset-card-dividend"
+                    onclick="applyGoalBasedTemplate('dividend', false)"
+                    class="goal-preset-card text-left p-3 rounded-xl border border-slate-200 bg-white hover:bg-emerald-50/40 transition space-y-1"
+                  >
+                    <div class="flex items-center justify-between">
+                      <span class="px-2 py-0.5 rounded bg-emerald-600 text-white text-[10px] font-bold">เป้าหมายที่ 2</span>
+                      <span class="text-[10px] font-mono font-bold text-emerald-700">Min Volatility</span>
+                    </div>
+                    <div class="text-xs font-bold text-slate-900 pt-0.5">พอร์ตสร้างเงินปันผล</div>
+                    <p class="text-[11px] text-slate-600 leading-snug">เน้นหุ้นปันผลสม่ำเสมอ ความผันผวนต่ำ สร้างกระแสเงินสดรายปี</p>
+                  </button>
+
+                  <button
+                    type="button"
+                    id="goal-preset-card-growth"
+                    onclick="applyGoalBasedTemplate('growth', false)"
+                    class="goal-preset-card text-left p-3 rounded-xl border border-slate-200 bg-white hover:bg-blue-50/40 transition space-y-1"
+                  >
+                    <div class="flex items-center justify-between">
+                      <span class="px-2 py-0.5 rounded bg-blue-600 text-white text-[10px] font-bold">เป้าหมายที่ 3</span>
+                      <span class="text-[10px] font-mono font-bold text-blue-700">Max Sharpe</span>
+                    </div>
+                    <div class="text-xs font-bold text-slate-900 pt-0.5">พอร์ตปั้นเงินล้านเติบโตสูง</div>
+                    <p class="text-[11px] text-slate-600 leading-snug">เน้นเร่งการเติบโตของเงินทุนใน 5 ปี ด้วยหุ้นผู้นำเทคโนโลยีระดับโลก</p>
+                  </button>
+
+                  <button
+                    type="button"
+                    id="goal-preset-card-preservation"
+                    onclick="applyGoalBasedTemplate('preservation', false)"
+                    class="goal-preset-card text-left p-3 rounded-xl border border-slate-200 bg-white hover:bg-amber-50/40 transition space-y-1"
+                  >
+                    <div class="flex items-center justify-between">
+                      <span class="px-2 py-0.5 rounded bg-amber-600 text-white text-[10px] font-bold">เป้าหมายที่ 4</span>
+                      <span class="text-[10px] font-mono font-bold text-amber-700">Risk Parity</span>
+                    </div>
+                    <div class="text-xs font-bold text-slate-900 pt-0.5">พอร์ตพักเงินชนะเงินเฟ้อ</div>
+                    <p class="text-[11px] text-slate-600 leading-snug">เน้นกระจายความเสี่ยงสมดุล ทองคำ พันธบัตร และหุ้นพื้นฐานแกร่ง</p>
                   </button>
                 </div>
               </div>
 
-              <!-- Saved Portfolios List -->
-              <div>
-                <div class="flex items-center justify-between mb-2">
-                  <h4 class="text-xs font-bold text-slate-800">
-                    รายการพอร์ตที่บันทึกไว้ของคุณ (<span id="saved-portfolios-count" class="text-indigo-700">0</span>)
-                  </h4>
+              <!-- ขั้นตอนย่อย 4.2: กำหนดตัวเลขเป้าหมายการเงินและแผนออมรายเดือน (DCA) -->
+              <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3.5">
+                <div class="flex items-center justify-between flex-wrap gap-2">
+                  <div class="flex items-center gap-2">
+                    <span class="px-2 py-0.5 rounded bg-slate-900 text-white text-[10px] font-bold">ขั้นที่ 4.2</span>
+                    <span class="text-xs font-bold text-slate-900">กำหนดชื่อพอร์ต เงินเป้าหมาย และแผนการออมรายเดือน (DCA)</span>
+                  </div>
+                  <span class="text-[11px] text-slate-500">พิมพ์ตัวเลขจะมีลูกน้ำคั่นหลักพันอัตโนมัติ และคำนวณกราฟด้านล่างทันที</span>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-end">
+                  <div class="lg:col-span-4">
+                    <label class="text-xs font-semibold text-slate-700 block mb-1">ชื่อพอร์ต / เป้าหมายการลงทุน</label>
+                    <input
+                      type="text"
+                      id="save-portfolio-name"
+                      value="พอร์ตเกษียณมั่นคงระยะยาว"
+                      placeholder="เช่น พอร์ตเกษียณ, พอร์ตเก็บเงินล้านก้อนแรก..."
+                      oninput="recalculateGoalProjection()"
+                      class="w-full px-3 py-2 text-xs font-semibold bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-indigo-600"
+                    />
+                  </div>
+
+                  <div class="lg:col-span-2">
+                    <label class="text-xs font-semibold text-slate-700 block mb-1">ประเภทเป้าหมาย</label>
+                    <select
+                      id="save-goal-category"
+                      onchange="recalculateGoalProjection()"
+                      class="w-full px-2.5 py-2 text-xs font-semibold bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-indigo-600"
+                    >
+                      <option value="retirement">พอร์ตเกษียณมั่นคง</option>
+                      <option value="dividend">พอร์ตสร้างเงินปันผล</option>
+                      <option value="growth">พอร์ตเติบโตสูง</option>
+                      <option value="preservation">พอร์ตพักเงินปลอดภัย</option>
+                      <option value="custom">กำหนดเป้าหมายเอง</option>
+                    </select>
+                  </div>
+
+                  <div class="lg:col-span-2">
+                    <label class="text-xs font-semibold text-slate-700 block mb-1">เงินเป้าหมาย (<span class="curr-unit-inline">บาท</span>)</label>
+                    <input
+                      type="text"
+                      inputmode="decimal"
+                      id="save-target-amount"
+                      value="1,000,000"
+                      oninput="formatLiveCommaInput(this, false); recalculateGoalProjection()"
+                      class="w-full px-3 py-2 text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg text-indigo-900 focus:outline-none focus:border-indigo-600"
+                    />
+                  </div>
+
+                  <div class="lg:col-span-2">
+                    <label class="text-xs font-semibold text-slate-700 block mb-1">ออมเพิ่ม/เดือน DCA (<span class="curr-unit-inline">บาท</span>)</label>
+                    <input
+                      type="text"
+                      inputmode="decimal"
+                      id="save-monthly-dca"
+                      value="5,000"
+                      oninput="formatLiveCommaInput(this, false); recalculateGoalProjection()"
+                      class="w-full px-3 py-2 text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg text-emerald-800 focus:outline-none focus:border-indigo-600"
+                    />
+                  </div>
+
+                  <div class="lg:col-span-2">
+                    <label class="text-xs font-semibold text-slate-700 block mb-1">ระยะเวลาลงทุน (ปี)</label>
+                    <input
+                      type="number"
+                      id="save-period-years"
+                      value="10"
+                      min="1"
+                      max="50"
+                      oninput="recalculateGoalProjection()"
+                      class="w-full px-3 py-2 text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-indigo-600"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <!-- ขั้นตอนย่อย 4.3: สรุปผลวิเคราะห์ความเป็นไปได้ของเป้าหมาย & กราฟจำลอง DCA (Goal Feasibility & Trajectory) -->
+              <div class="p-4 rounded-xl bg-white border border-slate-200 space-y-4">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                  <div>
+                    <div class="flex items-center gap-2">
+                      <span class="px-2 py-0.5 rounded bg-emerald-600 text-white text-[10px] font-bold">ขั้นที่ 4.3</span>
+                      <h4 class="text-xs font-bold text-slate-900">ผลวิเคราะห์โอกาสพิชิตเป้าหมายการเงิน (คำนวณจากเงินต้นก้อนแรก + ออมรายเดือน DCA ทบต้น)</h4>
+                    </div>
+                    <p id="goal-projection-subtitle" class="text-[11px] text-slate-500 mt-0.5">
+                      อ้างอิงผลตอบแทนคาดการณ์และอัตราปันผลจากกลยุทธ์พอร์ตที่เลือกในปัจจุบัน
+                    </p>
+                  </div>
+                  <span id="goal-feasibility-status-badge" class="px-2.5 py-1 rounded-md text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 self-start sm:self-center">
+                    กำลังคำนวณแผนเป้าหมาย...
+                  </span>
+                </div>
+
+                <!-- 4 Summary Cards for Goal Projection -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  <div class="p-3 rounded-lg bg-slate-50 border border-slate-200">
+                    <div class="text-[11px] font-semibold text-slate-500">1. เงินต้นสะสมรวมที่ใส่จริง</div>
+                    <div id="goal-proj-total-principal" class="text-base font-bold font-mono text-slate-900 mt-0.5">--</div>
+                    <div id="goal-proj-principal-breakdown" class="text-[10px] text-slate-500 mt-1">ก้อนแรก -- + ออมสะสม --</div>
+                  </div>
+
+                  <div class="p-3 rounded-lg bg-indigo-50/50 border border-indigo-200">
+                    <div class="text-[11px] font-semibold text-indigo-950">2. มูลค่าพอร์ตคาดการณ์เมื่อครบกำหนด</div>
+                    <div id="goal-proj-final-wealth" class="text-base font-bold font-mono text-indigo-700 mt-0.5">--</div>
+                    <div id="goal-proj-net-profit" class="text-[10px] font-semibold text-emerald-700 mt-1">กำไรทบต้นคาดการณ์ +--</div>
+                  </div>
+
+                  <div class="p-3 rounded-lg bg-emerald-50/50 border border-emerald-200">
+                    <div class="text-[11px] font-semibold text-emerald-950">3. เงินปันผลคาดการณ์เมื่อครบกำหนด</div>
+                    <div id="goal-proj-annual-dividend" class="text-base font-bold font-mono text-emerald-700 mt-0.5">-- / ปี</div>
+                    <div id="goal-proj-monthly-dividend" class="text-[10px] font-semibold text-emerald-800 mt-1">เฉลี่ยเดือนละ -- (Yield --%)</div>
+                  </div>
+
+                  <div class="p-3 rounded-lg bg-blue-50/50 border border-blue-200">
+                    <div class="text-[11px] font-semibold text-blue-950">4. ความสำเร็จเทียบเป้าหมาย</div>
+                    <div class="flex items-baseline justify-between mt-0.5">
+                      <span id="goal-proj-achievement-pct" class="text-base font-bold font-mono text-blue-700">--%</span>
+                      <span id="goal-proj-gap-text" class="text-[10px] font-semibold text-slate-600">--</span>
+                    </div>
+                    <div class="w-full h-2 bg-slate-200 rounded-full overflow-hidden mt-1.5">
+                      <div id="goal-proj-progress-bar" class="h-full bg-emerald-600 rounded-full transition-all duration-300" style="width: 0%"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Smart Recommendation Box for Goal -->
+                <div id="goal-smart-advice-box" class="p-3 rounded-lg bg-indigo-50/60 border border-indigo-200 text-xs text-slate-800 leading-relaxed"></div>
+
+                <!-- Goal Wealth Trajectory Chart -->
+                <div>
+                  <div class="flex items-center justify-between mb-1.5">
+                    <h5 class="text-xs font-bold text-slate-800">กราฟจำลองเส้นทางการเติบโตของพอร์ตสู่เป้าหมาย (เทียบเงินต้นสะสม vs มูลค่าพอร์ตทบต้นรายปี)</h5>
+                    <span class="text-[11px] text-slate-500">เส้นประสีทอง = เป้าหมายที่ตั้งไว้</span>
+                  </div>
+                  <div id="goal-projection-chart" class="w-full h-[270px] border border-slate-200 rounded-lg p-2 bg-white"></div>
+                </div>
+
+                <!-- Action Buttons: Save Goal Portfolio & Print One-Page Report -->
+                <div class="pt-2 border-t border-slate-100 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                  <div class="text-xs text-slate-600">
+                    เมื่อปรับแผนเป้าหมายและสัดส่วนหุ้นจนพอใจแล้ว กดปุ่ม <b>"สร้างและบันทึกพอร์ตตามเป้าหมายนี้"</b> เพื่อเก็บไว้ในบัญชีของคุณ
+                  </div>
+                  <div class="flex flex-wrap items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onclick="openPrintableGoalReport()"
+                      class="py-2.5 px-3.5 rounded-lg text-xs font-semibold bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 transition flex items-center justify-center gap-1.5"
+                    >
+                      <i data-lucide="printer" class="w-3.5 h-3.5 text-slate-600"></i>
+                      <span>พิมพ์ใบสรุปแผนการลงทุน (PDF)</span>
+                    </button>
+                    <button
+                      type="button"
+                      id="btn-save-portfolio"
+                      onclick="saveUserPortfolio()"
+                      class="py-2.5 px-4 rounded-lg text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition flex items-center justify-center gap-1.5"
+                    >
+                      <i data-lucide="bookmark-plus" class="w-4 h-4"></i>
+                      <span>สร้างและบันทึกพอร์ตตามเป้าหมายนี้</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- ขั้นตอนย่อย 4.4: รายการพอร์ตตามเป้าหมายที่บันทึกไว้ (Saved Goal Portfolios) -->
+              <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <h4 class="text-xs font-bold text-slate-900">
+                      รายการพอร์ตตามเป้าหมายที่บันทึกไว้ของคุณ (<span id="saved-portfolios-count" class="text-indigo-700">0</span> พอร์ต)
+                    </h4>
+                    <p class="text-[11px] text-slate-500">สามารถคลิก "ดึงพอร์ตมาใช้งาน" เพื่อโหลดรายชื่อหุ้น งบประมาณ แผน DCA และกลยุทธ์ของพอร์ตนั้นกลับมาคำนวณใหม่ได้ทันที</p>
+                  </div>
                   <button
                     type="button"
                     onclick="fetchUserPortfolios()"
-                    class="text-[11px] text-indigo-700 hover:underline font-medium flex items-center gap-1"
+                    class="px-2.5 py-1 rounded bg-white hover:bg-slate-100 text-[11px] text-indigo-700 border border-slate-200 font-semibold transition"
                   >
-                    <span>รีเฟรชข้อมูล</span>
+                    รีเฟรชรายการพอร์ต
                   </button>
                 </div>
-                <div id="saved-portfolios-container" class="space-y-2"></div>
+                <div id="saved-portfolios-container" class="space-y-2.5"></div>
               </div>
             </div>
           </div>
@@ -1490,7 +1746,7 @@
     })();
   </script>
 
-  <script src="/static/app.js?v=4.1"></script>
-  <script src="/static/supabase_auth.js?v=4.1"></script>
+  <script src="/static/app.js?v=4.2"></script>
+  <script src="/static/supabase_auth.js?v=4.2"></script>
 </body>
 </html>

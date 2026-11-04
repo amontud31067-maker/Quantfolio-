@@ -402,13 +402,30 @@ async function saveUserPortfolio() {
   }
 
   const nameInput = document.getElementById('save-portfolio-name');
+  const catInput = document.getElementById('save-goal-category');
   const targetInput = document.getElementById('save-target-amount');
+  const dcaInput = document.getElementById('save-monthly-dca');
   const yearsInput = document.getElementById('save-period-years');
+  const budgetInput = document.getElementById('budget-input');
   const saveBtn = document.getElementById('btn-save-portfolio');
 
   const portfolioName = (nameInput?.value || '').trim();
+  const goalType = catInput?.value || 'retirement';
+  const goalLabelsMap = {
+    retirement: 'พอร์ตเกษียณมั่นคง',
+    dividend: 'พอร์ตสร้างเงินปันผล',
+    growth: 'พอร์ตเติบโตสูง',
+    preservation: 'พอร์ตพักเงินปลอดภัย',
+    custom: 'กำหนดเป้าหมายเอง'
+  };
+  const goalLabel = goalLabelsMap[goalType] || 'พอร์ตตามเป้าหมาย';
+
   const rawTargetStr = String(targetInput?.value || '').replace(/,/g, '').trim();
-  const targetAmount = parseFloat(rawTargetStr) || (window.state?.optData?.metadata?.budget || 100000);
+  const targetAmount = parseFloat(rawTargetStr) || 1000000;
+  const rawDcaStr = String(dcaInput?.value || '').replace(/,/g, '').trim();
+  const monthlyDca = parseFloat(rawDcaStr) || 0;
+  const rawBudgetStr = String(budgetInput?.value || '').replace(/,/g, '').trim();
+  const initialBudget = parseFloat(rawBudgetStr) || (window.state?.optData?.metadata?.budget || 100000);
   const investmentPeriodYears = parseInt(yearsInput?.value, 10) || 5;
 
   if (!portfolioName) {
@@ -417,25 +434,63 @@ async function saveUserPortfolio() {
     return;
   }
 
+  const appState = window.state || (typeof state !== 'undefined' ? state : null);
   const assetWeightsJson = {};
-  if (window.state && state.optData && state.optData.strategies[state.activeGoal]) {
-    const rawWeights = state.optData.strategies[state.activeGoal].weights || {};
-    Object.entries(rawWeights).forEach(([ticker, weightDecimal]) => {
-      const pct = Number((weightDecimal * 100).toFixed(2));
-      if (pct > 0) {
-        assetWeightsJson[ticker] = pct;
-      }
+  let activeStrategyKey = 'max_sharpe';
+  let tickersList = [];
+  let expectedRet = 0.12;
+  let expectedVol = 0.16;
+  let divYield = 0.02;
+
+  if (appState) {
+    activeStrategyKey = appState.activeGoal || 'max_sharpe';
+    tickersList = Array.isArray(appState.tickers) ? [...appState.tickers] : [];
+    if (appState.optData && appState.optData.strategies && appState.optData.strategies[activeStrategyKey]) {
+      const strat = appState.optData.strategies[activeStrategyKey];
+      const rawWeights = strat.weights || {};
+      Object.entries(rawWeights).forEach(([ticker, weightDecimal]) => {
+        const pct = Number((weightDecimal * 100).toFixed(2));
+        if (pct > 0) {
+          assetWeightsJson[ticker] = pct;
+        }
+      });
+      expectedRet = Number(strat.expected_return || 0.12);
+      expectedVol = Number(strat.volatility || 0.16);
+      divYield = Number(strat.dividend_yield !== undefined ? strat.dividend_yield : 0.02);
+    }
+  }
+
+  // Fallback equal weights if user saves before optimization finishes
+  if (Object.keys(assetWeightsJson).length === 0 && tickersList.length > 0) {
+    const eqPct = Number((100 / tickersList.length).toFixed(2));
+    tickersList.forEach(t => {
+      assetWeightsJson[t] = eqPct;
     });
   }
+
+  const projMetrics = (typeof computeGoalProjectionMetrics === 'function')
+    ? computeGoalProjectionMetrics()
+    : { projectedFinalWealth: targetAmount, achievementPct: 100 };
 
   const payload = {
     user_id: currentUser.id,
     email: currentUser.email || '',
     portfolio_name: portfolioName,
+    goal_type: goalType,
+    goal_label: goalLabel,
     target_amount: targetAmount,
+    initial_budget: initialBudget,
+    monthly_dca: monthlyDca,
     investment_period_years: investmentPeriodYears,
+    currency: appState ? (appState.currency || 'THB') : 'THB',
+    tickers: tickersList.length > 0 ? tickersList : Object.keys(assetWeightsJson),
     asset_weights: assetWeightsJson,
-    strategy_key: window.state ? state.activeGoal : 'max_sharpe'
+    strategy_key: activeStrategyKey,
+    expected_return: expectedRet,
+    expected_volatility: expectedVol,
+    dividend_yield: divYield,
+    projected_final_value: projMetrics.projectedFinalWealth || 0,
+    goal_achievement_pct: projMetrics.achievementPct || 0
   };
 
   try {
@@ -445,6 +500,7 @@ async function saveUserPortfolio() {
     }
 
     let savedSuccessfully = false;
+    let savedRecord = null;
 
     // 1. บันทึกลง Supabase ถ้าระบบมี JWT Session
     if (hasSupabaseJwtSession && supabaseClient) {
@@ -470,23 +526,42 @@ async function saveUserPortfolio() {
       body: JSON.stringify(payload)
     });
     if (res.ok) {
+      const resJson = await res.json();
+      savedRecord = resJson.portfolio || null;
       savedSuccessfully = true;
+    }
+
+    // 3. สำรองข้อมูลลง Browser LocalStorage สำหรับผู้ใช้นี้ด้วย (ป้องกันข้อมูลหายบน Serverless Cold Start)
+    try {
+      const localKey = `quantfolio_portfolios_${currentUser.id}`;
+      const localArr = JSON.parse(localStorage.getItem(localKey) || '[]');
+      const recordToStore = savedRecord || {
+        ...payload,
+        id: 'local-' + Date.now(),
+        created_at: new Date().toISOString()
+      };
+      const filtered = localArr.filter(item => item.portfolio_name !== recordToStore.portfolio_name);
+      filtered.unshift(recordToStore);
+      localStorage.setItem(localKey, JSON.stringify(filtered.slice(0, 30)));
+      savedSuccessfully = true;
+    } catch (e) {
+      console.warn('Local portfolio backup notice:', e);
     }
 
     if (!savedSuccessfully) {
       throw new Error('ไม่สามารถบันทึกข้อมูลพอร์ตได้');
     }
 
-    if (nameInput) nameInput.value = '';
     await fetchUserPortfolios();
-    showPortfolioToast(`บันทึกพอร์ต "${portfolioName}" เรียบร้อยแล้ว`);
+    showPortfolioToast(`สร้างและบันทึกพอร์ต "${portfolioName}" (${goalLabel}) เรียบร้อยแล้ว`);
   } catch (err) {
     console.error('Save portfolio error:', err);
     alert('เกิดข้อผิดพลาดในการบันทึกพอร์ต: ' + err.message);
   } finally {
     if (saveBtn) {
       saveBtn.disabled = false;
-      saveBtn.innerText = 'บันทึกพอร์ตนี้';
+      saveBtn.innerHTML = `<i data-lucide="bookmark-plus" class="w-4 h-4"></i><span>สร้างและบันทึกพอร์ตตามเป้าหมายนี้</span>`;
+      if (window.lucide) lucide.createIcons();
     }
   }
 }
@@ -501,8 +576,43 @@ async function fetchUserPortfolios() {
   }
 
   try {
-    let combined = [];
+    const combined = [];
+    const seenKeys = new Set();
 
+    const addUniquePortfolio = (p) => {
+      if (!p || !p.portfolio_name) return;
+      const key = `${p.portfolio_name.trim().toLowerCase()}|${Math.round(Number(p.target_amount || 0))}`;
+      if (!seenKeys.has(key)) {
+        seenKeys.add(key);
+        combined.push(p);
+      }
+    };
+
+    // 1. ดึงจาก Server API ก่อนเพราะมีฟิลด์ Goal & DCA ครบถ้วนที่สุด
+    try {
+      const res = await fetch(`/api/portfolios?user_id=${encodeURIComponent(currentUser.id)}&email=${encodeURIComponent(currentUser.email || '')}`);
+      if (res.ok) {
+        const serverData = await res.json();
+        if (Array.isArray(serverData.portfolios)) {
+          serverData.portfolios.forEach(addUniquePortfolio);
+        }
+      }
+    } catch (e) {
+      console.warn('Server portfolio fetch notice:', e);
+    }
+
+    // 2. ดึงจาก LocalStorage สำรองของเบราว์เซอร์
+    try {
+      const localKey = `quantfolio_portfolios_${currentUser.id}`;
+      const localArr = JSON.parse(localStorage.getItem(localKey) || '[]');
+      if (Array.isArray(localArr)) {
+        localArr.forEach(addUniquePortfolio);
+      }
+    } catch (e) {
+      console.warn('Local portfolio read notice:', e);
+    }
+
+    // 3. ดึงจาก Supabase ถ้าระบบมี JWT Session
     if (hasSupabaseJwtSession && supabaseClient) {
       const { data, error } = await supabaseClient
         .from('user_portfolios')
@@ -510,21 +620,7 @@ async function fetchUserPortfolios() {
         .eq('user_id', currentUser.id)
         .order('created_at', { ascending: false });
       if (!error && Array.isArray(data)) {
-        combined = data;
-      }
-    }
-
-    const res = await fetch(`/api/portfolios?user_id=${encodeURIComponent(currentUser.id)}&email=${encodeURIComponent(currentUser.email || '')}`);
-    if (res.ok) {
-      const serverData = await res.json();
-      if (Array.isArray(serverData.portfolios)) {
-        const existingNames = new Set(combined.map(p => `${p.portfolio_name}|${p.target_amount}`));
-        serverData.portfolios.forEach(sp => {
-          const key = `${sp.portfolio_name}|${sp.target_amount}`;
-          if (!existingNames.has(key)) {
-            combined.push(sp);
-          }
-        });
+        data.forEach(addUniquePortfolio);
       }
     }
 
@@ -544,6 +640,8 @@ async function deleteUserPortfolio(portfolioId) {
   if (!currentUser) return;
 
   try {
+    const targetItem = savedPortfoliosList.find(p => String(p.id) === String(portfolioId));
+
     if (hasSupabaseJwtSession && supabaseClient) {
       await supabaseClient
         .from('user_portfolios')
@@ -556,7 +654,20 @@ async function deleteUserPortfolio(portfolioId) {
       method: 'DELETE'
     });
 
+    try {
+      const localKey = `quantfolio_portfolios_${currentUser.id}`;
+      const localArr = JSON.parse(localStorage.getItem(localKey) || '[]');
+      const nextLocal = localArr.filter(item =>
+        String(item.id) !== String(portfolioId) &&
+        (!targetItem || item.portfolio_name !== targetItem.portfolio_name)
+      );
+      localStorage.setItem(localKey, JSON.stringify(nextLocal));
+    } catch (e) {
+      // ignore
+    }
+
     await fetchUserPortfolios();
+    showPortfolioToast('ลบรายการพอร์ตที่บันทึกไว้เรียบร้อยแล้ว');
   } catch (err) {
     alert('ไม่สามารถลบพอร์ตได้: ' + err.message);
   }
@@ -569,21 +680,44 @@ function loadSavedPortfolioToDashboard(portfolioId) {
   const item = savedPortfoliosList.find(p => String(p.id) === String(portfolioId));
   if (!item) return;
 
+  const appState = window.state || (typeof state !== 'undefined' ? state : null);
   const weightsObj = item.asset_weights || {};
-  const tickers = Object.keys(weightsObj);
+  const savedTickers = (Array.isArray(item.tickers) && item.tickers.length >= 2)
+    ? item.tickers
+    : Object.keys(weightsObj);
 
-  if (tickers.length >= 2 && window.state) {
-    state.tickers = tickers;
-    renderTickersList();
-    fetchLiveQuotesForTickers();
+  if (item.currency && (item.currency === 'THB' || item.currency === 'USD') && typeof setGlobalCurrency === 'function') {
+    setGlobalCurrency(item.currency);
+  }
+
+  if (savedTickers.length >= 2 && appState) {
+    appState.tickers = [...savedTickers];
+    if (typeof renderTickersList === 'function') renderTickersList();
+    if (typeof fetchLiveQuotesForTickers === 'function') fetchLiveQuotesForTickers();
+  }
+
+  const nameEl = document.getElementById('save-portfolio-name');
+  if (nameEl && item.portfolio_name) nameEl.value = item.portfolio_name;
+
+  const catEl = document.getElementById('save-goal-category');
+  if (catEl && item.goal_type) catEl.value = item.goal_type;
+
+  const initBudget = Number(item.initial_budget || 100000);
+  const budgetEl = document.getElementById('budget-input');
+  if (budgetEl) {
+    budgetEl.value = initBudget.toLocaleString('en-US', { maximumFractionDigits: 0 });
   }
 
   if (item.target_amount) {
-    const formattedTarget = Number(item.target_amount).toLocaleString('en-US', { maximumFractionDigits: 2 });
-    const budgetEl = document.getElementById('budget-input');
-    if (budgetEl) budgetEl.value = formattedTarget;
+    const formattedTarget = Number(item.target_amount).toLocaleString('en-US', { maximumFractionDigits: 0 });
     const saveTargetEl = document.getElementById('save-target-amount');
     if (saveTargetEl) saveTargetEl.value = formattedTarget;
+  }
+
+  if (item.monthly_dca !== undefined) {
+    const formattedDca = Number(item.monthly_dca).toLocaleString('en-US', { maximumFractionDigits: 0 });
+    const saveDcaEl = document.getElementById('save-monthly-dca');
+    if (saveDcaEl) saveDcaEl.value = formattedDca;
   }
 
   if (item.investment_period_years) {
@@ -592,23 +726,30 @@ function loadSavedPortfolioToDashboard(portfolioId) {
   }
 
   if (item.strategy_key && ['max_sharpe', 'min_volatility', 'hrp', 'equal_weight'].includes(item.strategy_key)) {
-    selectGoal(item.strategy_key);
+    if (typeof selectGoal === 'function') selectGoal(item.strategy_key);
   }
 
-  runOptimization();
-  showPortfolioToast(`โหลดพอร์ต "${item.portfolio_name}" ขึ้นแสดงบน Dashboard แล้ว`);
+  if (typeof runOptimization === 'function') {
+    runOptimization();
+  }
+  if (typeof recalculateGoalProjection === 'function') {
+    recalculateGoalProjection();
+  }
+  showPortfolioToast(`ดึงพอร์ตตามเป้าหมาย "${item.portfolio_name}" กลับมาคำนวณบนหน้าเว็บแล้ว`);
 }
 
 function renderSavedPortfoliosList(portfolios) {
   const container = document.getElementById('saved-portfolios-container');
   const countBadge = document.getElementById('saved-portfolios-count');
+  const headerCountBadge = document.getElementById('header-saved-portfolios-count');
   if (countBadge) countBadge.innerText = portfolios.length;
+  if (headerCountBadge) headerCountBadge.innerText = portfolios.length;
   if (!container) return;
 
   if (!currentUser) {
     container.innerHTML = `
-      <div class="p-4 text-center rounded-lg bg-slate-50 border border-dashed border-slate-300 text-xs text-slate-500">
-        กรุณาเข้าสู่ระบบเพื่อดูและจัดการรายการพอร์ตการลงทุนของคุณ
+      <div class="p-4 text-center rounded-lg bg-white border border-dashed border-slate-300 text-xs text-slate-500">
+        กรุณาเข้าสู่ระบบเพื่อดูและจัดการรายการพอร์ตตามเป้าหมายของคุณ
       </div>
     `;
     return;
@@ -616,56 +757,97 @@ function renderSavedPortfoliosList(portfolios) {
 
   if (portfolios.length === 0) {
     container.innerHTML = `
-      <div class="p-4 text-center rounded-lg bg-slate-50 border border-dashed border-slate-300 text-xs text-slate-500">
-        ยังไม่มีพอร์ตที่บันทึกไว้ คุณสามารถตั้งชื่อพอร์ตด้านบนแล้วกดปุ่ม <b>"บันทึกพอร์ตนี้"</b> ได้ทันที
+      <div class="p-4 text-center rounded-lg bg-white border border-dashed border-slate-300 text-xs text-slate-500">
+        ยังไม่มีพอร์ตตามเป้าหมายที่บันทึกไว้ คุณสามารถเลือกต้นแบบเป้าหมายด้านบนแล้วกดปุ่ม <b>"สร้างและบันทึกพอร์ตตามเป้าหมายนี้"</b> ได้ทันที
       </div>
     `;
     return;
   }
 
-  container.innerHTML = portfolios.map(p => {
-    const weights = p.asset_weights || {};
-    const weightBadges = Object.entries(weights)
-      .sort((a, b) => b[1] - a[1])
-      .map(([ticker, pct]) => `<span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-blue-50 text-blue-700 border border-blue-200">${ticker}: ${pct}%</span>`)
-      .join(' ');
+  const stratLabels = {
+    max_sharpe: 'Max Sharpe Ratio',
+    min_volatility: 'Min Volatility',
+    hrp: 'Risk Parity (HRP)',
+    equal_weight: 'Equal Weight (1/N)'
+  };
 
-    const targetFormatted = Number(p.target_amount || 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
+  container.innerHTML = portfolios.map(p => {
+    const sym = p.currency === 'USD' ? '$' : '฿';
+    const weights = p.asset_weights || {};
+    const weightEntries = Object.entries(weights).sort((a, b) => b[1] - a[1]);
+    const weightBadges = weightEntries.length > 0
+      ? weightEntries
+          .map(([ticker, pct]) => `<span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-50 text-blue-800 border border-blue-200">${ticker}: ${pct}%</span>`)
+          .join(' ')
+      : `<span class="text-[11px] text-slate-500">กดปุ่ม "ดึงพอร์ตมาใช้งาน" เพื่อคำนวณสัดส่วนล่าสุด</span>`;
+
+    const targetNum = Number(p.target_amount || 1000000);
+    const initBudgetNum = Number(p.initial_budget || 100000);
+    const dcaNum = Number(p.monthly_dca !== undefined ? p.monthly_dca : 5000);
+    const yearsNum = Number(p.investment_period_years || 5);
+    const projValNum = Number(p.projected_final_value || targetNum);
+    const achievePct = Number(p.goal_achievement_pct || Math.min(150, Math.round((projValNum / Math.max(1, targetNum)) * 1000) / 10));
+    const barW = Math.max(5, Math.min(100, achievePct));
+
+    const goalLabel = p.goal_label || 'พอร์ตตามเป้าหมาย';
+    const stratName = stratLabels[p.strategy_key] || 'Max Sharpe Ratio';
     const dateStr = p.created_at ? new Date(p.created_at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
 
     return `
-      <div class="p-3 rounded-lg bg-white border border-slate-200 hover:border-blue-300 transition flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div class="space-y-1">
+      <div class="p-3.5 rounded-xl bg-white border border-slate-200 hover:border-indigo-300 shadow-2xs transition space-y-2.5">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2">
           <div class="flex items-center gap-2 flex-wrap">
+            <span class="px-2 py-0.5 rounded bg-indigo-600 text-white text-[10px] font-bold">${goalLabel}</span>
             <span class="font-bold text-xs text-slate-900">${p.portfolio_name}</span>
-            <span class="text-[11px] font-mono font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
-              เป้าหมาย ฿${targetFormatted}
-            </span>
-            <span class="text-[11px] font-medium text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
-              ระยะเวลา ${p.investment_period_years} ปี
-            </span>
-            <span class="text-[10px] text-slate-400">${dateStr}</span>
+            <span class="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-mono text-[10px] font-semibold">กลยุทธ์: ${stratName}</span>
+            <span class="text-[10px] text-slate-400">บันทึกเมื่อ ${dateStr}</span>
           </div>
-          <div class="flex flex-wrap gap-1 pt-0.5">
-            ${weightBadges}
+          <div class="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onclick="loadSavedPortfolioToDashboard('${p.id}')"
+              class="px-3 py-1.5 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition"
+            >
+              ดึงพอร์ตมาใช้งาน / ปรับสัดส่วน
+            </button>
+            <button
+              type="button"
+              onclick="deleteUserPortfolio('${p.id}')"
+              title="ลบพอร์ตนี้"
+              class="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+            </button>
           </div>
         </div>
-        <div class="flex items-center gap-1.5 shrink-0">
-          <button
-            type="button"
-            onclick="loadSavedPortfolioToDashboard('${p.id}')"
-            class="px-2.5 py-1 text-xs font-semibold bg-slate-900 hover:bg-blue-700 text-white rounded-md transition"
-          >
-            ดึงพอร์ตมาแสดง
-          </button>
-          <button
-            type="button"
-            onclick="deleteUserPortfolio('${p.id}')"
-            title="ลบพอร์ตนี้"
-            class="p-1.5 text-slate-400 hover:text-rose-600 rounded-md hover:bg-rose-50 transition"
-          >
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-          </button>
+
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+          <div class="p-2 rounded-lg bg-slate-50 border border-slate-100">
+            <div class="text-[10px] text-slate-500">เงินลงทุนก้อนแรก</div>
+            <div class="font-mono font-bold text-slate-900">${sym}${initBudgetNum.toLocaleString()}</div>
+          </div>
+          <div class="p-2 rounded-lg bg-slate-50 border border-slate-100">
+            <div class="text-[10px] text-slate-500">ออมรายเดือน (DCA) / ระยะเวลา</div>
+            <div class="font-mono font-bold text-emerald-700">${sym}${dcaNum.toLocaleString()}/ด. (${yearsNum} ปี)</div>
+          </div>
+          <div class="p-2 rounded-lg bg-indigo-50/50 border border-indigo-100">
+            <div class="text-[10px] text-indigo-800">มูลค่าพอร์ตคาดการณ์</div>
+            <div class="font-mono font-bold text-indigo-700">${sym}${Math.round(projValNum).toLocaleString()}</div>
+          </div>
+          <div class="p-2 rounded-lg bg-emerald-50/50 border border-emerald-100">
+            <div class="flex items-center justify-between text-[10px]">
+              <span class="text-emerald-900 font-semibold">เป้าหมาย ${sym}${targetNum.toLocaleString()}</span>
+              <span class="font-mono font-bold ${achievePct >= 100 ? 'text-emerald-700' : 'text-amber-700'}">${achievePct}%</span>
+            </div>
+            <div class="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden mt-1">
+              <div class="h-full ${achievePct >= 100 ? 'bg-emerald-600' : 'bg-amber-500'} rounded-full" style="width:${barW}%"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-1.5 flex-wrap pt-0.5">
+          <span class="text-[10px] font-semibold text-slate-500 mr-1">สัดส่วนสินทรัพย์ในพอร์ต:</span>
+          ${weightBadges}
         </div>
       </div>
     `;

@@ -26,6 +26,7 @@ const state = {
   lastRebalancePlan: null,
   searchDebounceTimer: null
 };
+window.state = state;
 
 const PRESETS = {
   colab_original: {
@@ -403,6 +404,19 @@ function updateCurrencySymbol(reRun = false) {
     state.customCashInjection = Math.round((Number(state.customCashInjection) || 0) * convFactor * 100) / 100;
     const cashInEl = document.getElementById('custom-cash-injection');
     if (cashInEl) cashInEl.value = formatNumberWithCommas(state.customCashInjection, 2);
+
+    const targetEl = document.getElementById('save-target-amount');
+    if (targetEl) {
+      const curTarget = parseNumericInput(targetEl.value) || 1000000;
+      const newTarget = Math.round(curTarget * convFactor);
+      targetEl.value = formatNumberWithCommas(newTarget, 0);
+    }
+    const dcaEl = document.getElementById('save-monthly-dca');
+    if (dcaEl) {
+      const curDca = parseNumericInput(dcaEl.value) || 0;
+      const newDca = Math.round(curDca * convFactor);
+      dcaEl.value = formatNumberWithCommas(newDca, 0);
+    }
   }
 
   renderTickersList();
@@ -417,48 +431,59 @@ function updateCurrencySymbol(reRun = false) {
       }
     });
     handleBudgetQuickUpdate();
+    recalculateGoalProjection();
   } else if (reRun) {
     runOptimization();
   }
 }
 
-// Primary Investment Mode Selector ('new_capital' vs 'existing_portfolio')
+// Primary Investment Mode Selector ('new_capital' vs 'existing_portfolio' vs 'goal_based')
 function selectPrimaryInvestmentMode(modeKey) {
   state.primaryMode = modeKey;
 
-  const cardNew = document.getElementById('primary-mode-card-new_capital');
-  const cardExist = document.getElementById('primary-mode-card-existing_portfolio');
-  const badgeNew = document.getElementById('primary-mode-badge-new_capital');
-  const badgeExist = document.getElementById('primary-mode-badge-existing_portfolio');
+  const modes = [
+    {
+      key: 'new_capital',
+      activeCard: 'cursor-pointer rounded-xl p-3.5 border-2 border-emerald-500 bg-emerald-50/40 hover:bg-emerald-50/70 transition flex flex-col justify-between gap-2',
+      inactiveCard: 'cursor-pointer rounded-xl p-3.5 border border-slate-200 bg-white hover:bg-slate-50 transition flex flex-col justify-between gap-2',
+      activeBadge: 'px-2 py-0.5 rounded bg-emerald-600 text-white text-[10px] font-bold shrink-0'
+    },
+    {
+      key: 'existing_portfolio',
+      activeCard: 'cursor-pointer rounded-xl p-3.5 border-2 border-blue-600 bg-blue-50/40 hover:bg-blue-50/70 transition flex flex-col justify-between gap-2',
+      inactiveCard: 'cursor-pointer rounded-xl p-3.5 border border-slate-200 bg-white hover:bg-slate-50 transition flex flex-col justify-between gap-2',
+      activeBadge: 'px-2 py-0.5 rounded bg-blue-600 text-white text-[10px] font-bold shrink-0'
+    },
+    {
+      key: 'goal_based',
+      activeCard: 'cursor-pointer rounded-xl p-3.5 border-2 border-indigo-600 bg-indigo-50/50 hover:bg-indigo-50/80 transition flex flex-col justify-between gap-2',
+      inactiveCard: 'cursor-pointer rounded-xl p-3.5 border border-slate-200 bg-white hover:bg-indigo-50/40 transition flex flex-col justify-between gap-2',
+      activeBadge: 'px-2 py-0.5 rounded bg-indigo-600 text-white text-[10px] font-bold shrink-0'
+    }
+  ];
+
+  modes.forEach(m => {
+    const card = document.getElementById(`primary-mode-card-${m.key}`);
+    const badge = document.getElementById(`primary-mode-badge-${m.key}`);
+    const isSelected = m.key === modeKey;
+    if (card) card.className = isSelected ? m.activeCard : m.inactiveCard;
+    if (badge) {
+      badge.className = isSelected ? m.activeBadge : 'px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-semibold shrink-0';
+      badge.innerText = isSelected ? 'กำลังเลือกใช้' : 'คลิกเพื่อเลือก';
+    }
+  });
 
   if (modeKey === 'new_capital') {
-    if (cardNew) cardNew.className = 'cursor-pointer rounded-xl p-3.5 border-2 border-emerald-500 bg-emerald-50/40 hover:bg-emerald-50/70 transition flex items-start justify-between gap-3';
-    if (cardExist) cardExist.className = 'cursor-pointer rounded-xl p-3.5 border border-slate-200 bg-white hover:bg-slate-50 transition flex items-start justify-between gap-3';
-    if (badgeNew) {
-      badgeNew.className = 'px-2.5 py-1 rounded-md bg-emerald-600 text-white text-[10px] font-bold shrink-0';
-      badgeNew.innerText = 'กำลังเลือกใช้';
-    }
-    if (badgeExist) {
-      badgeExist.className = 'px-2.5 py-1 rounded-md bg-slate-100 text-slate-600 text-[10px] font-semibold shrink-0';
-      badgeExist.innerText = 'คลิกเพื่อเลือก';
-    }
     setRebalanceMode('cash');
-  } else {
-    if (cardExist) cardExist.className = 'cursor-pointer rounded-xl p-3.5 border-2 border-blue-600 bg-blue-50/40 hover:bg-blue-50/70 transition flex items-start justify-between gap-3';
-    if (cardNew) cardNew.className = 'cursor-pointer rounded-xl p-3.5 border border-slate-200 bg-white hover:bg-slate-50 transition flex items-start justify-between gap-3';
-    if (badgeExist) {
-      badgeExist.className = 'px-2.5 py-1 rounded-md bg-blue-600 text-white text-[10px] font-bold shrink-0';
-      badgeExist.innerText = 'กำลังเลือกใช้';
-    }
-    if (badgeNew) {
-      badgeNew.className = 'px-2.5 py-1 rounded-md bg-slate-100 text-slate-600 text-[10px] font-semibold shrink-0';
-      badgeNew.innerText = 'คลิกเพื่อเลือก';
-    }
+  } else if (modeKey === 'existing_portfolio') {
     setRebalanceMode('custom');
     const customPanel = document.getElementById('custom-holdings-panel');
     if (customPanel) {
       customPanel.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
+  } else if (modeKey === 'goal_based') {
+    setRebalanceMode('cash');
+    scrollToGoalBuilderSection();
   }
 }
 
@@ -489,6 +514,7 @@ function selectGoal(goalKey) {
     renderStrategyCompareTable();
     renderPortfolioGrowthChart();
     renderAssetStatsTable();
+    recalculateGoalProjection();
   }
 }
 
@@ -998,6 +1024,7 @@ function renderAllViews() {
   renderEfficientFrontierPlot();
   renderAssetStatsTable();
   renderCorrelationAndGrowthPlots();
+  recalculateGoalProjection();
 
   if (window.lucide) {
     lucide.createIcons();
@@ -2648,4 +2675,509 @@ async function runSystemVerificationModal() {
       </div>
     `;
   }
+}
+
+// =========================================================================
+// GOAL-BASED PORTFOLIO BUILDER, DCA SIMULATOR & ONE-PAGE REPORT ENGINE
+// =========================================================================
+const GOAL_TEMPLATES = {
+  retirement: {
+    key: 'retirement',
+    name: 'พอร์ตเกษียณมั่นคงระยะยาว',
+    category: 'retirement',
+    label: 'พอร์ตเกษียณมั่นคง',
+    target_thb: 2000000,
+    target_usd: 60000,
+    budget_thb: 100000,
+    budget_usd: 3000,
+    dca_thb: 5000,
+    dca_usd: 150,
+    years: 10,
+    strategy: 'max_sharpe',
+    tickers: ['SPY', 'QQQ', 'AAPL', 'MSFT', 'GLD', 'PTT.BK', 'BDMS.BK']
+  },
+  dividend: {
+    key: 'dividend',
+    name: 'พอร์ตสร้างกระแสเงินสดและเงินปันผล',
+    category: 'dividend',
+    label: 'พอร์ตสร้างเงินปันผล',
+    target_thb: 1000000,
+    target_usd: 30000,
+    budget_thb: 100000,
+    budget_usd: 3000,
+    dca_thb: 4000,
+    dca_usd: 120,
+    years: 7,
+    strategy: 'min_volatility',
+    tickers: ['PTT.BK', 'ADVANC.BK', 'SCB.BK', 'KBANK.BK', 'JNJ', 'KO', 'PG']
+  },
+  growth: {
+    key: 'growth',
+    name: 'พอร์ตปั้นเงินล้านเติบโตเร่งด่วน',
+    category: 'growth',
+    label: 'พอร์ตเติบโตสูง',
+    target_thb: 1000000,
+    target_usd: 30000,
+    budget_thb: 100000,
+    budget_usd: 3000,
+    dca_thb: 6000,
+    dca_usd: 180,
+    years: 5,
+    strategy: 'max_sharpe',
+    tickers: ['NVDA', 'AAPL', 'MSFT', 'AMZN', 'GOOGL', 'META', 'BTC-USD']
+  },
+  preservation: {
+    key: 'preservation',
+    name: 'พอร์ตพักเงินปลอดภัยชนะเงินเฟ้อ',
+    category: 'preservation',
+    label: 'พอร์ตพักเงินปลอดภัย',
+    target_thb: 500000,
+    target_usd: 15000,
+    budget_thb: 100000,
+    budget_usd: 3000,
+    dca_thb: 3000,
+    dca_usd: 100,
+    years: 5,
+    strategy: 'hrp',
+    tickers: ['GLD', 'TLT', 'SPY', 'BDMS.BK', 'CPALL.BK']
+  }
+};
+
+function scrollToSectionById(sectionId) {
+  const el = document.getElementById(sectionId);
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
+function scrollToGoalBuilderSection() {
+  scrollToSectionById('section-goal-builder');
+}
+
+function applyGoalBasedTemplate(templateKey, shouldScroll = false) {
+  const tpl = GOAL_TEMPLATES[templateKey];
+  if (!tpl) return;
+
+  const isThb = state.currency === 'THB';
+  const nameEl = document.getElementById('save-portfolio-name');
+  const catEl = document.getElementById('save-goal-category');
+  const targetEl = document.getElementById('save-target-amount');
+  const dcaEl = document.getElementById('save-monthly-dca');
+  const yearsEl = document.getElementById('save-period-years');
+  const budgetEl = document.getElementById('budget-input');
+
+  if (nameEl) nameEl.value = tpl.name;
+  if (catEl) catEl.value = tpl.category;
+  if (targetEl) targetEl.value = formatNumberWithCommas(isThb ? tpl.target_thb : tpl.target_usd, 0);
+  if (dcaEl) dcaEl.value = formatNumberWithCommas(isThb ? tpl.dca_thb : tpl.dca_usd, 0);
+  if (yearsEl) yearsEl.value = tpl.years;
+  if (budgetEl) budgetEl.value = formatNumberWithCommas(isThb ? tpl.budget_thb : tpl.budget_usd, 0);
+
+  // Highlight active template card
+  ['retirement', 'dividend', 'growth', 'preservation'].forEach(k => {
+    const card = document.getElementById(`goal-preset-card-${k}`);
+    if (card) {
+      card.className = k === templateKey
+        ? 'goal-preset-card text-left p-3 rounded-xl border-2 border-indigo-600 bg-indigo-50/40 transition space-y-1'
+        : 'goal-preset-card text-left p-3 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition space-y-1';
+    }
+  });
+
+  state.activeGoal = tpl.strategy;
+  const applyTickersToggle = document.getElementById('goal-template-apply-tickers');
+  const shouldApplyTickers = applyTickersToggle ? applyTickersToggle.checked : true;
+
+  if (shouldApplyTickers && Array.isArray(tpl.tickers) && tpl.tickers.length >= 2) {
+    state.tickers = [...tpl.tickers];
+    renderTickersList();
+    fetchLiveQuotesForTickers();
+    selectGoal(tpl.strategy);
+    runOptimization();
+  } else {
+    selectGoal(tpl.strategy);
+    handleBudgetQuickUpdate();
+    recalculateGoalProjection();
+  }
+
+  if (shouldScroll) {
+    scrollToGoalBuilderSection();
+  }
+}
+
+function computeGoalProjectionMetrics() {
+  const initialBudget = parseNumericInput(document.getElementById('budget-input')?.value) || 100000;
+  const targetAmount = parseNumericInput(document.getElementById('save-target-amount')?.value) || 1000000;
+  const monthlyDca = parseNumericInput(document.getElementById('save-monthly-dca')?.value) || 0;
+  const years = Math.max(1, Math.min(50, parseInt(document.getElementById('save-period-years')?.value, 10) || 5));
+  const goalCategory = document.getElementById('save-goal-category')?.value || 'retirement';
+  const goalCategoryLabels = {
+    retirement: 'พอร์ตเกษียณมั่นคง',
+    dividend: 'พอร์ตสร้างเงินปันผล',
+    growth: 'พอร์ตเติบโตสูง',
+    preservation: 'พอร์ตพักเงินปลอดภัย',
+    custom: 'กำหนดเป้าหมายเอง'
+  };
+
+  let rawExpectedReturn = 0.12;
+  let annualVol = 0.16;
+  let divYield = 0.02;
+  let strategyName = 'Max Sharpe Ratio';
+
+  if (state.optData && state.optData.strategies && state.optData.strategies[state.activeGoal]) {
+    const strat = state.optData.strategies[state.activeGoal];
+    rawExpectedReturn = Number(strat.expected_return || 0.12);
+    annualVol = Number(strat.volatility || 0.16);
+    divYield = Number(strat.dividend_yield !== undefined ? strat.dividend_yield : 0.018);
+    strategyName = strat.short_name || strat.name || state.activeGoal;
+  }
+
+  // Prudent long-term compounding cap (prevent extreme multi-year distortion while preserving strategy differences)
+  const effectiveAnnualReturn = Math.max(0.02, Math.min(0.28, rawExpectedReturn));
+  const bullAnnualReturn = Math.min(0.36, effectiveAnnualReturn + 0.25 * annualVol);
+  const conservativeAnnualReturn = Math.max(0.015, effectiveAnnualReturn - 0.30 * annualVol);
+
+  const yearsAxis = [];
+  const principalSeries = [];
+  const baseWealthSeries = [];
+  const bullWealthSeries = [];
+  const consWealthSeries = [];
+
+  let curPrincipal = initialBudget;
+  let curBase = initialBudget;
+  let curBull = initialBudget;
+  let curCons = initialBudget;
+
+  const rBaseMonth = Math.pow(1 + effectiveAnnualReturn, 1 / 12) - 1;
+  const rBullMonth = Math.pow(1 + bullAnnualReturn, 1 / 12) - 1;
+  const rConsMonth = Math.pow(1 + conservativeAnnualReturn, 1 / 12) - 1;
+
+  for (let y = 0; y <= years; y++) {
+    yearsAxis.push(`ปีที่ ${y}`);
+    principalSeries.push(Math.round(curPrincipal));
+    baseWealthSeries.push(Math.round(curBase));
+    bullWealthSeries.push(Math.round(curBull));
+    consWealthSeries.push(Math.round(curCons));
+
+    if (y < years) {
+      for (let m = 0; m < 12; m++) {
+        curPrincipal += monthlyDca;
+        curBase = curBase * (1 + rBaseMonth) + monthlyDca;
+        curBull = curBull * (1 + rBullMonth) + monthlyDca;
+        curCons = curCons * (1 + rConsMonth) + monthlyDca;
+      }
+    }
+  }
+
+  const totalPrincipal = principalSeries[principalSeries.length - 1];
+  const projectedFinalWealth = baseWealthSeries[baseWealthSeries.length - 1];
+  const netProfit = Math.max(0, projectedFinalWealth - totalPrincipal);
+  const achievementPct = targetAmount > 0 ? Number(((projectedFinalWealth / targetAmount) * 100).toFixed(1)) : 100;
+  const gapAmount = projectedFinalWealth - targetAmount;
+  const estAnnualDividendAtEnd = Math.round(projectedFinalWealth * divYield);
+  const estMonthlyDividendAtEnd = Math.round(estAnnualDividendAtEnd / 12);
+
+  // Calculate required monthly DCA to reach targetAmount if currently below target
+  const totalMonths = years * 12;
+  const fvInitial = initialBudget * Math.pow(1 + rBaseMonth, totalMonths);
+  const annuityFactor = rBaseMonth > 0 ? ((Math.pow(1 + rBaseMonth, totalMonths) - 1) / rBaseMonth) : totalMonths;
+  const requiredMonthlyDca = Math.max(0, Math.ceil((targetAmount - fvInitial) / Math.max(1, annuityFactor)));
+
+  return {
+    initialBudget,
+    targetAmount,
+    monthlyDca,
+    years,
+    goalCategory,
+    goalLabel: goalCategoryLabels[goalCategory] || 'พอร์ตตามเป้าหมาย',
+    strategyName,
+    rawExpectedReturn,
+    effectiveAnnualReturn,
+    annualVol,
+    divYield,
+    totalPrincipal,
+    projectedFinalWealth,
+    netProfit,
+    achievementPct,
+    gapAmount,
+    estAnnualDividendAtEnd,
+    estMonthlyDividendAtEnd,
+    requiredMonthlyDca,
+    yearsAxis,
+    principalSeries,
+    baseWealthSeries,
+    bullWealthSeries,
+    consWealthSeries
+  };
+}
+
+function recalculateGoalProjection() {
+  const m = computeGoalProjectionMetrics();
+  window.lastGoalProjection = m;
+
+  const subEl = document.getElementById('goal-projection-subtitle');
+  if (subEl) {
+    subEl.innerText = `กลยุทธ์ที่เลือก: ${m.strategyName} | อัตราผลตอบแทนทบต้นที่ใช้จำลอง ${(m.effectiveAnnualReturn * 100).toFixed(2)}%/ปี | อัตราเงินปันผลเฉลี่ย ${(m.divYield * 100).toFixed(2)}%/ปี`;
+  }
+
+  const totalPrinEl = document.getElementById('goal-proj-total-principal');
+  const prinBreakEl = document.getElementById('goal-proj-principal-breakdown');
+  if (totalPrinEl) totalPrinEl.innerText = formatMoney(m.totalPrincipal, 0, true);
+  if (prinBreakEl) {
+    const dcaTotal = m.monthlyDca * 12 * m.years;
+    prinBreakEl.innerText = `ก้อนแรก ${formatMoney(m.initialBudget, 0, false)} + ออมสะสม ${formatMoney(dcaTotal, 0, false)}`;
+  }
+
+  const finalWealthEl = document.getElementById('goal-proj-final-wealth');
+  const netProfitEl = document.getElementById('goal-proj-net-profit');
+  if (finalWealthEl) finalWealthEl.innerText = formatMoney(m.projectedFinalWealth, 0, true);
+  if (netProfitEl) netProfitEl.innerText = `กำไรทบต้นสุทธิ +${formatMoney(m.netProfit, 0, true)}`;
+
+  const annDivEl = document.getElementById('goal-proj-annual-dividend');
+  const monDivEl = document.getElementById('goal-proj-monthly-dividend');
+  if (annDivEl) annDivEl.innerText = `${formatMoney(m.estAnnualDividendAtEnd, 0, true)} / ปี`;
+  if (monDivEl) {
+    monDivEl.innerText = `เฉลี่ยเดือนละ ${formatMoney(m.estMonthlyDividendAtEnd, 0, true)} (Yield ${(m.divYield * 100).toFixed(2)}%)`;
+  }
+
+  const pctEl = document.getElementById('goal-proj-achievement-pct');
+  const gapEl = document.getElementById('goal-proj-gap-text');
+  const barEl = document.getElementById('goal-proj-progress-bar');
+  const statusBadge = document.getElementById('goal-feasibility-status-badge');
+  const adviceBox = document.getElementById('goal-smart-advice-box');
+
+  if (pctEl) pctEl.innerText = `${m.achievementPct}%`;
+  if (barEl) {
+    const barW = Math.max(4, Math.min(100, m.achievementPct));
+    barEl.style.width = `${barW}%`;
+    barEl.className = m.achievementPct >= 100
+      ? 'h-full bg-emerald-600 rounded-full transition-all duration-300'
+      : 'h-full bg-amber-500 rounded-full transition-all duration-300';
+  }
+
+  if (m.achievementPct >= 100) {
+    if (gapEl) {
+      gapEl.innerText = `เกินเป้า +${formatMoney(Math.abs(m.gapAmount), 0, false)}`;
+      gapEl.className = 'text-[10px] font-bold text-emerald-700';
+    }
+    if (statusBadge) {
+      statusBadge.innerText = `บรรลุเป้าหมาย (${m.achievementPct}%)`;
+      statusBadge.className = 'px-2.5 py-1 rounded-md text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 self-start sm:self-center';
+    }
+    if (adviceBox) {
+      adviceBox.innerHTML = `
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <b class="text-emerald-900">สรุปแผนพิชิตเป้าหมาย: มีความเป็นไปได้สูงที่จะบรรลุเป้าหมาย ${formatMoney(m.targetAmount, 0, true)} ภายใน ${m.years} ปี</b>
+            <div class="text-[11px] text-slate-600 mt-0.5">
+              จากการเริ่มต้นด้วยเงินก้อนแรก <b>${formatMoney(m.initialBudget, 0, true)}</b> และออมเพิ่มเดือนละ <b>${formatMoney(m.monthlyDca, 0, true)}</b> ในกลยุทธ์ <b>${m.strategyName}</b> คาดว่าพอร์ตจะเติบโตเป็น <b>${formatMoney(m.projectedFinalWealth, 0, true)}</b> (สร้างกระแสเงินปันผลราว <b>${formatMoney(m.estMonthlyDividendAtEnd, 0, true)}/เดือน</b>)
+            </div>
+          </div>
+        </div>
+      `;
+    }
+  } else {
+    const extraDcaNeeded = Math.max(0, m.requiredMonthlyDca - m.monthlyDca);
+    if (gapEl) {
+      gapEl.innerText = `ขาดอีก ${formatMoney(Math.abs(m.gapAmount), 0, false)}`;
+      gapEl.className = 'text-[10px] font-bold text-amber-700';
+    }
+    if (statusBadge) {
+      statusBadge.innerText = `คาดว่าจะได้ ${m.achievementPct}% ของเป้าหมาย`;
+      statusBadge.className = 'px-2.5 py-1 rounded-md text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300 self-start sm:self-center';
+    }
+    if (adviceBox) {
+      adviceBox.innerHTML = `
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <b class="text-amber-900">คำแนะนำเพื่อพิชิตเป้าหมาย ${formatMoney(m.targetAmount, 0, true)} ให้สำเร็จ 100% ภายใน ${m.years} ปี:</b>
+            <div class="text-[11px] text-slate-700 mt-0.5">
+              ปัจจุบันพอร์ตคาดว่าจะโตไปที่ <b>${formatMoney(m.projectedFinalWealth, 0, true)}</b> (ยังขาดอีก <b>${formatMoney(Math.abs(m.gapAmount), 0, true)}</b>) แนะนำให้ปรับเพิ่มเงินออมรายเดือน (DCA) อีก <b>+${formatMoney(extraDcaNeeded, 0, true)}/เดือน</b> (รวมออมเดือนละ <b>${formatMoney(m.requiredMonthlyDca, 0, true)}</b>)
+            </div>
+          </div>
+          <button
+            type="button"
+            onclick="document.getElementById('save-monthly-dca').value='${formatNumberWithCommas(m.requiredMonthlyDca, 0)}'; recalculateGoalProjection();"
+            class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold shrink-0 transition"
+          >
+            ปรับค่า DCA เป็น ${formatMoney(m.requiredMonthlyDca, 0, false)}/เดือน ทันที
+          </button>
+        </div>
+      `;
+    }
+  }
+
+  renderGoalProjectionChart(m);
+}
+
+function renderGoalProjectionChart(m) {
+  const chartEl = document.getElementById('goal-projection-chart');
+  if (!chartEl || typeof Plotly === 'undefined') return;
+
+  const sym = state.currencySymbol;
+  const traceBull = {
+    x: m.yearsAxis,
+    y: m.bullWealthSeries,
+    name: 'กรณีตลาดดี (Bull Case)',
+    type: 'scatter',
+    mode: 'lines',
+    line: { color: '#10b981', width: 1.5, dash: 'dot' },
+    hovertemplate: `%{x}: ${sym}%{y:,.0f}<extra>กรณีตลาดดี</extra>`
+  };
+
+  const traceBase = {
+    x: m.yearsAxis,
+    y: m.baseWealthSeries,
+    name: 'มูลค่าพอร์ตคาดการณ์ (Base Case)',
+    type: 'scatter',
+    mode: 'lines+markers',
+    marker: { size: 6, color: '#4f46e5' },
+    line: { color: '#4f46e5', width: 3 },
+    fill: 'tonexty',
+    fillcolor: 'rgba(79, 70, 229, 0.07)',
+    hovertemplate: `%{x}: ${sym}%{y:,.0f}<extra>พอร์ตคาดการณ์</extra>`
+  };
+
+  const tracePrincipal = {
+    x: m.yearsAxis,
+    y: m.principalSeries,
+    name: 'เงินต้นสะสมที่ใส่จริง (ก้อนแรก + DCA)',
+    type: 'scatter',
+    mode: 'lines+markers',
+    marker: { size: 4, color: '#64748b' },
+    line: { color: '#64748b', width: 2, dash: 'dash' },
+    hovertemplate: `%{x}: ${sym}%{y:,.0f}<extra>เงินต้นสะสม</extra>`
+  };
+
+  const traceTarget = {
+    x: m.yearsAxis,
+    y: m.yearsAxis.map(() => m.targetAmount),
+    name: `เป้าหมาย (${formatMoney(m.targetAmount, 0, false)})`,
+    type: 'scatter',
+    mode: 'lines',
+    line: { color: '#d97706', width: 2, dash: 'dashdot' },
+    hovertemplate: `เป้าหมาย: ${sym}%{y:,.0f}<extra></extra>`
+  };
+
+  const layout = {
+    margin: { t: 15, r: 20, b: 35, l: 65 },
+    paper_bgcolor: 'transparent',
+    plot_bgcolor: 'transparent',
+    font: { family: 'Inter, Noto Sans Thai, sans-serif', size: 11, color: '#334155' },
+    xaxis: { gridcolor: '#f1f5f9' },
+    yaxis: { gridcolor: '#f1f5f9', tickprefix: sym, separatethousands: true },
+    legend: { orientation: 'h', y: 1.14, x: 0, font: { size: 10 } },
+    hovermode: 'x unified'
+  };
+
+  Plotly.react(chartEl, [tracePrincipal, traceBase, traceBull, traceTarget], layout, {
+    responsive: true,
+    displayModeBar: false
+  });
+}
+
+function openPrintableGoalReport() {
+  const m = computeGoalProjectionMetrics();
+  const portfolioName = (document.getElementById('save-portfolio-name')?.value || 'แผนพอร์ตการลงทุนตามเป้าหมาย').trim();
+  const strat = (state.optData && state.optData.strategies && state.optData.strategies[state.activeGoal]) || null;
+  const weights = strat ? strat.weights : {};
+  const plan = state.lastRebalancePlan;
+
+  const weightRowsHtml = Object.entries(weights)
+    .filter(([, w]) => w > 0.0005)
+    .sort((a, b) => b[1] - a[1])
+    .map(([ticker, w]) => {
+      const pct = (w * 100).toFixed(2);
+      const amt = formatMoney(m.initialBudget * w, 2, true);
+      return `<tr>
+        <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;font-weight:700;">${ticker}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;text-align:right;">${pct}%</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;text-align:right;font-weight:600;">${amt}</td>
+      </tr>`;
+    }).join('');
+
+  const win = window.open('', '_blank', 'width=900,height=780');
+  if (!win) {
+    alert('กรุณาอนุญาตให้เปิดหน้าต่าง Pop-up เพื่อพิมพ์ใบสรุปแผนการลงทุน');
+    return;
+  }
+
+  const todayStr = new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
+  win.document.write(`
+    <!DOCTYPE html>
+    <html lang="th">
+    <head>
+      <meta charset="UTF-8">
+      <title>ใบสรุปแผนการลงทุน - ${portfolioName}</title>
+      <style>
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; color: #0f172a; margin: 28px; line-height: 1.5; }
+        .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #1e293b; padding-bottom: 14px; margin-bottom: 18px; }
+        .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 18px; }
+        .card { border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; background: #f8fafc; }
+        .label { font-size: 11px; color: #475569; font-weight: 600; }
+        .val { font-size: 16px; font-weight: 800; color: #0f172a; margin-top: 4px; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+        th { background: #f1f5f9; text-align: left; padding: 8px 10px; border-bottom: 2px solid #cbd5e1; }
+        @media print { .no-print { display: none; } body { margin: 12px; } }
+      </style>
+    </head>
+    <body>
+      <div class="no-print" style="margin-bottom:16px;text-align:right;">
+        <button onclick="window.print()" style="padding:8px 16px;background:#4f46e5;color:#fff;border:none;border-radius:6px;font-weight:700;cursor:pointer;">สั่งพิมพ์ / บันทึกเป็น PDF</button>
+      </div>
+      <div class="header">
+        <div>
+          <div style="font-size:12px;font-weight:700;color:#4f46e5;text-transform:uppercase;">QuantFolio Wealth Analytics — Executive Investment Plan</div>
+          <h1 style="margin:4px 0 2px;font-size:22px;">${portfolioName} (${m.goalLabel})</h1>
+          <div style="font-size:12px;color:#64748b;">กลยุทธ์: ${m.strategyName} | วันที่ออกรายงาน: ${todayStr}</div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:12px;color:#475569;">เป้าหมายการเงิน (${m.years} ปี)</div>
+          <div style="font-size:20px;font-weight:800;color:#4f46e5;">${formatMoney(m.targetAmount, 0, true)}</div>
+        </div>
+      </div>
+
+      <div class="grid">
+        <div class="card">
+          <div class="label">1. เงินลงทุนก้อนแรก + DCA/เดือน</div>
+          <div class="val">${formatMoney(m.initialBudget, 0, false)}</div>
+          <div style="font-size:11px;color:#475569;">ออมเพิ่ม ${formatMoney(m.monthlyDca, 0, false)}/เดือน (รวมต้น ${formatMoney(m.totalPrincipal, 0, false)})</div>
+        </div>
+        <div class="card">
+          <div class="label">2. มูลค่าพอร์ตคาดการณ์ (${m.years} ปี)</div>
+          <div class="val" style="color:#4f46e5;">${formatMoney(m.projectedFinalWealth, 0, false)}</div>
+          <div style="font-size:11px;color:#059669;font-weight:700;">กำไรทบต้น +${formatMoney(m.netProfit, 0, false)} (${m.achievementPct}% ของเป้า)</div>
+        </div>
+        <div class="card">
+          <div class="label">3. ผลตอบแทนคาดหวัง / ปันผล</div>
+          <div class="val" style="color:#059669;">${(m.effectiveAnnualReturn * 100).toFixed(2)}% / ปี</div>
+          <div style="font-size:11px;color:#475569;">ปันผลเมื่อครบกำหนด ~${formatMoney(m.estMonthlyDividendAtEnd, 0, false)}/เดือน</div>
+        </div>
+        <div class="card">
+          <div class="label">4. ความผันผวน / Max Drawdown</div>
+          <div class="val" style="color:#dc2626;">${strat ? (strat.max_drawdown * 100).toFixed(2) + '%' : '--'}</div>
+          <div style="font-size:11px;color:#475569;">ความผันผวน ${(m.annualVol * 100).toFixed(2)}%/ปี</div>
+        </div>
+      </div>
+
+      <h3 style="font-size:15px;margin:18px 0 6px;">สัดส่วนการกระจายการลงทุนตามกลยุทธ์ (${m.strategyName})</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>สินทรัพย์ (Ticker)</th>
+            <th style="text-align:right;">สัดส่วนเป้าหมาย (%)</th>
+            <th style="text-align:right;">เม็ดเงินจัดสรรก้อนแรก</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${weightRowsHtml}
+        </tbody>
+      </table>
+
+      <div style="margin-top:22px;padding:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;font-size:11px;color:#64748b;">
+        หมายเหตุ: รายงานนี้คำนวณด้วยโมเดลคณิตศาสตร์การเงิน (Markowitz Mean-Variance & Hierarchical Risk Parity) จากข้อมูลสถิติจริงบน Yahoo Finance เพื่อใช้ประกอบการวางแผนการลงทุนอย่างเป็นระบบ
+      </div>
+    </body>
+    </html>
+  `);
+  win.document.close();
 }

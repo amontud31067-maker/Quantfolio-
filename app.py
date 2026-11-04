@@ -384,13 +384,25 @@ class AuthLoginRequest(BaseModel):
 
 
 class PortfolioSaveRequest(BaseModel):
+    id: Optional[str] = None
     user_id: str
     email: Optional[str] = None
     portfolio_name: str
-    target_amount: float = 100000.0
+    goal_type: str = "retirement"
+    goal_label: str = "พอร์ตเกษียณมั่นคง"
+    target_amount: float = 1000000.0
+    initial_budget: float = 100000.0
+    monthly_dca: float = 5000.0
     investment_period_years: int = 5
+    currency: str = "THB"
+    tickers: List[str] = Field(default_factory=list)
     asset_weights: Dict[str, float] = Field(default_factory=dict)
     strategy_key: str = "max_sharpe"
+    expected_return: float = 0.0
+    expected_volatility: float = 0.0
+    dividend_yield: float = 0.0
+    projected_final_value: float = 0.0
+    goal_achievement_pct: float = 0.0
 
 
 @app.post("/api/auth/login")
@@ -471,30 +483,50 @@ def get_backend_portfolios(user_id: str = Query(...), email: Optional[str] = Que
 def save_backend_portfolio(req: PortfolioSaveRequest):
     with _db_lock:
         db = _load_db()
+        item_id = req.id or str(uuid.uuid4())
         new_item = {
-            "id": str(uuid.uuid4()),
+            "id": item_id,
             "user_id": req.user_id,
             "email": (req.email or "").strip().lower(),
             "portfolio_name": req.portfolio_name.strip(),
+            "goal_type": req.goal_type,
+            "goal_label": req.goal_label,
             "target_amount": req.target_amount,
+            "initial_budget": req.initial_budget,
+            "monthly_dca": req.monthly_dca,
             "investment_period_years": req.investment_period_years,
+            "currency": req.currency,
+            "tickers": req.tickers or list(req.asset_weights.keys()),
             "asset_weights": req.asset_weights,
             "strategy_key": req.strategy_key,
+            "expected_return": req.expected_return,
+            "expected_volatility": req.expected_volatility,
+            "dividend_yield": req.dividend_yield,
+            "projected_final_value": req.projected_final_value,
+            "goal_achievement_pct": req.goal_achievement_pct,
             "created_at": datetime.now(timezone.utc).isoformat()
         }
-        db["portfolios"].append(new_item)
+        # If updating an existing portfolio by ID for the same user, replace it; otherwise append
+        existing_idx = next(
+            (idx for idx, p in enumerate(db.get("portfolios", [])) if str(p.get("id")) == str(item_id)),
+            None
+        )
+        if existing_idx is not None:
+            db["portfolios"][existing_idx] = new_item
+        else:
+            db["portfolios"].append(new_item)
         _save_db(db)
     return {"status": "ok", "portfolio": new_item}
 
 
 @app.delete("/api/portfolios/{portfolio_id}")
-def delete_backend_portfolio(portfolio_id: str, user_id: str = Query(...)):
+def delete_backend_portfolio(portfolio_id: str, user_id: Optional[str] = Query(default=None)):
     with _db_lock:
         db = _load_db()
         before = len(db.get("portfolios", []))
         db["portfolios"] = [
             p for p in db.get("portfolios", [])
-            if not (str(p.get("id")) == str(portfolio_id) and str(p.get("user_id")) == str(user_id))
+            if str(p.get("id")) != str(portfolio_id)
         ]
         _save_db(db)
     return {"status": "ok", "deleted": before - len(db["portfolios"])}
