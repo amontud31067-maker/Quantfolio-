@@ -26,39 +26,41 @@
   </div>
 
   <!-- TOP INSTITUTIONAL MARKET UTILITY BAR -->
-  <div class="relative z-10 bg-slate-900 text-slate-300 text-[11px] border-b border-slate-800">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-8 flex items-center justify-between">
+  <div class="relative z-10 bg-slate-900 text-slate-300 text-xs border-b border-slate-800">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-1.5 min-h-9 flex items-center justify-between">
       <div class="flex items-center gap-4 overflow-x-auto whitespace-nowrap">
         <div class="flex items-center gap-1.5">
-          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-          <span class="font-medium text-white">Yahoo Finance Live Market</span>
+          <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+          <span class="font-medium text-white">เชื่อมต่อข้อมูลราคาตลาดสด</span>
         </div>
         <span class="text-slate-600">|</span>
         <div>
-          <span class="text-slate-400">อัตราแลกเปลี่ยนอ้างอิง (USD/THB):</span>
-          <span id="top-fx-rate" class="font-mono font-semibold text-amber-400 ml-1">34.50 บาท/$</span>
+          <span class="text-slate-300">อัตราแลกเปลี่ยนอ้างอิง:</span>
+          <span id="top-fx-rate" class="font-mono font-semibold text-amber-400 ml-1">34.50 บาท/ดอลลาร์</span>
         </div>
         <span class="text-slate-600 hidden sm:inline">|</span>
         <div class="hidden sm:block">
-          <span class="text-slate-400">ดอกเบี้ยพันธบัตรสหรัฐฯ (US 13W T-Bill):</span>
+          <span class="text-slate-300">ดอกเบี้ยอ้างอิงพันธบัตรสหรัฐฯ:</span>
           <span id="top-rf-rate" class="font-mono font-semibold text-emerald-400 ml-1">4.03%</span>
         </div>
-        <span class="text-slate-600 hidden md:inline">|</span>
-        <div class="hidden md:block">
-          <span class="text-slate-400">ข้อมูลคำนวณ:</span>
-          <span id="top-trading-days" class="font-mono font-semibold text-white ml-1">--</span>
-          <span class="text-slate-400">วันทำการ</span>
+        <div id="top-trading-days-wrap" class="hidden items-center gap-3">
+          <span class="text-slate-600 hidden md:inline">|</span>
+          <div class="hidden md:block">
+            <span class="text-slate-300">ข้อมูลคำนวณ:</span>
+            <span id="top-trading-days" class="font-mono font-semibold text-white ml-1"></span>
+            <span class="text-slate-300">วันทำการ</span>
+          </div>
         </div>
       </div>
-      <div class="hidden lg:flex items-center gap-2 text-slate-400">
-        <span>โมเดลคำนวณ: Markowitz Mean-Variance &amp; Hierarchical Risk Parity</span>
+      <div class="hidden lg:flex items-center gap-2 text-slate-300">
+        <span>ระบบคำนวณสัดส่วนพอร์ตและใบสั่งซื้อ-ขายอัตโนมัติ</span>
       </div>
     </div>
   </div>
 
   <!-- MAIN NAVIGATION HEADER -->
   <header class="bg-white/95 backdrop-blur-md border-b border-slate-200 sticky top-0 z-40">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 min-h-16 py-2 flex items-center justify-between gap-3 flex-wrap">
       <!-- Brand -->
       <div class="flex items-center gap-3">
         <div class="w-9 h-9 rounded-lg bg-slate-900 flex items-center justify-center text-white">
@@ -67,14 +69,14 @@
         <div>
           <div class="flex items-center gap-2">
             <span class="font-bold text-lg tracking-tight text-slate-900">QuantFolio</span>
-            <span class="text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">Wealth &amp; Rebalance</span>
+            <span class="text-xs font-semibold px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">จัดพอร์ตลงทุนอัตโนมัติ</span>
           </div>
-          <p class="text-xs text-slate-500 hidden sm:block">ระบบวิเคราะห์สัดส่วนพอร์ต จำลองความเสี่ยงเป็นเงินบาท และออกคำสั่งซื้อ-ขายปรับพอร์ตอัตโนมัติ</p>
+          <p class="text-xs text-slate-600 hidden sm:block">ช่วยคำนวณสัดส่วนหุ้น ประเมินความเสี่ยงเป็นเงินบาท และสรุปยอดซื้อ-ขายให้เข้าใจง่าย</p>
         </div>
       </div>
 
       <!-- Right Header Area: Currency Switcher + System Verify + Preset Portfolios + Login / User Profile -->
-      <div class="flex items-center gap-2.5">
+      <div class="flex items-center gap-2 flex-wrap">
         <!-- Global Currency Switcher (THB / USD) -->
         <div class="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200" title="เลือกสกุลเงินของราคาหุ้นและพอร์ต">
           <button
@@ -83,7 +85,7 @@
             onclick="setGlobalCurrency('THB')"
             class="px-2.5 py-1 text-xs font-bold rounded-md bg-slate-900 text-white shadow-2xs transition"
           >
-            ฿ ไทย (THB)
+            ฿ เงินบาท
           </button>
           <button
             type="button"
@@ -91,7 +93,7 @@
             onclick="setGlobalCurrency('USD')"
             class="px-2.5 py-1 text-xs font-semibold rounded-md text-slate-600 hover:text-slate-900 transition"
           >
-            $ ดอลลาร์ (USD)
+            $ ดอลลาร์
           </button>
         </div>
 
@@ -102,7 +104,7 @@
           class="hidden md:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-semibold transition"
         >
           <i data-lucide="check-circle-2" class="w-3.5 h-3.5 text-emerald-600"></i>
-          <span>ทดสอบระบบ</span>
+          <span>ตรวจความพร้อมระบบ</span>
         </button>
 
         <!-- Quick Jump to Goal Builder & Saved Portfolios -->
@@ -113,34 +115,38 @@
         >
           <i data-lucide="target" class="w-3.5 h-3.5 text-indigo-600"></i>
           <span class="hidden sm:inline">พอร์ตตามเป้าหมาย</span>
-          <span id="header-saved-portfolios-count" class="px-1.5 py-0.2 rounded-full bg-indigo-600 text-white text-[10px] font-bold">0</span>
+          <span id="header-saved-portfolios-count" class="hidden px-1.5 py-0.2 rounded-full bg-indigo-600 text-white text-xs font-bold"></span>
         </button>
 
         <!-- Preset Portfolios -->
         <div class="hidden xl:flex items-center gap-1.5 overflow-x-auto py-1">
-          <span class="text-xs text-slate-500 font-medium mr-1">ชุดพอร์ตตัวอย่าง:</span>
-          <button onclick="applyPreset('colab_original')" id="preset-btn-colab_original" class="preset-btn px-2.5 py-1.5 text-xs rounded-md bg-blue-50 text-blue-700 font-semibold border border-blue-200 transition whitespace-nowrap">
-            US Tech + BTC
+          <span class="text-xs text-slate-600 font-medium mr-1">พอร์ตตัวอย่าง:</span>
+          <button onclick="trySamplePortfolio('colab_original')" id="preset-btn-colab_original" class="preset-btn px-2.5 py-1.5 text-xs rounded-md bg-blue-50 text-blue-700 font-semibold border border-blue-200 transition whitespace-nowrap">
+            หุ้นเทคโนโลยีสหรัฐฯ + บิตคอยน์
           </button>
-          <button onclick="applyPreset('tech_titans')" id="preset-btn-tech_titans" class="preset-btn px-2.5 py-1.5 text-xs rounded-md bg-white hover:bg-slate-50 text-slate-700 font-medium border border-slate-200 transition whitespace-nowrap">
-            Big Tech 7
+          <button onclick="trySamplePortfolio('tech_titans')" id="preset-btn-tech_titans" class="preset-btn px-2.5 py-1.5 text-xs rounded-md bg-white hover:bg-slate-50 text-slate-700 font-medium border border-slate-200 transition whitespace-nowrap">
+            7 หุ้นยักษ์ใหญ่สหรัฐฯ
           </button>
-          <button onclick="applyPreset('all_weather')" id="preset-btn-all_weather" class="preset-btn px-2.5 py-1.5 text-xs rounded-md bg-white hover:bg-slate-50 text-slate-700 font-medium border border-slate-200 transition whitespace-nowrap">
-            All-Weather
+          <button onclick="trySamplePortfolio('all_weather')" id="preset-btn-all_weather" class="preset-btn px-2.5 py-1.5 text-xs rounded-md bg-white hover:bg-slate-50 text-slate-700 font-medium border border-slate-200 transition whitespace-nowrap">
+            พอร์ตกระจายสินทรัพย์ทั่วโลก
           </button>
-          <button onclick="applyPreset('thai_set50')" id="preset-btn-thai_set50" class="preset-btn px-2.5 py-1.5 text-xs rounded-md bg-white hover:bg-slate-50 text-slate-700 font-medium border border-slate-200 transition whitespace-nowrap">
-            หุ้นไทย SET50
+          <button onclick="trySamplePortfolio('thai_set50')" id="preset-btn-thai_set50" class="preset-btn px-2.5 py-1.5 text-xs rounded-md bg-white hover:bg-slate-50 text-slate-700 font-medium border border-slate-200 transition whitespace-nowrap">
+            หุ้นไทยพื้นฐานแกร่ง
           </button>
         </div>
 
         <div class="h-6 w-px bg-slate-200 hidden xl:block"></div>
 
         <!-- ปุ่มเข้าสู่ระบบ -->
-        <div id="auth-logged-out-box" class="flex items-center gap-1.5">
+        <div id="auth-logged-out-box" class="flex items-center gap-2">
+          <span class="hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-semibold">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+            ทดลองใช้ฟรี
+          </span>
           <button
             type="button"
             onclick="openSupabaseConfigModal()"
-            class="inline-flex items-center gap-2.5 px-3.5 py-2 rounded-lg bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-800 font-semibold text-xs border border-slate-300 shadow-xs transition"
+            class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-800 font-semibold text-xs border border-slate-300 shadow-xs transition"
           >
             <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24">
               <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
@@ -148,7 +154,7 @@
               <path fill="#FBBC05" d="M5.28 14.24c-.24-.72-.38-1.49-.38-2.24s.14-1.52.38-2.24V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.99-3.14z"/>
               <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.99 3.14c.95-2.85 3.6-4.96 6.72-4.96z"/>
             </svg>
-            <span>เข้าสู่ระบบ</span>
+            <span>เข้าสู่ระบบ / สมัครสมาชิก</span>
           </button>
         </div>
 
@@ -157,18 +163,18 @@
           <img
             id="user-profile-avatar"
             src="https://ui-avatars.com/api/?name=User&background=1d4ed8&color=fff"
-            alt="Profile"
+            alt="โปรไฟล์"
             class="w-7 h-7 rounded-full object-cover border border-blue-200"
           />
           <div class="hidden sm:block text-left leading-tight">
             <div id="user-profile-name" class="text-xs font-bold text-slate-900 truncate max-w-[140px]">ผู้ใช้งาน</div>
-            <div id="user-profile-email" class="text-[10px] text-slate-500 truncate max-w-[140px]">user@gmail.com</div>
+            <div id="user-profile-email" class="text-xs text-slate-500 truncate max-w-[140px]"></div>
           </div>
           <button
             type="button"
             onclick="logoutUser()"
             title="ออกจากระบบ"
-            class="ml-1 px-2 py-1 text-[11px] font-semibold text-rose-600 hover:bg-rose-50 rounded-full transition"
+            class="ml-1 px-2 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-50 rounded-full transition"
           >
             ออกจากระบบ
           </button>
@@ -178,44 +184,79 @@
   </header>
 
   <!-- MAIN WORKSPACE -->
-  <main id="main-app-workspace" class="relative z-10 flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 pointer-events-none select-none blur-xs transition duration-300">
+  <main id="main-app-workspace" class="relative z-10 flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 transition duration-300">
 
-    <!-- EXECUTIVE 4-STEP WORKFLOW OVERVIEW (สรุปภาพรวมระบบ 4 ขั้นตอนให้เข้าใจง่ายทันที) -->
+    <!-- PROMINENT "ลองพอร์ตตัวอย่าง" HERO CTA BANNER (Goal 3: กดปุ่มเดียวเลือกตัวอย่าง คำนวณ และเลื่อนไปที่ผลลัพธ์ทันที) -->
+    <div id="try-sample-cta-banner" class="fin-card p-4 sm:p-5 bg-gradient-to-r from-blue-900 via-slate-900 to-emerald-950 text-white border border-blue-800 shadow-lg">
+      <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div class="space-y-1.5">
+          <div class="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-emerald-400/20 text-emerald-300 border border-emerald-400/30 text-xs font-bold">
+            <i data-lucide="sparkles" class="w-4 h-4"></i>
+            <span>สำหรับมือใหม่ — เริ่มต้นง่ายๆ ในคลิกเดียว</span>
+          </div>
+          <h1 class="text-base sm:text-lg font-bold text-white leading-snug">
+            ยังไม่แน่ใจว่าจะเลือกหุ้นตัวไหนดี? กดปุ่ม <span class="text-amber-300 underline decoration-amber-400/60">"ลองพอร์ตตัวอย่าง"</span> เพื่อดูผลลัพธ์และใบคำสั่งซื้อ-ขายทันที
+          </h1>
+          <p class="text-xs sm:text-sm text-slate-200 leading-relaxed">
+            ระบบจะเลือกชุดหุ้นยอดนิยม คำนวณสัดส่วนที่เหมาะสมด้วยข้อมูลจริง 3 ปีย้อนหลัง และเลื่อนพาไปดูใบสั่งซื้อ-ขายเป็นเงินบาทให้โดยอัตโนมัติ
+          </p>
+        </div>
+
+        <div class="flex flex-col sm:flex-row lg:flex-col items-stretch sm:items-center lg:items-end gap-2.5 shrink-0">
+          <button
+            type="button"
+            id="btn-try-sample-portfolio"
+            onclick="trySamplePortfolio('colab_original')"
+            class="px-5 py-3.5 rounded-xl bg-amber-400 hover:bg-amber-300 active:bg-amber-500 text-slate-950 font-extrabold text-sm sm:text-base shadow-md hover:shadow-xl transition flex items-center justify-center gap-2.5 cursor-pointer"
+          >
+            <i data-lucide="play-circle" class="w-5 h-5 text-slate-950 shrink-0"></i>
+            <span>ลองพอร์ตตัวอย่าง</span>
+          </button>
+          <div class="flex flex-wrap items-center gap-1.5 text-xs">
+            <span class="text-slate-300">หรือเลือกชุดอื่น:</span>
+            <button type="button" onclick="trySamplePortfolio('thai_set50')" class="px-2.5 py-1 rounded-md bg-white/10 hover:bg-white/20 text-white border border-white/20 font-medium transition">หุ้นไทยพื้นฐานแกร่ง</button>
+            <button type="button" onclick="trySamplePortfolio('tech_titans')" class="px-2.5 py-1 rounded-md bg-white/10 hover:bg-white/20 text-white border border-white/20 font-medium transition">7 หุ้นยักษ์ใหญ่สหรัฐฯ</button>
+            <button type="button" onclick="trySamplePortfolio('all_weather')" class="px-2.5 py-1 rounded-md bg-white/10 hover:bg-white/20 text-white border border-white/20 font-medium transition">กระจายสินทรัพย์ทั่วโลก</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SINGLE STEP NUMBERING OVERVIEW (ขั้นตอนที่ 1 ถึง ขั้นตอนที่ 4 ระบบเดียวทั้งหน้า) -->
     <div class="fin-card p-3.5 bg-white/95 border border-slate-200">
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2.5 pb-2 border-b border-slate-100">
         <div class="flex items-center gap-2">
-          <span class="px-2 py-0.5 rounded bg-blue-600 text-white text-[10px] font-bold uppercase">Workflow Overview</span>
-          <span class="text-xs font-bold text-slate-900">แผนผังการใช้งานระบบ 4 ขั้นตอน (คลิกที่แต่ละขั้นตอนเพื่อเลื่อนไปยังส่วนนั้นได้ทันที)</span>
+          <span class="px-2.5 py-0.5 rounded bg-blue-600 text-white text-xs font-bold">วิธีใช้งาน 4 ขั้นตอน</span>
+          <span class="text-sm font-bold text-slate-900">ทำตามลำดับตั้งแต่ขั้นตอนที่ 1 ถึงขั้นตอนที่ 4 หรือกดปุ่ม "ลองพอร์ตตัวอย่าง" ด้านบนได้เลย</span>
         </div>
-        <span class="text-[11px] text-slate-500">แบ่งสีตามหมวดหมู่ชัดเจน: ตั้งค่าพอร์ต -> เลือกกลยุทธ์ -> ออกใบสั่งซื้อ -> สร้างและบันทึกเป้าหมาย</span>
       </div>
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
         <button type="button" onclick="scrollToSectionById('step-1-config-card')" class="text-left p-2.5 rounded-lg bg-blue-50/70 hover:bg-blue-100/80 border border-blue-200 transition flex items-start gap-2.5">
-          <span class="px-2 py-0.5 rounded bg-blue-600 text-white text-[10px] font-bold shrink-0 mt-0.5">หมวดซ้าย</span>
+          <span class="px-2 py-0.5 rounded bg-blue-600 text-white text-xs font-bold shrink-0 mt-0.5">ขั้นตอนที่ 1</span>
           <div>
-            <div class="text-xs font-bold text-slate-900">ตั้งค่างบประมาณ &amp; เลือกหุ้น</div>
-            <div class="text-[11px] text-slate-600">เลือกหุ้นไทย/สหรัฐฯ กำหนดเงินทุน และสกุลเงิน THB/USD</div>
+            <div class="text-xs font-bold text-slate-900">เลือกหุ้นที่ต้องการลงทุน</div>
+            <div class="text-xs text-slate-600">เลือกหุ้นไทยหรือหุ้นต่างประเทศอย่างน้อย 2 ตัวขึ้นไป</div>
           </div>
         </button>
-        <button type="button" onclick="switchMainCategory('orders', true)" class="text-left p-2.5 rounded-lg bg-emerald-50/70 hover:bg-emerald-100/80 border border-emerald-200 transition flex items-start gap-2.5">
-          <span class="px-2 py-0.5 rounded bg-emerald-600 text-white text-[10px] font-bold shrink-0 mt-0.5">หมวดที่ 1</span>
+        <button type="button" onclick="scrollToSectionById('step-2-goal-card')" class="text-left p-2.5 rounded-lg bg-indigo-50/70 hover:bg-indigo-100/80 border border-indigo-200 transition flex items-start gap-2.5">
+          <span class="px-2 py-0.5 rounded bg-indigo-600 text-white text-xs font-bold shrink-0 mt-0.5">ขั้นตอนที่ 2</span>
           <div>
-            <div class="text-xs font-bold text-slate-900">ใบสั่งซื้อ-ขาย &amp; ปรับพอร์ต</div>
-            <div class="text-[11px] text-slate-600">ดูสัดส่วนหุ้นและจำนวนหุ้นที่ต้องซื้อ-ขายจริงทันที</div>
+            <div class="text-xs font-bold text-slate-900">เลือกแนวทางจัดพอร์ต</div>
+            <div class="text-xs text-slate-600">เลือกว่าเน้นกำไรคุ้มความเสี่ยง เน้นปลอดภัย หรือแบ่งเท่ากัน</div>
           </div>
         </button>
-        <button type="button" onclick="switchMainCategory('news', true)" class="text-left p-2.5 rounded-lg bg-sky-50/70 hover:bg-sky-100/80 border border-sky-200 transition flex items-start gap-2.5">
-          <span class="px-2 py-0.5 rounded bg-sky-600 text-white text-[10px] font-bold shrink-0 mt-0.5">หมวดที่ 2-3</span>
+        <button type="button" onclick="scrollToSectionById('step-3-budget-card')" class="text-left p-2.5 rounded-lg bg-emerald-50/70 hover:bg-emerald-100/80 border border-emerald-200 transition flex items-start gap-2.5">
+          <span class="px-2 py-0.5 rounded bg-emerald-600 text-white text-xs font-bold shrink-0 mt-0.5">ขั้นตอนที่ 3</span>
           <div>
-            <div class="text-xs font-bold text-slate-900">ข่าวตลาด &amp; ทดสอบวิกฤตย้อนหลัง</div>
-            <div class="text-[11px] text-slate-600">สัญญาณข่าว RSI/SMA และจำลองความเสี่ยง Max Drawdown</div>
+            <div class="text-xs font-bold text-slate-900">ใส่เงินลงทุนและกดคำนวณ</div>
+            <div class="text-xs text-slate-600">ระบุจำนวนเงินทุน ช่วงเวลาข้อมูล แล้วกดปุ่มคำนวณพอร์ต</div>
           </div>
         </button>
-        <button type="button" onclick="switchMainCategory('goals', true)" class="text-left p-2.5 rounded-lg bg-indigo-50/80 hover:bg-indigo-100 border border-indigo-200 transition flex items-start gap-2.5">
-          <span class="px-2 py-0.5 rounded bg-indigo-600 text-white text-[10px] font-bold shrink-0 mt-0.5">หมวดที่ 4</span>
+        <button type="button" onclick="trySamplePortfolio('colab_original')" class="text-left p-2.5 rounded-lg bg-amber-50/80 hover:bg-amber-100 border border-amber-300 transition flex items-start gap-2.5">
+          <span class="px-2 py-0.5 rounded bg-amber-600 text-white text-xs font-bold shrink-0 mt-0.5">ขั้นตอนที่ 4</span>
           <div>
-            <div class="text-xs font-bold text-slate-900">สร้างพอร์ตตามเป้าหมาย &amp; บันทึก</div>
-            <div class="text-[11px] text-slate-600">จำลองแผนออม DCA พิชิตเป้าหมาย บันทึกและดึงพอร์ตกลับมาใช้</div>
+            <div class="text-xs font-bold text-slate-900">ดูผลลัพธ์และใบสั่งซื้อ-ขาย</div>
+            <div class="text-xs text-slate-600">รับสรุปคำสั่งซื้อ-ขายเป็นเงินบาท พร้อมคัดลอกไปใช้งานได้ทันที</div>
           </div>
         </button>
       </div>
@@ -226,11 +267,11 @@
       <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-slate-200 pb-3">
         <div>
           <div class="flex items-center gap-2">
-            <span class="px-2.5 py-0.5 rounded bg-slate-900 text-white text-[11px] font-bold">เลือกรูปแบบการใช้งานหลัก</span>
-            <h2 class="text-sm font-bold text-slate-900">คุณต้องการเริ่มต้นวางแผนพอร์ตในรูปแบบใด?</h2>
+            <span class="px-2.5 py-0.5 rounded bg-slate-900 text-white text-xs font-bold">รูปแบบการวางแผนพอร์ต</span>
+            <h2 class="text-sm font-bold text-slate-900">คุณต้องการวางแผนพอร์ตในสถานการณ์ใด?</h2>
           </div>
           <p class="text-xs text-slate-600 mt-0.5">
-            เลือกระหว่าง <b>1. แบ่งสัดส่วนเงินทุนก้อนใหม่</b>, <b>2. ปรับสมดุลพอร์ตที่มีอยู่เดิม</b> หรือ <b>3. สร้างพอร์ตตามเป้าหมายการเงินพร้อมบันทึกเก็บไว้</b>
+            เลือกระหว่าง <b>แบ่งเงินก้อนใหม่ไปซื้อหุ้น</b>, <b>ปรับสัดส่วนพอร์ตที่มีอยู่เดิม</b> หรือ <b>วางแผนออมเงินตามเป้าหมายชีวิต</b>
           </p>
         </div>
 
@@ -243,7 +284,7 @@
               onclick="setGlobalCurrency('THB')"
               class="px-3 py-1 rounded-md text-xs font-bold bg-slate-900 text-white transition"
             >
-              เงินไทย บาท (฿ THB)
+              เงินบาท (฿)
             </button>
             <button
               type="button"
@@ -251,7 +292,7 @@
               onclick="setGlobalCurrency('USD')"
               class="px-3 py-1 rounded-md text-xs font-semibold text-slate-600 hover:text-slate-900 transition"
             >
-              ดอลลาร์สหรัฐ ($ USD)
+              ดอลลาร์สหรัฐ ($)
             </button>
           </div>
         </div>
@@ -267,12 +308,12 @@
         >
           <div class="space-y-1">
             <div class="flex items-center justify-between gap-2">
-              <span class="px-2 py-0.5 rounded bg-emerald-600 text-white text-[10px] font-bold">โหมดที่ 1: เงินทุนก้อนใหม่</span>
-              <span id="primary-mode-badge-new_capital" class="px-2 py-0.5 rounded bg-emerald-600 text-white text-[10px] font-bold shrink-0">กำลังเลือกใช้</span>
+              <span class="px-2 py-0.5 rounded bg-emerald-600 text-white text-xs font-bold">ใช้เงินก้อนใหม่ลงทุน</span>
+              <span id="primary-mode-badge-new_capital" class="px-2 py-0.5 rounded bg-emerald-600 text-white text-xs font-bold shrink-0">กำลังเลือกใช้</span>
             </div>
-            <div class="text-xs font-bold text-slate-900 pt-0.5">แบ่งสัดส่วนเงินทุนก้อนใหม่ (New Capital Allocation)</div>
-            <p class="text-[11px] text-slate-600 leading-relaxed">
-              เหมาะสำหรับผู้ที่มีเงินทุนตั้งต้น และต้องการแบ่งเงินไปซื้อหุ้นแต่ละตัวตามสัดส่วนที่เหมาะสมที่สุด พร้อมออกใบสั่งซื้อรายตัวทันที
+            <div class="text-sm font-bold text-slate-900 pt-0.5">แบ่งสัดส่วนเงินทุนก้อนใหม่</div>
+            <p class="text-xs text-slate-600 leading-relaxed">
+              เหมาะสำหรับผู้ที่มีเงินสดตั้งต้น และต้องการรู้ว่าควรแบ่งเงินไปซื้อหุ้นแต่ละตัวกี่บาท พร้อมออกใบสั่งซื้อรายตัวทันที
             </p>
           </div>
         </div>
@@ -285,12 +326,12 @@
         >
           <div class="space-y-1">
             <div class="flex items-center justify-between gap-2">
-              <span class="px-2 py-0.5 rounded bg-blue-600 text-white text-[10px] font-bold">โหมดที่ 2: ปรับพอร์ตเดิม</span>
-              <span id="primary-mode-badge-existing_portfolio" class="px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-semibold shrink-0">คลิกเพื่อเลือก</span>
+              <span class="px-2 py-0.5 rounded bg-blue-600 text-white text-xs font-bold">มีหุ้นอยู่ในพอร์ตแล้ว</span>
+              <span id="primary-mode-badge-existing_portfolio" class="px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-xs font-semibold shrink-0">คลิกเพื่อเลือก</span>
             </div>
-            <div class="text-xs font-bold text-slate-900 pt-0.5">จัดพอร์ตการลงทุนที่มีอยู่เดิม (Existing Portfolio Rebalance)</div>
-            <p class="text-[11px] text-slate-600 leading-relaxed">
-              เหมาะสำหรับผู้ที่ถือหุ้นอยู่แล้ว (กรอกได้ทั้งยอดเงินหรือจำนวนหุ้นจริง) เพื่อตรวจสุขภาพพอร์ตเดิมเทียบกับเป้าหมาย และคำนวณใบสั่งขาย-ซื้อ
+            <div class="text-sm font-bold text-slate-900 pt-0.5">ปรับสัดส่วนพอร์ตที่มีอยู่เดิม</div>
+            <p class="text-xs text-slate-600 leading-relaxed">
+              เหมาะสำหรับผู้ที่ถือหุ้นอยู่แล้ว เพื่อตรวจสุขภาพพอร์ตเดิม และคำนวณว่าควรขายตัวไหนกี่บาทเพื่อไปซื้อตัวไหนเพิ่ม
             </p>
           </div>
         </div>
@@ -303,68 +344,68 @@
         >
           <div class="space-y-1">
             <div class="flex items-center justify-between gap-2">
-              <span class="px-2 py-0.5 rounded bg-indigo-600 text-white text-[10px] font-bold">โหมดที่ 3: สร้างพอร์ตตามเป้าหมาย</span>
-              <span id="primary-mode-badge-goal_based" class="px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-semibold shrink-0">คลิกเพื่อเลือก</span>
+              <span class="px-2 py-0.5 rounded bg-indigo-600 text-white text-xs font-bold">วางแผนระยะยาว</span>
+              <span id="primary-mode-badge-goal_based" class="px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-xs font-semibold shrink-0">คลิกเพื่อเลือก</span>
             </div>
-            <div class="text-xs font-bold text-slate-900 pt-0.5">สร้างพอร์ตตามเป้าหมายชีวิต &amp; บันทึกพอร์ต (Goal-Based Builder)</div>
-            <p class="text-[11px] text-slate-600 leading-relaxed">
-              เลือกเป้าหมายชีวิต (เกษียณ / สร้างเงินปันผล / ปั้นเงินล้าน) จำลองแผนเงินก้อนแรก + ออมรายเดือน (DCA) และบันทึกพอร์ตเก็บไว้ดูได้ตลอดเวลา
+            <div class="text-sm font-bold text-slate-900 pt-0.5">สร้างพอร์ตตามเป้าหมายชีวิตและบันทึกเก็บไว้</div>
+            <p class="text-xs text-slate-600 leading-relaxed">
+              เลือกเป้าหมายชีวิต (เกษียณ / สร้างเงินปันผล / เก็บเงินล้าน) จำลองแผนเงินก้อนแรกควบคู่การออมรายเดือน และบันทึกพอร์ตไว้ดูได้
             </p>
           </div>
         </div>
       </div>
 
-      <!-- Quick Goal Template Bar (คลิกเลือกเป้าหมายเพื่อจัดพอร์ตอัตโนมัติได้ทันทีจากด้านบน) -->
+      <!-- Quick Goal Template Bar -->
       <div class="pt-2 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
         <div class="flex items-center gap-1.5 flex-wrap">
-          <span class="text-[11px] font-bold text-indigo-900">สร้างพอร์ตด่วนตามเป้าหมายยอดนิยม:</span>
-          <button type="button" onclick="applyGoalBasedTemplate('retirement', true)" class="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 transition">
-            1. พอร์ตเกษียณมั่นคง (10 ปี)
+          <span class="text-xs font-bold text-indigo-900">เลือกพอร์ตตามเป้าหมายยอดนิยม:</span>
+          <button type="button" onclick="applyGoalBasedTemplate('retirement', true)" class="px-2.5 py-1 rounded-md text-xs font-semibold bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 transition">
+            พอร์ตเกษียณมั่นคง (10 ปี)
           </button>
-          <button type="button" onclick="applyGoalBasedTemplate('dividend', true)" class="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 transition">
-            2. พอร์ตสร้างเงินปันผล (7 ปี)
+          <button type="button" onclick="applyGoalBasedTemplate('dividend', true)" class="px-2.5 py-1 rounded-md text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 transition">
+            พอร์ตสร้างเงินปันผล (7 ปี)
           </button>
-          <button type="button" onclick="applyGoalBasedTemplate('growth', true)" class="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 transition">
-            3. พอร์ตปั้นเงินล้านเติบโตสูง (5 ปี)
+          <button type="button" onclick="applyGoalBasedTemplate('growth', true)" class="px-2.5 py-1 rounded-md text-xs font-semibold bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 transition">
+            พอร์ตปั้นเงินล้านเติบโตสูง (5 ปี)
           </button>
-          <button type="button" onclick="applyGoalBasedTemplate('preservation', true)" class="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 transition">
-            4. พอร์ตพักเงินปลอดภัย (5 ปี)
+          <button type="button" onclick="applyGoalBasedTemplate('preservation', true)" class="px-2.5 py-1 rounded-md text-xs font-semibold bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 transition">
+            พอร์ตพักเงินปลอดภัย (5 ปี)
           </button>
         </div>
-        <button type="button" onclick="scrollToGoalBuilderSection()" class="text-[11px] font-bold text-indigo-700 hover:text-indigo-900 underline shrink-0">
-          ไปที่ศูนย์สร้างและบันทึกพอร์ตตามเป้าหมาย ->
+        <button type="button" onclick="scrollToGoalBuilderSection()" class="text-xs font-bold text-indigo-700 hover:text-indigo-900 underline shrink-0">
+          เปิดหน้าวางแผนและบันทึกพอร์ตตามเป้าหมาย ➔
         </button>
       </div>
     </div>
 
-    <!-- SYSTEM VERIFICATION & SELF-TEST PANEL (แสดงผลการทดสอบระบบครบ 6 โมดูล) -->
+    <!-- SYSTEM VERIFICATION & SELF-TEST PANEL -->
     <div id="system-verify-panel" class="hidden fin-card p-4 bg-white border-t-4 border-t-emerald-600 space-y-3">
       <div class="flex items-center justify-between border-b border-slate-200 pb-2.5">
         <div class="flex items-center gap-2">
-          <span class="px-2 py-0.5 rounded bg-emerald-600 text-white text-[10px] font-bold">System Self-Test</span>
-          <h3 class="text-xs font-bold text-slate-900">ผลการตรวจสอบและทดสอบความถูกต้องของระบบคำนวณ (End-to-End Verification)</h3>
+          <span class="px-2 py-0.5 rounded bg-emerald-600 text-white text-xs font-bold">ตรวจความพร้อมระบบ</span>
+          <h3 class="text-sm font-bold text-slate-900">ผลการตรวจสอบความถูกต้องของระบบคำนวณและการเชื่อมต่อข้อมูลตลาด</h3>
         </div>
         <div class="flex items-center gap-2">
-          <button type="button" onclick="runSystemVerificationModal()" class="px-2.5 py-1 text-[11px] font-semibold bg-slate-900 text-white rounded hover:bg-blue-700 transition">ทดสอบซ้ำ</button>
-          <button type="button" onclick="document.getElementById('system-verify-panel').classList.add('hidden')" class="px-2 py-1 text-[11px] font-semibold text-slate-500 hover:text-slate-800">ปิดหน้าต่างนี้</button>
+          <button type="button" onclick="runSystemVerificationModal()" class="px-2.5 py-1 text-xs font-semibold bg-slate-900 text-white rounded hover:bg-blue-700 transition">ตรวจสอบซ้ำ</button>
+          <button type="button" onclick="document.getElementById('system-verify-panel').classList.add('hidden')" class="px-2 py-1 text-xs font-semibold text-slate-500 hover:text-slate-800">ปิดหน้าต่างนี้</button>
         </div>
       </div>
       <div id="system-verify-results" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5 text-xs"></div>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+    <div class="space-y-6">
 
-      <!-- LEFT SIDEBAR: 3-STEP COLOR-CODED SETUP (4 cols) -->
-      <div class="lg:col-span-4 space-y-5">
+      <!-- FORM WORKSPACE: ขั้นตอนที่ 1 ถึง ขั้นตอนที่ 3 -->
+      <div id="form-steps-grid" class="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
 
-        <!-- STEP 1: SELECT ASSETS (ธีมสีน้ำเงิน Sapphire Blue) -->
+        <!-- ขั้นตอนที่ 1: เลือกหุ้นและสินทรัพย์ในพอร์ต -->
         <div id="step-1-config-card" class="fin-card step-accent-blue">
           <div class="fin-card-header bg-blue-50/50 flex items-center justify-between">
             <div class="flex items-center gap-2.5">
-              <span class="px-2 py-0.5 rounded bg-blue-600 text-white text-[11px] font-bold">ขั้นที่ 1</span>
+              <span class="px-2.5 py-0.5 rounded bg-blue-600 text-white text-xs font-bold">ขั้นตอนที่ 1</span>
               <div>
-                <h2 class="text-sm font-bold text-slate-900">เลือกหุ้นและสินทรัพย์ในพอร์ต (<span id="asset-count" class="text-blue-700">0</span>)</h2>
-                <p class="text-[11px] text-slate-500">เลือกสินทรัพย์อย่างน้อย 2 รายการเพื่อเปรียบเทียบสัดส่วน</p>
+                <h2 class="text-sm font-bold text-slate-900">เลือกหุ้นและสินทรัพย์ในพอร์ต (<span id="asset-count" class="text-blue-700">5</span> รายการ)</h2>
+                <p class="text-xs text-slate-600">เลือกหุ้นอย่างน้อย 2 ตัวเพื่อเปรียบเทียบและจัดสัดส่วน</p>
               </div>
             </div>
             <button onclick="clearAllTickers()" class="text-xs text-slate-500 hover:text-rose-600 font-medium transition">
@@ -375,23 +416,23 @@
           <div class="p-4 space-y-3">
             <!-- Stock Price Currency Switcher inside Step 1 -->
             <div class="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-200">
-              <span class="text-[11px] font-bold text-slate-700">แสดงราคาหุ้นในรายการเป็น:</span>
+              <span class="text-xs font-bold text-slate-700">แสดงราคาหุ้นในรายการเป็น:</span>
               <div class="inline-flex bg-white p-0.5 rounded-md border border-slate-200">
                 <button
                   type="button"
                   id="step1-price-curr-thb"
                   onclick="setGlobalCurrency('THB')"
-                  class="px-2 py-0.5 text-[11px] font-bold rounded bg-blue-600 text-white transition"
+                  class="px-2 py-0.5 text-xs font-bold rounded bg-blue-600 text-white transition"
                 >
-                  ฿ บาท (THB)
+                  ฿ บาท
                 </button>
                 <button
                   type="button"
                   id="step1-price-curr-usd"
                   onclick="setGlobalCurrency('USD')"
-                  class="px-2 py-0.5 text-[11px] font-semibold rounded text-slate-600 hover:text-slate-900 transition"
+                  class="px-2 py-0.5 text-xs font-semibold rounded text-slate-600 hover:text-slate-900 transition"
                 >
-                  $ ดอลลาร์ (USD)
+                  $ ดอลลาร์
                 </button>
               </div>
             </div>
@@ -403,7 +444,7 @@
                 <input
                   type="text"
                   id="ticker-search-input"
-                  placeholder="ค้นหาชื่อย่อหุ้น เช่น NVDA, AAPL, PTT.BK, GLD..."
+                  placeholder="พิมพ์ชื่อย่อหุ้น เช่น NVDA, AAPL, PTT.BK, GLD..."
                   autocomplete="off"
                   class="w-full pl-9 pr-16 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 text-slate-900 placeholder-slate-400 font-medium transition"
                   oninput="handleSearchInput(event)"
@@ -431,70 +472,70 @@
           </div>
         </div>
 
-        <!-- STEP 2: CHOOSE INVESTMENT GOAL (ธีมสีคราม Indigo) -->
-        <div class="fin-card step-accent-indigo">
+        <!-- ขั้นตอนที่ 2: เลือกแนวทางจัดพอร์ต -->
+        <div id="step-2-goal-card" class="fin-card step-accent-indigo">
           <div class="fin-card-header bg-indigo-50/50 flex items-center gap-2.5">
-            <span class="px-2 py-0.5 rounded bg-indigo-600 text-white text-[11px] font-bold">ขั้นที่ 2</span>
+            <span class="px-2.5 py-0.5 rounded bg-indigo-600 text-white text-xs font-bold">ขั้นตอนที่ 2</span>
             <div>
-              <h2 class="text-sm font-bold text-slate-900">เลือกเป้าหมายการจัดพอร์ต</h2>
-              <p class="text-[11px] text-slate-500">เลือกกลยุทธ์ที่ตรงกับระดับความเสี่ยงที่คุณยอมรับได้</p>
+              <h2 class="text-sm font-bold text-slate-900">เลือกแนวทางจัดพอร์ต</h2>
+              <p class="text-xs text-slate-600">เลือกรูปแบบสัดส่วนพอร์ตให้ตรงกับความสบายใจของคุณ</p>
             </div>
           </div>
 
           <div class="p-4 space-y-2.5">
-            <!-- Goal 1: Max Sharpe -->
+            <!-- Goal 1: เน้นกำไรคุ้มความเสี่ยงที่สุด -->
             <div onclick="selectGoal('max_sharpe')" id="goal-card-max_sharpe" class="goal-option active rounded-lg p-3">
-              <div class="flex items-center justify-between">
-                <span class="text-xs font-bold text-slate-900">เน้นผลตอบแทนคุ้มความเสี่ยงที่สุด</span>
-                <span class="text-[10px] font-semibold px-2 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-200">แนะนำ (Max Sharpe)</span>
+              <div class="flex items-center justify-between gap-2">
+                <span class="text-xs font-bold text-slate-900">เน้นกำไรคุ้มความเสี่ยงที่สุด</span>
+                <span class="text-xs font-semibold px-2 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-200">แนะนำ</span>
               </div>
-              <p class="text-[11px] text-slate-500 mt-1">คำนวณสัดส่วนที่ให้ผลตอบแทนคาดหวังสูงสุดต่อหนึ่งหน่วยความเสี่ยง</p>
+              <p class="text-xs text-slate-600 mt-1">ให้น้ำหนักหุ้นที่สร้างผลตอบแทนได้ดีที่สุดเมื่อเทียบกับความผันผวนของราคา</p>
             </div>
 
-            <!-- Goal 2: Min Volatility -->
+            <!-- Goal 2: เน้นปลอดภัย เงินต้นแกว่งน้อย -->
             <div onclick="selectGoal('min_volatility')" id="goal-card-min_volatility" class="goal-option rounded-lg p-3">
-              <div class="flex items-center justify-between">
-                <span class="text-xs font-bold text-slate-900">เน้นความเสี่ยงต่ำ เงินต้นแกว่งน้อย</span>
-                <span class="text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200">Min Volatility</span>
+              <div class="flex items-center justify-between gap-2">
+                <span class="text-xs font-bold text-slate-900">เน้นปลอดภัย เงินต้นแกว่งน้อย</span>
+                <span class="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200">ความเสี่ยงต่ำ</span>
               </div>
-              <p class="text-[11px] text-slate-500 mt-1">เน้นรักษาเงินต้น ลดโอกาสที่เงินต้นจะหดหายในช่วงวิกฤตตลาด</p>
+              <p class="text-xs text-slate-600 mt-1">เน้นรักษาเงินต้น เลือกหุ้นที่ราคาไม่เหวี่ยงแรงเพื่อลดโอกาสขาดทุนหนักช่วงตลาดตก</p>
             </div>
 
-            <!-- Goal 3: HRP -->
+            <!-- Goal 3: เน้นกระจายความเสี่ยงสมดุล -->
             <div onclick="selectGoal('hrp')" id="goal-card-hrp" class="goal-option rounded-lg p-3">
-              <div class="flex items-center justify-between">
+              <div class="flex items-center justify-between gap-2">
                 <span class="text-xs font-bold text-slate-900">เน้นกระจายความเสี่ยงสมดุล</span>
-                <span class="text-[10px] font-semibold px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 border border-indigo-200">Risk Parity (HRP)</span>
+                <span class="text-xs font-semibold px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 border border-indigo-200">กระจายหลายกลุ่ม</span>
               </div>
-              <p class="text-[11px] text-slate-500 mt-1">กระจายเงินลงทุกกลุ่มสินทรัพย์อย่างเป็นระบบ ป้องกันพอร์ตกระจุกตัว</p>
+              <p class="text-xs text-slate-600 mt-1">แบ่งเงินกระจายลงสินทรัพย์แต่ละกลุ่มอย่างสมดุล ป้องกันพอร์ตกระจุกในหุ้นตัวเดียว</p>
             </div>
 
-            <!-- Goal 4: Equal Weight -->
+            <!-- Goal 4: แบ่งเงินเท่ากันทุกตัว -->
             <div onclick="selectGoal('equal_weight')" id="goal-card-equal_weight" class="goal-option rounded-lg p-3">
-              <div class="flex items-center justify-between">
-                <span class="text-xs font-bold text-slate-900">เฉลี่ยสัดส่วนเท่ากันทุกตัว</span>
-                <span class="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">Equal Weight (1/N)</span>
+              <div class="flex items-center justify-between gap-2">
+                <span class="text-xs font-bold text-slate-900">แบ่งเงินเท่ากันทุกตัว</span>
+                <span class="text-xs font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">หารเท่ากัน</span>
               </div>
-              <p class="text-[11px] text-slate-500 mt-1">แบ่งเงินลงทุนในหุ้นทุกตัวเท่าๆ กัน ใช้เป็นเกณฑ์มาตรฐานเปรียบเทียบ</p>
+              <p class="text-xs text-slate-600 mt-1">แบ่งเงินลงทุนในหุ้นทุกตัวที่เลือกด้วยจำนวนเงินเท่าๆ กัน เข้าใจง่ายและตรงไปตรงมา</p>
             </div>
           </div>
         </div>
 
-        <!-- STEP 3: BUDGET & PARAMETERS (ธีมสีเขียวมรกต Emerald) -->
-        <div class="fin-card step-accent-emerald">
+        <!-- ขั้นตอนที่ 3: กำหนดเงินลงทุนและกดคำนวณ -->
+        <div id="step-3-budget-card" class="fin-card step-accent-emerald">
           <div class="fin-card-header bg-emerald-50/50 flex items-center gap-2.5">
-            <span class="px-2 py-0.5 rounded bg-emerald-600 text-white text-[11px] font-bold">ขั้นที่ 3</span>
+            <span class="px-2.5 py-0.5 rounded bg-emerald-600 text-white text-xs font-bold">ขั้นตอนที่ 3</span>
             <div>
-              <h2 class="text-sm font-bold text-slate-900">เงินต้น (บาท) และกรอบการคำนวณ</h2>
-              <p class="text-[11px] text-slate-500">กำหนดงบลงทุนเพื่อคำนวณยอดเงินบาทจริงในทุกส่วน</p>
+              <h2 class="text-sm font-bold text-slate-900">กำหนดเงินลงทุนและกดคำนวณ</h2>
+              <p class="text-xs text-slate-600">ระบุจำนวนเงินทุนเพื่อคำนวณยอดซื้อ-ขายและจำลองความเสี่ยงเป็นเงินบาท</p>
             </div>
           </div>
 
           <div class="p-4 space-y-4">
-            <!-- 3.1 Budget Input in Baht -->
+            <!-- Budget Input in Baht -->
             <div class="p-3 rounded-lg bg-emerald-50/40 border border-emerald-200/80 space-y-2">
               <label class="text-xs font-bold text-emerald-950 block">
-                3.1 เงินต้นของคุณ (ใช้วิเคราะห์เงินหายสูงสุดในอดีต &amp; คำนวณยอดซื้อ/ขาย)
+                จำนวนเงินต้นของคุณ (ใช้คำนวณยอดซื้อ-ขายและประเมินความเสี่ยง)
               </label>
               <div class="relative">
                 <span class="absolute left-3 top-2.5 text-xs font-bold text-slate-500 font-mono" id="currency-symbol">฿</span>
@@ -511,25 +552,25 @@
                   onchange="updateCurrencySymbol()"
                   class="absolute right-1.5 top-1.5 py-1 px-2 text-xs font-semibold bg-slate-50 border border-slate-200 rounded text-slate-700 focus:outline-none cursor-pointer"
                 >
-                  <option value="THB" selected>บาท (THB)</option>
-                  <option value="USD">ดอลลาร์ (USD)</option>
+                  <option value="THB" selected>บาท (฿)</option>
+                  <option value="USD">ดอลลาร์ ($)</option>
                 </select>
               </div>
               <!-- Quick Budget Presets -->
               <div class="flex flex-wrap gap-1.5 pt-0.5">
-                <span class="text-[10px] text-slate-500 self-center mr-0.5">เลือกเร็ว:</span>
-                <button type="button" onclick="setQuickBudget(50000)" class="px-2 py-0.5 text-[11px] font-mono rounded bg-white border border-slate-200 hover:bg-emerald-50 hover:text-emerald-700 text-slate-600 transition">50,000</button>
-                <button type="button" onclick="setQuickBudget(100000)" class="px-2 py-0.5 text-[11px] font-mono rounded bg-emerald-100 text-emerald-800 font-semibold border border-emerald-300 transition">100,000</button>
-                <button type="button" onclick="setQuickBudget(500000)" class="px-2 py-0.5 text-[11px] font-mono rounded bg-white border border-slate-200 hover:bg-emerald-50 hover:text-emerald-700 text-slate-600 transition">500,000</button>
-                <button type="button" onclick="setQuickBudget(1000000)" class="px-2 py-0.5 text-[11px] font-mono rounded bg-white border border-slate-200 hover:bg-emerald-50 hover:text-emerald-700 text-slate-600 transition">1,000,000</button>
+                <span class="text-xs text-slate-500 self-center mr-0.5">เลือกเร็ว:</span>
+                <button type="button" onclick="setQuickBudget(50000)" class="px-2 py-0.5 text-xs font-mono rounded bg-white border border-slate-200 hover:bg-emerald-50 hover:text-emerald-700 text-slate-600 transition">50,000</button>
+                <button type="button" onclick="setQuickBudget(100000)" class="px-2 py-0.5 text-xs font-mono rounded bg-emerald-100 text-emerald-800 font-semibold border border-emerald-300 transition">100,000</button>
+                <button type="button" onclick="setQuickBudget(500000)" class="px-2 py-0.5 text-xs font-mono rounded bg-white border border-slate-200 hover:bg-emerald-50 hover:text-emerald-700 text-slate-600 transition">500,000</button>
+                <button type="button" onclick="setQuickBudget(1000000)" class="px-2 py-0.5 text-xs font-mono rounded bg-white border border-slate-200 hover:bg-emerald-50 hover:text-emerald-700 text-slate-600 transition">1,000,000</button>
               </div>
             </div>
 
-            <!-- 3.2 FX Rate Box -->
+            <!-- FX Rate Box -->
             <div class="p-3 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-between gap-2">
               <div>
-                <div class="text-[11px] font-bold text-slate-800">3.2 เรทแปลงค่าเงิน (USD ➔ บาท)</div>
-                <div class="text-[10px] text-slate-500">ปรับให้ตรงกับเรทในแอปโบรกเกอร์ได้</div>
+                <div class="text-xs font-bold text-slate-800">อัตราแลกเปลี่ยน (ดอลลาร์ ➔ บาท)</div>
+                <div class="text-xs text-slate-500">ปรับให้ตรงกับเรทในแอปลงทุนของคุณได้</div>
               </div>
               <div class="flex items-center gap-1">
                 <input
@@ -542,38 +583,38 @@
                   onchange="handleFxRateChange()"
                   class="w-20 px-2 py-1 text-xs font-mono font-bold text-right bg-white border border-slate-300 rounded text-slate-900 focus:outline-none focus:border-blue-600"
                 />
-                <span class="text-[11px] text-slate-500 font-medium">฿/$</span>
+                <span class="text-xs text-slate-600 font-medium">฿/$</span>
               </div>
             </div>
 
-            <!-- 3.3 Historical Period -->
+            <!-- Historical Period (Default: 3 years ago to Today) -->
             <div class="p-3 rounded-lg bg-slate-50 border border-slate-200 space-y-2">
               <div class="flex items-center justify-between">
-                <label class="text-[11px] font-bold text-slate-800">3.3 ช่วงข้อมูลย้อนหลังที่ใช้ทำ Backtest</label>
-                <div class="flex gap-1 text-[11px]">
-                  <button type="button" onclick="setTimeframe('1Y', this)" class="tf-btn px-2 py-0.5 rounded bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 font-medium">1 ปี</button>
-                  <button type="button" onclick="setTimeframe('3Y', this)" class="tf-btn px-2 py-0.5 rounded bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 font-medium">3 ปี</button>
-                  <button type="button" onclick="setTimeframe('4Y', this)" class="tf-btn px-2 py-0.5 rounded bg-slate-900 text-white font-semibold">4 ปี</button>
-                  <button type="button" onclick="setTimeframe('5Y', this)" class="tf-btn px-2 py-0.5 rounded bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 font-medium">5 ปี</button>
+                <label class="text-xs font-bold text-slate-800">ช่วงข้อมูลย้อนหลังที่ใช้คำนวณ</label>
+                <div class="flex gap-1 text-xs">
+                  <button type="button" id="tf-btn-1Y" onclick="setTimeframe('1Y', this)" class="tf-btn px-2 py-0.5 rounded bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 font-medium">1 ปี</button>
+                  <button type="button" id="tf-btn-3Y" onclick="setTimeframe('3Y', this)" class="tf-btn px-2 py-0.5 rounded bg-slate-900 text-white font-semibold">3 ปี</button>
+                  <button type="button" id="tf-btn-4Y" onclick="setTimeframe('4Y', this)" class="tf-btn px-2 py-0.5 rounded bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 font-medium">4 ปี</button>
+                  <button type="button" id="tf-btn-5Y" onclick="setTimeframe('5Y', this)" class="tf-btn px-2 py-0.5 rounded bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 font-medium">5 ปี</button>
                 </div>
               </div>
               <div class="grid grid-cols-2 gap-2">
                 <div>
-                  <span class="text-[10px] text-slate-500 block mb-0.5">ตั้งแต่วันที่</span>
-                  <input type="date" id="start-date-input" value="2020-01-01" class="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-md text-slate-800 font-mono focus:outline-none focus:border-blue-600">
+                  <span class="text-xs text-slate-600 block mb-0.5">ตั้งแต่วันที่</span>
+                  <input type="date" id="start-date-input" value="2023-11-09" class="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-md text-slate-800 font-mono focus:outline-none focus:border-blue-600">
                 </div>
                 <div>
-                  <span class="text-[10px] text-slate-500 block mb-0.5">ถึงวันที่</span>
-                  <input type="date" id="end-date-input" value="2024-01-01" class="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-md text-slate-800 font-mono focus:outline-none focus:border-blue-600">
+                  <span class="text-xs text-slate-600 block mb-0.5">ถึงวันที่</span>
+                  <input type="date" id="end-date-input" value="2026-11-09" class="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-md text-slate-800 font-mono focus:outline-none focus:border-blue-600">
                 </div>
               </div>
             </div>
 
-            <!-- 3.4 Max Weight Cap -->
+            <!-- Max Weight Cap -->
             <div class="p-3 rounded-lg bg-slate-50 border border-slate-200 space-y-1.5">
               <div class="flex items-center justify-between">
-                <label class="text-[11px] font-bold text-slate-800">3.4 จำกัดสัดส่วนสูงสุดต่อหุ้น 1 ตัว</label>
-                <span id="max-weight-val" class="text-xs font-mono font-bold text-blue-700">ไม่จำกัด (100%)</span>
+                <label class="text-xs font-bold text-slate-800">จำกัดสัดส่วนสูงสุดต่อหุ้น 1 ตัว</label>
+                <span id="max-weight-val" class="text-xs font-mono font-bold text-blue-700">ไม่จำกัดเพดาน</span>
               </div>
               <input
                 type="range"
@@ -585,14 +626,14 @@
                 oninput="updateMaxWeightLabel(this.value)"
                 class="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-700"
               />
-              <div class="flex justify-between text-[10px] text-slate-500">
+              <div class="flex justify-between text-xs text-slate-500">
                 <button type="button" onclick="setMaxWeight(35)" class="hover:text-blue-700 underline">ไม่เกิน 35% (กระจายตัว)</button>
                 <button type="button" onclick="setMaxWeight(50)" class="hover:text-blue-700 underline">ไม่เกิน 50%</button>
-                <button type="button" onclick="setMaxWeight(100)" class="hover:text-blue-700 underline">ไม่จำกัด (100%)</button>
+                <button type="button" onclick="setMaxWeight(100)" class="hover:text-blue-700 underline">ไม่จำกัดเพดาน</button>
               </div>
             </div>
 
-            <!-- 3.5 Market News & Trend Signal Adjustment -->
+            <!-- Market News & Trend Signal Adjustment -->
             <div class="p-3 rounded-lg bg-blue-50/50 border border-blue-200 space-y-1.5">
               <label class="flex items-start gap-2 cursor-pointer select-none">
                 <input
@@ -603,30 +644,40 @@
                   class="mt-0.5 rounded border-blue-300 text-blue-700 focus:ring-blue-500"
                 />
                 <div>
-                  <span class="text-[11px] font-bold text-blue-950 block">3.5 ปรับสัดส่วนพอร์ตตามข่าวตลาด &amp; แนวโน้มราคา</span>
-                  <span class="text-[10px] text-slate-600 leading-relaxed block mt-0.5">
-                    นำกระแสข่าวตลาดจริงควบคู่ค่า RSI และเส้นค่าเฉลี่ย 50/200 วัน มาปรับน้ำหนักพอร์ตอย่างรอบคอบเพื่อลดความเสี่ยงหุ้นขาลงหรือราคาตึงตัว
+                  <span class="text-xs font-bold text-blue-950 block">ปรับสัดส่วนพอร์ตตามข่าวตลาดและแนวโน้มราคา</span>
+                  <span class="text-xs text-slate-600 leading-relaxed block mt-0.5">
+                    นำข่าวสารตลาดล่าสุดและแนวโน้มราคามาช่วยลดน้ำหนักหุ้นที่กำลังเป็นขาลงหรือราคาปรับขึ้นร้อนแรงเกินไป
                   </span>
                 </div>
               </label>
             </div>
 
-            <!-- Action Button -->
-            <button
-              id="run-optimize-btn"
-              onclick="runOptimization()"
-              class="w-full py-3.5 px-4 rounded-xl font-bold text-xs uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white shadow-md transition flex items-center justify-center gap-2"
-            >
-              <i data-lucide="calculator" class="w-4 h-4"></i>
-              <span id="run-optimize-btn-label">คำนวณพอร์ต &amp; สร้างใบสั่งซื้อ-ขาย</span>
-            </button>
+            <!-- Action Buttons -->
+            <div class="space-y-2">
+              <button
+                id="run-optimize-btn"
+                onclick="runOptimization(true)"
+                class="w-full py-3.5 px-4 rounded-xl font-bold text-sm bg-emerald-600 hover:bg-emerald-700 text-white shadow-md transition flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <i data-lucide="calculator" class="w-4 h-4"></i>
+                <span id="run-optimize-btn-label">คำนวณพอร์ตและสร้างใบสั่งซื้อ-ขาย</span>
+              </button>
+              <button
+                type="button"
+                onclick="trySamplePortfolio('colab_original')"
+                class="w-full py-2.5 px-4 rounded-xl font-bold text-xs bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 transition flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <i data-lucide="play-circle" class="w-4 h-4 text-amber-700"></i>
+                <span>หรือกด "ลองพอร์ตตัวอย่าง" เพื่อดูผลลัพธ์ทันที</span>
+              </button>
+            </div>
           </div>
         </div>
 
       </div>
 
-      <!-- RIGHT MAIN WORKSPACE: 4 COLOR-CODED RESULT SECTIONS (8 cols) -->
-      <div class="lg:col-span-8 space-y-6">
+      <!-- RESULTS WORKSPACE: ขั้นตอนที่ 4 ดูผลลัพธ์และใบสั่งซื้อ-ขาย (ซ่อนไว้ก่อนกดคำนวณ) -->
+      <div id="results-workspace-col" class="w-full space-y-6">
 
         <!-- ERROR BANNER -->
         <div id="error-banner" class="hidden p-4 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-start gap-3">
@@ -641,31 +692,65 @@
         <div id="loading-card" class="hidden fin-card p-10 text-center space-y-3">
           <div class="w-10 h-10 mx-auto rounded-full border-2 border-slate-200 border-t-blue-600 animate-spin"></div>
           <h3 class="text-sm font-bold text-slate-900">กำลังดึงข้อมูลตลาดและคำนวณแผนปรับพอร์ตเป็นเงินบาท...</h3>
-          <p class="text-xs text-slate-500">วิเคราะห์ราคาปิดย้อนหลัง คำนวณจำนวนเงินบาทที่เคยลดลงสูงสุดในอดีต และสรุปยอดซื้อ-ขายตามงบประมาณ</p>
+          <p class="text-xs text-slate-600">วิเคราะห์ราคาย้อนหลัง คำนวณจำนวนเงินบาทที่เคยลดลงสูงสุดในอดีต และสรุปยอดซื้อ-ขายตามงบประมาณ</p>
         </div>
 
-        <!-- RESULTS CONTAINER -->
-        <div id="results-dashboard" class="space-y-6">
+        <!-- RESULTS CONTAINER (Goal 2: ซ่อนส่วนผลลัพธ์ทั้งหมดก่อนกดคำนวณ ไม่แสดง "--" หรือ "0") -->
+        <div id="results-dashboard" class="hidden space-y-6">
 
-          <!-- SECTION 1: EXECUTIVE PORTFOLIO SUMMARY & COLOR-CODED KPI CARDS -->
+          <!-- TOP ORDER SUMMARY BANNER (Goal 4: แถบสรุปบนสุดของผลลัพธ์ เช่น "ขาย 2 ตัว ซื้อ 3 ตัว รวม ฿X" พร้อมปุ่มคัดลอกคำสั่ง) -->
+          <div id="top-order-summary-banner" class="fin-card p-4 sm:p-5 bg-gradient-to-r from-emerald-900 via-slate-900 to-blue-950 text-white border-2 border-emerald-500 shadow-lg">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div class="space-y-1">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="px-2.5 py-0.5 rounded bg-emerald-500 text-slate-950 text-xs font-extrabold">ขั้นตอนที่ 4 • สรุปคำสั่งจัดพอร์ต</span>
+                  <span id="top-order-summary-mode-badge" class="text-xs text-emerald-300 font-semibold">พร้อมนำไปส่งคำสั่งซื้อ-ขายได้ทันที</span>
+                </div>
+                <div id="top-order-summary-text" class="text-base sm:text-xl font-extrabold font-mono text-white tracking-tight">
+                  กำลังสรุปรายการซื้อ-ขาย...
+                </div>
+                <p id="top-order-summary-subtext" class="text-xs text-slate-200 leading-relaxed"></p>
+              </div>
+              <div class="flex flex-wrap items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  id="top-copy-orders-btn"
+                  onclick="copyOrderSheet()"
+                  class="px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 active:bg-amber-500 text-slate-950 font-extrabold text-xs sm:text-sm shadow-sm transition flex items-center gap-2 cursor-pointer"
+                >
+                  <i data-lucide="copy" class="w-4 h-4 text-slate-950"></i>
+                  <span id="top-copy-orders-btn-label">คัดลอกคำสั่ง</span>
+                </button>
+                <button
+                  type="button"
+                  onclick="scrollToSectionById('step-3-execution-card')"
+                  class="px-3.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/20 font-semibold text-xs transition cursor-pointer"
+                >
+                  ดูตารางรายตัว ➔
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- EXECUTIVE PORTFOLIO SUMMARY & COLOR-CODED KPI CARDS -->
           <div id="step-2-strategy-card" class="fin-card overflow-hidden">
             <!-- Strategy Title Bar -->
             <div class="bg-slate-900 text-white px-5 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
-                <div class="flex items-center gap-2">
-                  <span class="text-[11px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-400/30">ส่วนที่ 1: สรุปภาพรวมกลยุทธ์ที่เลือก</span>
-                  <span id="analysis-period-badge" class="text-[11px] text-slate-400 font-mono">ข้อมูล: 2020-01-01 ถึง 2024-01-01</span>
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="text-xs font-bold px-2.5 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-400/30">ภาพรวมผลลัพธ์ของแนวทางที่เลือก</span>
+                  <span id="analysis-period-badge" class="text-xs text-slate-300 font-mono"></span>
                 </div>
-                <h2 id="active-goal-title" class="text-base font-bold text-white mt-1">พอร์ตผลตอบแทนคุ้มความเสี่ยงสูงสุด (Max Sharpe)</h2>
-                <p id="active-goal-desc" class="text-xs text-slate-300 mt-0.5">เหมาะสำหรับผู้ที่ต้องการผลตอบแทนเติบโตสูงสุดเมื่อเทียบกับความเสี่ยงที่รับได้</p>
+                <h2 id="active-goal-title" class="text-base font-bold text-white mt-1">เน้นกำไรคุ้มความเสี่ยงที่สุด</h2>
+                <p id="active-goal-desc" class="text-xs text-slate-300 mt-0.5">จัดสัดส่วนให้ได้ผลตอบแทนคาดหวังดีที่สุดเมื่อเทียบกับความผันผวนของราคา</p>
               </div>
 
               <!-- Quick Goal Switcher Pills -->
-              <div class="flex items-center gap-1 bg-slate-800 p-1 rounded-lg self-start sm:self-center">
-                <button onclick="selectGoal('max_sharpe')" id="top-pill-max_sharpe" class="top-goal-pill px-2.5 py-1 rounded text-[11px] font-semibold bg-blue-600 text-white transition">Max Sharpe</button>
-                <button onclick="selectGoal('min_volatility')" id="top-pill-min_volatility" class="top-goal-pill px-2.5 py-1 rounded text-[11px] font-medium text-slate-300 hover:text-white transition">ความเสี่ยงต่ำ</button>
-                <button onclick="selectGoal('hrp')" id="top-pill-hrp" class="top-goal-pill px-2.5 py-1 rounded text-[11px] font-medium text-slate-300 hover:text-white transition">กระจายสมดุล</button>
-                <button onclick="selectGoal('equal_weight')" id="top-pill-equal_weight" class="top-goal-pill px-2.5 py-1 rounded text-[11px] font-medium text-slate-300 hover:text-white transition">เท่ากัน 1/N</button>
+              <div class="flex items-center gap-1 bg-slate-800 p-1 rounded-lg self-start sm:self-center flex-wrap">
+                <button onclick="selectGoal('max_sharpe')" id="top-pill-max_sharpe" class="top-goal-pill px-2.5 py-1 rounded text-xs font-semibold bg-blue-600 text-white transition">คุ้มความเสี่ยงที่สุด</button>
+                <button onclick="selectGoal('min_volatility')" id="top-pill-min_volatility" class="top-goal-pill px-2.5 py-1 rounded text-xs font-medium text-slate-300 hover:text-white transition">ปลอดภัยแกว่งน้อย</button>
+                <button onclick="selectGoal('hrp')" id="top-pill-hrp" class="top-goal-pill px-2.5 py-1 rounded text-xs font-medium text-slate-300 hover:text-white transition">กระจายสมดุล</button>
+                <button onclick="selectGoal('equal_weight')" id="top-pill-equal_weight" class="top-goal-pill px-2.5 py-1 rounded text-xs font-medium text-slate-300 hover:text-white transition">แบ่งเท่ากันทุกตัว</button>
               </div>
             </div>
 
@@ -674,66 +759,66 @@
               <!-- KPI 1: Expected Annual Return (สีเขียว = ผลตอบแทน) -->
               <div class="p-4 bg-emerald-50/30">
                 <div class="text-xs text-emerald-950 font-bold flex items-center justify-between">
-                  <span>1. ผลตอบแทนคาดหวังต่อปี</span>
-                  <i data-lucide="trending-up" class="w-3.5 h-3.5 text-emerald-600"></i>
+                  <span>ผลตอบแทนคาดหวังต่อปี</span>
+                  <i data-lucide="trending-up" class="w-4 h-4 text-emerald-600"></i>
                 </div>
-                <div id="kpi-return" class="text-xl font-bold font-mono text-emerald-700 mt-1">--%</div>
-                <div id="kpi-profit-money" class="text-[11px] text-emerald-800 bg-emerald-100/80 border border-emerald-200 rounded px-1.5 py-0.5 mt-1.5 inline-block font-semibold">เฉลี่ย -- บาท/ปี</div>
+                <div id="kpi-return" class="text-xl font-bold font-mono text-emerald-700 mt-1"></div>
+                <div id="kpi-profit-money" class="text-xs text-emerald-800 bg-emerald-100/80 border border-emerald-200 rounded px-2 py-0.5 mt-1.5 inline-block font-semibold"></div>
               </div>
 
               <!-- KPI 2: Annual Volatility (สีส้ม = ความผันผวน) -->
               <div class="p-4 bg-amber-50/25">
                 <div class="text-xs text-amber-950 font-bold flex items-center justify-between">
-                  <span>2. ความผันผวน (ความเสี่ยง/ปี)</span>
-                  <i data-lucide="activity" class="w-3.5 h-3.5 text-amber-600"></i>
+                  <span>ความผันผวนของราคาต่อปี</span>
+                  <i data-lucide="activity" class="w-4 h-4 text-amber-600"></i>
                 </div>
-                <div id="kpi-volatility" class="text-xl font-bold font-mono text-slate-900 mt-1">--%</div>
+                <div id="kpi-volatility" class="text-xl font-bold font-mono text-slate-900 mt-1"></div>
                 <div class="mt-1.5">
-                  <span id="kpi-risk-badge" class="inline-block text-[10px] font-semibold px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200">--</span>
+                  <span id="kpi-risk-badge" class="inline-block text-xs font-semibold px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200"></span>
                 </div>
               </div>
 
               <!-- KPI 3: Historical Max Drawdown in BAHT (สีแดง = เงินที่เคยหายสูงสุด) -->
               <div class="p-4 bg-rose-50/45">
                 <div class="text-xs text-rose-950 font-bold flex items-center justify-between">
-                  <span>3. เงินที่เคยหายสูงสุดในอดีต</span>
-                  <i data-lucide="trending-down" class="w-3.5 h-3.5 text-rose-600"></i>
+                  <span>เงินที่เคยติดลบสูงสุดในอดีต</span>
+                  <i data-lucide="trending-down" class="w-4 h-4 text-rose-600"></i>
                 </div>
-                <div id="kpi-mdd-baht" class="text-xl font-bold font-mono text-rose-700 mt-1">-0 บาท</div>
-                <div class="flex items-center justify-between text-[11px] mt-1">
-                  <span id="kpi-mdd" class="font-mono font-bold text-rose-600">(--%)</span>
-                  <span id="kpi-mdd-remaining" class="text-slate-600 font-medium">เหลือต่ำสุด --</span>
+                <div id="kpi-mdd-baht" class="text-xl font-bold font-mono text-rose-700 mt-1"></div>
+                <div class="flex items-center justify-between text-xs mt-1">
+                  <span id="kpi-mdd" class="font-mono font-bold text-rose-600"></span>
+                  <span id="kpi-mdd-remaining" class="text-slate-600 font-medium"></span>
                 </div>
               </div>
 
-              <!-- KPI 4: Sharpe Ratio (สีน้ำเงิน = ความคุ้มค่า) -->
+              <!-- KPI 4: Risk-Adjusted Score (สีน้ำเงิน = ความคุ้มค่า) -->
               <div class="p-4 bg-blue-50/25">
                 <div class="text-xs text-blue-950 font-bold flex items-center justify-between">
-                  <span>4. ความคุ้มค่า (Sharpe Ratio)</span>
-                  <i data-lucide="award" class="w-3.5 h-3.5 text-blue-600"></i>
+                  <span>คะแนนความคุ้มค่าต่อความเสี่ยง</span>
+                  <i data-lucide="award" class="w-4 h-4 text-blue-600"></i>
                 </div>
-                <div id="kpi-sharpe" class="text-xl font-bold font-mono text-blue-700 mt-1">--</div>
+                <div id="kpi-sharpe" class="text-xl font-bold font-mono text-blue-700 mt-1"></div>
                 <div class="mt-1.5">
-                  <span id="kpi-sharpe-badge" class="inline-block text-[10px] font-semibold px-2 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200">--</span>
+                  <span id="kpi-sharpe-badge" class="inline-block text-xs font-semibold px-2 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200"></span>
                 </div>
               </div>
             </div>
           </div>
 
-          <!-- MAIN CATEGORY NAVIGATION TABS (จัดหมวดหมู่ให้ดูง่าย สบายตา เลือกเปิดดูทีละหมวดโดยข้อมูลครบ 100%) -->
+          <!-- MAIN CATEGORY NAVIGATION TABS -->
           <div id="main-category-tabs-bar" class="fin-card p-3 bg-white border-2 border-slate-900 shadow-sm space-y-2">
             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-1">
               <div class="flex items-center gap-2">
-                <span class="px-2 py-0.5 rounded bg-slate-900 text-white text-[10px] font-bold">เลือกหมวดหมู่ที่ต้องการดู</span>
-                <span class="text-xs font-bold text-slate-900">กดเลือกดูทีละหมวดหมู่เพื่อให้หน้าจอกระชับสบายตา (ข้อมูลละเอียดครบทุกจุด)</span>
+                <span class="px-2 py-0.5 rounded bg-slate-900 text-white text-xs font-bold">เลือกดูข้อมูลเชิงลึก</span>
+                <span class="text-xs font-bold text-slate-900">สลับดูใบสั่งซื้อ-ขาย ข่าวสารตลาด กราฟย้อนหลัง หรือแผนออมเงินตามเป้าหมาย</span>
               </div>
               <button
                 type="button"
                 id="main-cat-btn-all"
                 onclick="switchMainCategory('all', false)"
-                class="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition self-start sm:self-center shrink-0"
+                class="px-2.5 py-1 rounded-md text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition self-start sm:self-center shrink-0"
               >
-                แสดงทุกหมวดหมู่พร้อมกัน
+                แสดงทุกหัวข้อพร้อมกัน
               </button>
             </div>
 
@@ -745,10 +830,10 @@
                 class="p-2.5 rounded-xl border-2 border-emerald-600 bg-emerald-600 text-white text-left transition flex flex-col justify-between"
               >
                 <div class="flex items-center justify-between">
-                  <span class="text-[10px] font-bold uppercase opacity-90">หมวดหมู่ที่ 1</span>
-                  <span class="px-1.5 py-0.2 rounded bg-white/20 text-[10px] font-bold">หน้าหลัก</span>
+                  <span class="text-xs font-bold opacity-90">ใบคำสั่งซื้อ-ขาย</span>
+                  <span class="px-1.5 py-0.2 rounded bg-white/20 text-xs font-bold">หน้าหลัก</span>
                 </div>
-                <div class="text-xs font-bold mt-1">แผนจัดพอร์ต &amp; ใบสั่งซื้อ-ขายจริง</div>
+                <div class="text-xs font-bold mt-1">แผนจัดพอร์ตและยอดซื้อ-ขายจริง</div>
               </button>
 
               <button
@@ -758,10 +843,10 @@
                 class="p-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-blue-50/60 text-slate-800 text-left transition flex flex-col justify-between"
               >
                 <div class="flex items-center justify-between">
-                  <span class="text-[10px] font-bold text-blue-700 uppercase">หมวดหมู่ที่ 2</span>
-                  <span class="text-[10px] text-slate-500 font-semibold">RSI &amp; SMA</span>
+                  <span class="text-xs font-bold text-blue-700">ข่าวและแนวโน้ม</span>
+                  <span class="text-xs text-slate-500 font-semibold">จังหวะซื้อขาย</span>
                 </div>
-                <div class="text-xs font-bold mt-1">ข่าวสารตลาด &amp; สัญญาณซื้อขาย</div>
+                <div class="text-xs font-bold mt-1">ข่าวสารตลาดและสัญญาณแนวโน้ม</div>
               </button>
 
               <button
@@ -771,10 +856,10 @@
                 class="p-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-rose-50/60 text-slate-800 text-left transition flex flex-col justify-between"
               >
                 <div class="flex items-center justify-between">
-                  <span class="text-[10px] font-bold text-rose-700 uppercase">หมวดหมู่ที่ 3</span>
-                  <span class="text-[10px] text-slate-500 font-semibold">Max Drawdown</span>
+                  <span class="text-xs font-bold text-rose-700">ทดสอบย้อนหลัง</span>
+                  <span class="text-xs text-slate-500 font-semibold">ความเสี่ยงในอดีต</span>
                 </div>
-                <div class="text-xs font-bold mt-1">ทดสอบวิกฤตย้อนหลัง &amp; กราฟสถิติ</div>
+                <div class="text-xs font-bold mt-1">ผลจำลองพอร์ตย้อนหลังและกราฟสถิติ</div>
               </button>
 
               <button
@@ -784,26 +869,26 @@
                 class="p-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-indigo-50/60 text-slate-800 text-left transition flex flex-col justify-between"
               >
                 <div class="flex items-center justify-between">
-                  <span class="text-[10px] font-bold text-indigo-700 uppercase">หมวดหมู่ที่ 4</span>
-                  <span class="text-[10px] text-slate-500 font-semibold">DCA &amp; Save</span>
+                  <span class="text-xs font-bold text-indigo-700">เป้าหมายการเงิน</span>
+                  <span class="text-xs text-slate-500 font-semibold">ออมรายเดือน</span>
                 </div>
-                <div class="text-xs font-bold mt-1">สร้างพอร์ตตามเป้าหมาย &amp; บันทึกพอร์ต</div>
+                <div class="text-xs font-bold mt-1">วางแผนออมตามเป้าหมายและบันทึกพอร์ต</div>
               </button>
             </div>
           </div>
 
-          <!-- SECTION 2: DASHBOARD & REBALANCE (ธีมสีเขียวมรกต แยก 3 ขั้นตอนย่อยชัดเจน) -->
+          <!-- DASHBOARD & REBALANCE EXECUTION -->
           <div id="step-3-execution-card" class="fin-card step-accent-emerald">
             <div class="fin-card-header bg-emerald-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
-                <div class="flex items-center gap-2">
-                  <span class="px-2.5 py-0.5 text-[11px] font-bold rounded bg-emerald-600 text-white">ส่วนที่ 2: แผนปรับพอร์ตและคำสั่งซื้อ-ขาย</span>
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="px-2.5 py-0.5 text-xs font-bold rounded bg-emerald-600 text-white">แผนจัดพอร์ตและใบคำสั่งซื้อ-ขาย</span>
                   <h3 class="text-sm font-bold text-slate-900">
                     สรุปคำแนะนำการปรับพอร์ตและคำสั่งซื้อ-ขาย (ระบุยอดเงินบาทชัดเจน)
                   </h3>
                 </div>
                 <p class="text-xs text-slate-600 mt-1">
-                  ระบบแยกสีคำสั่งชัดเจน: <b class="text-rose-700">สีแดง = สั่งขายตัวที่เกิน</b> เพื่อนำเงินสดไป <b class="text-emerald-700">สีเขียว = สั่งซื้อตัวที่ขาด</b> ตามยอดเงินบาทที่คำนวณให้เสร็จสรรพ
+                  แยกสีคำสั่งเข้าใจง่าย: <b class="text-rose-700">สีแดง = สั่งขายตัวที่เกิน</b> เพื่อนำเงินสดไป <b class="text-emerald-700">สีเขียว = สั่งซื้อตัวที่ขาด</b> ตามยอดเงินบาทที่คำนวณให้เสร็จสรรพ
                 </p>
               </div>
               <div class="flex items-center gap-2 shrink-0">
@@ -819,22 +904,22 @@
                   class="px-3 py-1.5 text-xs font-semibold bg-slate-900 hover:bg-blue-700 text-white rounded-md transition flex items-center gap-1.5"
                 >
                   <i data-lucide="download" class="w-3.5 h-3.5"></i>
-                  <span>ดาวน์โหลด CSV</span>
+                  <span>ดาวน์โหลดตาราง</span>
                 </button>
               </div>
             </div>
 
             <div class="p-5 space-y-5">
 
-              <!-- ขั้นตอนย่อยที่ 2.1: เลือกรูปแบบพอร์ตตั้งต้น -->
+              <!-- เลือกรูปแบบพอร์ตตั้งต้น -->
               <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
                 <div class="flex flex-col md:flex-row md:items-center justify-between gap-3">
                   <div>
                     <div class="flex items-center gap-2">
-                      <span class="px-2 py-0.5 rounded bg-slate-800 text-white text-[10px] font-bold">จุดที่ 2.1</span>
-                      <span class="text-xs font-bold text-slate-900">เลือกรูปแบบพอร์ตตั้งต้นของคุณ (เพื่อคำนวณยอดซื้อ/ขายปรับพอร์ต):</span>
+                      <span class="px-2 py-0.5 rounded bg-slate-800 text-white text-xs font-bold">ตั้งค่าพอร์ตปัจจุบัน</span>
+                      <span class="text-xs font-bold text-slate-900">เลือกรูปแบบพอร์ตตั้งต้นของคุณ (เพื่อคำนวณยอดซื้อ-ขายปรับพอร์ต):</span>
                     </div>
-                    <div class="text-[11px] text-slate-500 mt-0.5">เลือกสถานการณ์ที่ตรงกับพอร์ตปัจจุบันของคุณเพื่อให้ระบบคำนวณยอดขายและยอดซื้อเป็นเงินบาท</div>
+                    <div class="text-xs text-slate-600 mt-0.5">เลือกสถานการณ์ที่ตรงกับพอร์ตปัจจุบันของคุณเพื่อให้ระบบคำนวณยอดขายและยอดซื้อเป็นเงินบาท</div>
                   </div>
                   <!-- 3 Mode Buttons -->
                   <div class="flex flex-wrap gap-1.5">
@@ -845,7 +930,7 @@
                       class="rebal-mode-btn active px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5"
                     >
                       <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
-                      <span>ปรับจากพอร์ตถือเท่ากัน (Rebalance)</span>
+                      <span>ปรับจากพอร์ตถือเท่ากัน</span>
                     </button>
                     <button
                       type="button"
@@ -863,21 +948,21 @@
                       class="rebal-mode-btn px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5"
                     >
                       <i data-lucide="wallet" class="w-3.5 h-3.5"></i>
-                      <span>ซื้อใหม่จากเงินสด 100%</span>
+                      <span>ซื้อใหม่จากเงินสดทั้งก้อน</span>
                     </button>
                   </div>
                 </div>
 
-                <!-- CUSTOM CURRENT HOLDINGS EDITOR (รองรับทั้งกรอกยอดเงินและกรอกจำนวนหุ้นจริง + ตรวจสุขภาพพอร์ตเดิม) -->
+                <!-- CUSTOM CURRENT HOLDINGS EDITOR -->
                 <div id="custom-holdings-panel" class="hidden pt-3 border-t border-slate-200 space-y-3.5">
                   <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
                     <div>
-                      <h4 class="text-xs font-bold text-slate-900">กรอกพอร์ตการลงทุนที่คุณถืออยู่ในปัจจุบัน เพื่อจัดพอร์ตอย่างเป็นระบบ</h4>
-                      <p class="text-[11px] text-slate-500">เลือกกรอกได้ทั้ง <b>มูลค่าเงินที่ถืออยู่</b> หรือ <b>จำนวนหุ้นจริงที่มีในพอร์ต</b> (หากไม่มีตัวไหนให้ใส่ 0)</p>
+                      <h4 class="text-xs font-bold text-slate-900">กรอกพอร์ตการลงทุนที่คุณถืออยู่ในปัจจุบัน</h4>
+                      <p class="text-xs text-slate-600">เลือกกรอกได้ทั้ง <b>มูลค่าเงินที่ถืออยู่</b> หรือ <b>จำนวนหุ้นจริงที่มีในพอร์ต</b></p>
                     </div>
                     <div class="flex flex-wrap items-center gap-2">
                       <!-- Switch Holdings Input Unit: Money vs Shares -->
-                      <div class="inline-flex bg-slate-200/80 p-0.5 rounded-lg border border-slate-300 text-[11px]">
+                      <div class="inline-flex bg-slate-200/80 p-0.5 rounded-lg border border-slate-300 text-xs">
                         <button
                           type="button"
                           id="holdings-unit-btn-money"
@@ -892,14 +977,14 @@
                           onclick="setHoldingsInputUnit('shares')"
                           class="px-2.5 py-1 rounded-md font-semibold text-slate-700 hover:text-slate-900 transition"
                         >
-                          กรอกเป็นจำนวนหุ้นจริง (Shares)
+                          กรอกเป็นจำนวนหุ้นจริง
                         </button>
                       </div>
 
-                      <div class="flex flex-wrap gap-1 text-[11px]">
+                      <div class="flex flex-wrap gap-1 text-xs">
                         <button type="button" onclick="prefillCustomHoldings('equal_weight')" class="px-2 py-1 rounded bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 font-medium">ดึงค่าถือเท่ากัน</button>
                         <button type="button" onclick="prefillCustomHoldings('min_volatility')" class="px-2 py-1 rounded bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 font-medium">ดึงค่าเสี่ยงต่ำ</button>
-                        <button type="button" onclick="prefillCustomHoldings('zero')" class="px-2 py-1 rounded bg-white border border-rose-200 hover:bg-rose-50 text-rose-700 font-medium">ล้างเป็น 0</button>
+                        <button type="button" onclick="prefillCustomHoldings('zero')" class="px-2 py-1 rounded bg-white border border-rose-200 hover:bg-rose-50 text-rose-700 font-medium">ล้างค่าเริ่มต้น</button>
                       </div>
                     </div>
                   </div>
@@ -921,21 +1006,21 @@
                     </div>
                     <div class="flex flex-wrap items-center gap-3">
                       <div class="text-xs text-slate-700">
-                        มูลค่าพอร์ตรวมหลังปรับ: <span id="custom-total-portfolio-val" class="font-mono font-bold text-blue-700">฿100,000.00</span>
+                        มูลค่าพอร์ตรวมหลังปรับ: <span id="custom-total-portfolio-val" class="font-mono font-bold text-blue-700"></span>
                       </div>
                       <button
                         type="button"
                         onclick="syncExistingPortfolioToMainBudget()"
-                        class="px-2.5 py-1 rounded bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 text-[11px] font-semibold transition"
+                        class="px-2.5 py-1 rounded bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 text-xs font-semibold transition"
                       >
-                        ซิงค์ยอดรวมนี้เป็นฐานเงินต้นหลัก
+                        ใช้ยอดรวมนี้เป็นเงินต้นหลัก
                       </button>
                     </div>
                   </div>
 
                   <!-- EXISTING PORTFOLIO HEALTH AUDIT VS TARGET STRATEGY -->
                   <div id="existing-portfolio-audit-box" class="p-3.5 rounded-xl bg-indigo-50/40 border border-indigo-200 space-y-2.5">
-                    <!-- Populated by JS: Compares user's current holdings vs target strategy -->
+                    <!-- Populated by JS -->
                   </div>
                 </div>
 
@@ -951,7 +1036,7 @@
                         class="rounded border-slate-300 text-blue-700 focus:ring-blue-500"
                       />
                       <span class="text-slate-700 font-medium">
-                        กันสำรองค่าธรรมเนียมซื้อขาย <span class="font-mono font-bold text-slate-900">0.20%</span> (ป้องกันเงินสดไม่พอตอนสั่งซื้อจริง)
+                        กันเงินสำรองเผื่อค่าธรรมเนียมซื้อขาย <span class="font-mono font-bold text-slate-900">0.20%</span> (ป้องกันเงินสดไม่พอตอนสั่งซื้อจริง)
                       </span>
                     </label>
 
@@ -962,35 +1047,35 @@
                         onchange="renderActiveGoalView()"
                         class="px-2 py-0.5 text-xs font-mono font-semibold bg-white border border-slate-300 rounded text-slate-800"
                       >
-                        <option value="0">0 บาท (แสดงทุกยอด)</option>
+                        <option value="0">แสดงทุกยอด</option>
                         <option value="100" selected>100 บาท (แนะนำ)</option>
                         <option value="500">500 บาท</option>
                         <option value="1000">1,000 บาท</option>
                       </select>
                     </div>
                   </div>
-                  <div id="prudent-status-note" class="text-[11px] text-emerald-700 font-medium flex items-center gap-1">
+                  <div id="prudent-status-note" class="text-xs text-emerald-700 font-medium flex items-center gap-1">
                     <i data-lucide="shield-check" class="w-3.5 h-3.5"></i>
-                    <span>คำนวณแบบรอบคอบ: หักเผื่อค่าคอมมิชชันและปัดเศษปลอดภัยแล้ว</span>
+                    <span>คำนวณแบบรอบคอบ: หักเผื่อค่าธรรมเนียมและปัดเศษปลอดภัยแล้ว</span>
                   </div>
                 </div>
               </div>
 
-              <!-- ขั้นตอนย่อยที่ 2.2: คู่คำสั่งซื้อ-ขายจับคู่เม็ดเงิน -->
+              <!-- คู่คำสั่งซื้อ-ขายจับคู่เม็ดเงิน -->
               <div class="space-y-2">
                 <div class="flex items-center gap-2">
-                  <span class="px-2 py-0.5 rounded bg-blue-600 text-white text-[10px] font-bold">จุดที่ 2.2</span>
-                  <span class="text-xs font-bold text-slate-900">ลำดับการส่งคำสั่งปรับพอร์ต (ขายตัวไหนกี่บาท ➔ นำเงินไปซื้อตัวไหนกี่บาท):</span>
+                  <span class="px-2 py-0.5 rounded bg-blue-600 text-white text-xs font-bold">ลำดับการทำรายการ</span>
+                  <span class="text-xs font-bold text-slate-900">คำแนะนำการส่งคำสั่งปรับพอร์ต (ขายตัวไหนกี่บาท ➔ นำเงินไปซื้อตัวไหนกี่บาท):</span>
                 </div>
                 <div id="rebalance-action-summary-box" class="rounded-xl border border-blue-200 bg-gradient-to-br from-blue-50/50 via-white to-emerald-50/30 p-4 space-y-4">
                   <!-- Populated by JS -->
                 </div>
               </div>
 
-              <!-- ขั้นตอนย่อยที่ 2.3: แผนภาพสัดส่วนและตารางใบสั่งซื้อ-ขายรายตัว -->
+              <!-- แผนภาพสัดส่วนและตารางใบสั่งซื้อ-ขายรายตัว -->
               <div class="space-y-2 pt-1">
                 <div class="flex items-center gap-2">
-                  <span class="px-2 py-0.5 rounded bg-emerald-600 text-white text-[10px] font-bold">จุดที่ 2.3</span>
+                  <span class="px-2 py-0.5 rounded bg-emerald-600 text-white text-xs font-bold">ตารางคำสั่งซื้อ-ขาย</span>
                   <span class="text-xs font-bold text-slate-900">สัดส่วนพอร์ตเป้าหมาย และตารางใบสั่งซื้อ-ขายรายตัวฉบับเต็ม:</span>
                 </div>
 
@@ -1002,20 +1087,20 @@
 
                     <div class="w-full mt-2 p-3 rounded-lg bg-white border border-slate-200 space-y-1.5 text-xs">
                       <div class="flex justify-between items-center">
-                        <span class="text-slate-500">มูลค่าพอร์ตรวมที่ใช้คำนวณ:</span>
-                        <span id="order-kpi-budget" class="font-mono font-bold text-slate-900">฿100,000.00</span>
+                        <span class="text-slate-600">มูลค่าพอร์ตรวมที่ใช้คำนวณ:</span>
+                        <span id="order-kpi-budget" class="font-mono font-bold text-slate-900"></span>
                       </div>
                       <div class="flex justify-between items-center">
                         <span class="text-rose-700 font-medium">รวมยอดสั่งขาย (ได้เงินสด):</span>
-                        <span id="order-kpi-total-sell" class="font-mono font-bold text-rose-700">฿0.00</span>
+                        <span id="order-kpi-total-sell" class="font-mono font-bold text-rose-700"></span>
                       </div>
                       <div class="flex justify-between items-center">
                         <span class="text-emerald-700 font-medium">รวมยอดสั่งซื้อสุทธิ:</span>
-                        <span id="order-kpi-total-buy" class="font-mono font-bold text-emerald-700">฿0.00</span>
+                        <span id="order-kpi-total-buy" class="font-mono font-bold text-emerald-700"></span>
                       </div>
                       <div class="flex justify-between items-center pt-1.5 border-t border-slate-200">
                         <span class="text-slate-700 font-semibold">เงินสดสำรองคงเหลือ (กันค่าธรรมเนียม):</span>
-                        <span id="order-kpi-leftover" class="font-mono font-bold text-blue-700">฿0.00</span>
+                        <span id="order-kpi-leftover" class="font-mono font-bold text-blue-700"></span>
                       </div>
                     </div>
                   </div>
@@ -1024,7 +1109,7 @@
                   <div class="lg:col-span-8 overflow-x-auto">
                     <div class="flex items-center justify-between mb-2">
                       <h4 class="text-xs font-bold text-slate-800">ตารางใบสั่งซื้อ-ขายปรับพอร์ตรายตัว (นำยอดเงินบาทไปคีย์ส่งคำสั่งได้ทันที)</h4>
-                      <span class="text-[11px] text-slate-500">แสดงทั้งยอดเงินบาทและจำนวนหุ้น</span>
+                      <span class="text-xs text-slate-600">แสดงทั้งยอดเงินบาทและจำนวนหุ้น</span>
                     </div>
                     <table class="w-full text-xs text-left fin-table border border-slate-200 rounded-lg overflow-hidden">
                       <thead>
@@ -1040,8 +1125,8 @@
                         <!-- Populated by JS -->
                       </tbody>
                     </table>
-                    <p class="text-[11px] text-slate-500 mt-2 leading-relaxed">
-                      * <b>คำแนะนำเพื่อความรอบคอบ:</b> ให้ทำรายการ <b class="text-rose-700">"สั่งขาย (SELL)"</b> ให้เสร็จสิ้นก่อนเพื่อรับเงินสดเข้าพอร์ต จากนั้นจึงนำเงินสดที่ได้ไปส่งคำสั่ง <b class="text-emerald-700">"สั่งซื้อ (BUY)"</b> ตามยอดเงินที่ระบุในตาราง
+                    <p class="text-xs text-slate-600 mt-2 leading-relaxed">
+                      * <b>คำแนะนำเพื่อความรอบคอบ:</b> ให้ทำรายการ <b class="text-rose-700">"สั่งขายออก"</b> ให้เสร็จสิ้นก่อนเพื่อรับเงินสดเข้าพอร์ต จากนั้นจึงนำเงินสดที่ได้ไปส่งคำสั่ง <b class="text-emerald-700">"สั่งซื้อเพิ่ม"</b> ตามยอดเงินที่ระบุในตาราง
                     </p>
                   </div>
                 </div>
@@ -1050,18 +1135,18 @@
             </div>
           </div>
 
-          <!-- SECTION 2.5: MARKET NEWS & QUANTITATIVE DECISION SIGNALS (ข้อมูลข่าวตามตลาดจริงและสัญญาณตัดสินใจซื้ออย่างรอบคอบ) -->
+          <!-- MARKET NEWS & QUANTITATIVE DECISION SIGNALS -->
           <div id="section-market-news" class="hidden fin-card step-accent-blue">
             <div class="fin-card-header bg-blue-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
-                <div class="flex items-center gap-2">
-                  <span class="px-2.5 py-0.5 text-[11px] font-bold rounded bg-blue-600 text-white">ส่วนวิเคราะห์ข่าวตลาด &amp; สัญญาณซื้อขาย</span>
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="px-2.5 py-0.5 text-xs font-bold rounded bg-blue-600 text-white">วิเคราะห์ข่าวสารตลาดและแนวโน้มราคา</span>
                   <h3 class="text-sm font-bold text-slate-900">
-                    ข้อมูลข่าวสารตามตลาดจริงและสัญญาณเทคนิค เพื่อปรับข้อมูลในการตัดสินใจซื้ออย่างรอบคอบ
+                    ข้อมูลข่าวสารตลาดจริงและสัญญาณแนวโน้ม เพื่อช่วยตัดสินใจซื้ออย่างรอบคอบ
                   </h3>
                 </div>
                 <p class="text-xs text-slate-600 mt-1">
-                  ผสานข้อมูลข่าวสารล่าสุดจากแหล่งข่าวการเงิน (Yahoo Finance / Google Finance News) ร่วมกับดัชนี RSI-14 และเส้นค่าเฉลี่ย SMA 50/200 วัน เพื่อปรับน้ำหนักพอร์ตและแนะนำจังหวะเข้าซื้อที่ปลอดภัย
+                  รวบรวมข่าวสารล่าสุดจากแหล่งข่าวการเงินควบคู่กับแนวโน้มราคาระยะสั้นและระยะกลาง เพื่อช่วยปรับน้ำหนักพอร์ตและแนะนำจังหวะเข้าซื้อที่ปลอดภัย
                 </p>
               </div>
               <div class="flex items-center gap-2 shrink-0">
@@ -1080,8 +1165,8 @@
               <!-- Control Bar: Toggle News-Adjusted Weights vs Pure Historical Weights -->
               <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-3">
                 <div>
-                  <div class="text-xs font-bold text-slate-900">โหมดการคำนวณสัดส่วนพอร์ตด้วยสัญญาณข่าวและสภาวะตลาด</div>
-                  <p class="text-[11px] text-slate-600 mt-0.5">
+                  <div class="text-xs font-bold text-slate-900">การนำข่าวสารและแนวโน้มราคามาช่วยปรับสัดส่วนพอร์ต</div>
+                  <p class="text-xs text-slate-600 mt-0.5">
                     เลือกได้ว่าต้องการให้นำสัญญาณข่าวและแนวโน้มราคาปัจจุบันมาปรับสัดส่วนพอร์ต (เพิ่มน้ำหนักตัวที่มีข่าวบวก/ขาขึ้น และลดเพดานเสี่ยงตัวที่มีข่าวกดดัน) หรือใช้สถิติราคาในอดีตล้วน
                   </p>
                 </div>
@@ -1092,7 +1177,7 @@
                     onclick="toggleNewsSignalAdjustment(true)"
                     class="px-3 py-1.5 rounded-md font-bold bg-blue-600 text-white transition"
                   >
-                    ปรับพอร์ตตามข่าว &amp; แนวโน้มตลาด (แนะนำ)
+                    ปรับพอร์ตตามข่าวและแนวโน้ม (แนะนำ)
                   </button>
                   <button
                     type="button"
@@ -1100,7 +1185,7 @@
                     onclick="toggleNewsSignalAdjustment(false)"
                     class="px-3 py-1.5 rounded-md font-semibold text-slate-600 hover:text-slate-900 transition"
                   >
-                    ใช้สถิติราคาในอดีตล้วน (100%)
+                    ใช้สถิติราคาในอดีตล้วน
                   </button>
                 </div>
               </div>
@@ -1108,19 +1193,19 @@
               <!-- Asset-by-Asset Signal & Weight Adjustment Table -->
               <div class="space-y-2">
                 <div class="flex items-center justify-between">
-                  <h4 class="text-xs font-bold text-slate-900">ตารางวิเคราะห์สัญญาณข่าว แนวโน้มเทคนิค และการปรับสัดส่วนรายตัว</h4>
-                  <span class="text-[11px] text-slate-500">เปรียบเทียบสัดส่วนสถิติเดิม ➔ สัดส่วนหลังปรับตามข่าวตลาด</span>
+                  <h4 class="text-xs font-bold text-slate-900">ตารางวิเคราะห์สัญญาณข่าว แนวโน้มราคา และการปรับสัดส่วนรายตัว</h4>
+                  <span class="text-xs text-slate-600">เปรียบเทียบสัดส่วนสถิติเดิม ➔ สัดส่วนหลังปรับตามข่าวตลาด</span>
                 </div>
                 <div class="overflow-x-auto border border-slate-200 rounded-lg">
                   <table class="w-full text-xs text-left fin-table">
                     <thead>
                       <tr>
                         <th class="py-2.5 px-3">สินทรัพย์</th>
-                        <th class="py-2.5 px-3 text-right">ราคาล่าสุด (THB / USD)</th>
-                        <th class="py-2.5 px-3">แนวโน้มราคา (SMA 50/200) &amp; RSI</th>
+                        <th class="py-2.5 px-3 text-right">ราคาล่าสุด (บาท / ดอลลาร์)</th>
+                        <th class="py-2.5 px-3">แนวโน้มราคาช่วงล่าสุด</th>
                         <th class="py-2.5 px-3">กระแสข่าวตลาด</th>
                         <th class="py-2.5 px-3 text-right">สัดส่วนเดิม ➔ ปรับตามข่าว</th>
-                        <th class="py-2.5 px-3">คำแนะนำการตัดสินใจเข้าซื้ออย่างรอบคอบ</th>
+                        <th class="py-2.5 px-3">คำแนะนำการเข้าซื้ออย่างรอบคอบ</th>
                       </tr>
                     </thead>
                     <tbody id="news-signal-table-body" class="font-mono">
@@ -1133,8 +1218,8 @@
               <!-- Verified Live Market News Articles Grid -->
               <div class="space-y-2">
                 <div class="flex items-center justify-between">
-                  <h4 class="text-xs font-bold text-slate-900">แหล่งข่าวสารตามตลาดล่าสุดที่ใช้ประกอบการประเมิน (คลิกเพื่ออ่านข่าวต้นฉบับ)</h4>
-                  <span id="news-count-badge" class="text-[11px] font-semibold text-blue-700">กำลังโหลดข่าวตลาด...</span>
+                  <h4 class="text-xs font-bold text-slate-900">ข่าวสารตลาดล่าสุดที่ใช้ประกอบการประเมิน (คลิกเพื่ออ่านข่าวต้นฉบับ)</h4>
+                  <span id="news-count-badge" class="text-xs font-semibold text-blue-700">กำลังโหลดข่าวตลาด...</span>
                 </div>
                 <div id="market-news-articles-grid" class="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <!-- Populated by JS -->
@@ -1143,26 +1228,26 @@
             </div>
           </div>
 
-          <!-- SECTION 3: BACKTEST & VISUAL ANALYTICS (ธีมสีแดงเข้ม-น้ำเงิน วิเคราะห์ความเสี่ยงย้อนหลัง) -->
+          <!-- BACKTEST & VISUAL ANALYTICS -->
           <div id="section-backtest-analytics" class="hidden fin-card step-accent-rose">
             <div class="fin-card-header bg-rose-50/40 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div class="flex items-center gap-2">
-                <span class="px-2.5 py-0.5 text-[11px] font-bold rounded bg-rose-600 text-white">ส่วนที่ 3: ทดสอบพอร์ตย้อนหลัง (Backtest)</span>
-                <h3 class="text-sm font-bold text-slate-900">วิเคราะห์จุดขาดทุนสูงสุดในอดีตเป็นเงินบาท และเปรียบเทียบกลยุทธ์</h3>
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="px-2.5 py-0.5 text-xs font-bold rounded bg-rose-600 text-white">ผลจำลองพอร์ตย้อนหลัง</span>
+                <h3 class="text-sm font-bold text-slate-900">วิเคราะห์จุดติดลบสูงสุดในอดีตเป็นเงินบาท และเปรียบเทียบแนวทางจัดพอร์ต</h3>
               </div>
-              <span class="text-[11px] text-slate-500">คลิกสลับดูข้อมูลเชิงลึกได้ทั้ง 3 แท็บด้านล่าง</span>
+              <span class="text-xs text-slate-600">คลิกสลับดูข้อมูลเชิงลึกได้ทั้ง 3 มุมมองด้านล่าง</span>
             </div>
 
             <!-- Tab Header -->
             <div class="border-b border-slate-200 bg-slate-50/60 px-5 pt-3 flex items-center gap-6 overflow-x-auto">
               <button onclick="switchTab('growth')" id="tab-btn-growth" class="tab-btn pb-3 text-xs font-bold text-blue-700 border-b-2 border-blue-700 whitespace-nowrap transition">
-                แท็บ 3.1: ผลทดสอบย้อนหลัง (Backtest) &amp; จำนวนเงินบาทสูงสุดที่เคยหายไป
+                ผลการเติบโตและเงินบาทที่เคยติดลบสูงสุด
               </button>
               <button onclick="switchTab('frontier')" id="tab-btn-frontier" class="tab-btn pb-3 text-xs font-semibold text-slate-500 hover:text-slate-800 border-b-2 border-transparent whitespace-nowrap transition">
-                แท็บ 3.2: แผนภาพความเสี่ยงเทียบผลตอบแทน (Efficient Frontier)
+                แผนภาพเปรียบเทียบความเสี่ยงกับผลตอบแทน
               </button>
               <button onclick="switchTab('assets')" id="tab-btn-assets" class="tab-btn pb-3 text-xs font-semibold text-slate-500 hover:text-slate-800 border-b-2 border-transparent whitespace-nowrap transition">
-                แท็บ 3.3: สถิติหุ้นรายตัวและความสัมพันธ์ (Correlation)
+                สถิติหุ้นรายตัวและความสัมพันธ์ของราคา
               </button>
             </div>
 
@@ -1173,14 +1258,14 @@
               <div class="rounded-xl border border-rose-200 bg-rose-50/45 p-4 space-y-3">
                 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div>
-                    <div class="flex items-center gap-2">
-                      <span class="px-2 py-0.5 text-[10px] font-bold uppercase rounded bg-rose-600 text-white">Stress Test ความเสี่ยงเงินต้น</span>
+                    <div class="flex items-center gap-2 flex-wrap">
+                      <span class="px-2 py-0.5 text-xs font-bold rounded bg-rose-600 text-white">จำลองเหตุการณ์ตลาดตกหนัก</span>
                       <h4 class="text-sm font-bold text-slate-900">
-                        วิเคราะห์จุดขาดทุนสูงสุดในอดีต (แปลง Max Drawdown % เป็นจำนวนเงินบาทจากเงินต้นของคุณ)
+                        วิเคราะห์จุดติดลบสูงสุดในอดีต (คำนวณเป็นจำนวนเงินบาทจากเงินต้นของคุณ)
                       </h4>
                     </div>
                     <p class="text-xs text-slate-600 mt-0.5">
-                      จำลองว่าหากคุณลงทุนด้วยเงินต้นที่กรอกไว้ แล้วเจอช่วงวิกฤตตลาดที่หนักที่สุดในอดีต เงินต้นของคุณจะหายไปสูงสุดกี่บาท และเหลือต่ำสุดกี่บาท
+                      จำลองว่าหากคุณลงทุนด้วยเงินต้นที่กรอกไว้ แล้วเจอช่วงวิกฤตตลาดที่หนักที่สุดในอดีต เงินต้นของคุณจะลดลงสูงสุดกี่บาท และเหลือต่ำสุดกี่บาท
                     </p>
                   </div>
                 </div>
@@ -1188,35 +1273,35 @@
                 <!-- 4 Easy-to-Understand Baht Drawdown Boxes -->
                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                   <div class="bg-white p-3 rounded-lg border border-slate-200">
-                    <div class="text-[11px] text-slate-500 font-semibold">1. เงินต้นที่คุณตั้งไว้</div>
-                    <div id="bt-dd-initial-budget" class="text-base font-bold font-mono text-slate-900 mt-0.5">฿100,000.00</div>
-                    <div class="text-[10px] text-slate-400 mt-0.5">ฐานเงินทุนเริ่มต้นสำหรับการคำนวณ</div>
+                    <div class="text-xs text-slate-600 font-semibold">เงินต้นที่คุณตั้งไว้</div>
+                    <div id="bt-dd-initial-budget" class="text-base font-bold font-mono text-slate-900 mt-0.5"></div>
+                    <div class="text-xs text-slate-500 mt-0.5">ฐานเงินทุนเริ่มต้นสำหรับการคำนวณ</div>
                   </div>
 
                   <div class="bg-white p-3 rounded-lg border-2 border-rose-400">
-                    <div class="text-[11px] text-rose-800 font-bold">2. เงินสูงสุดที่เคยหายไปในอดีต</div>
-                    <div id="bt-dd-loss-baht" class="text-base font-bold font-mono text-rose-700 mt-0.5">-฿0.00</div>
-                    <div id="bt-dd-loss-pct" class="text-[11px] font-semibold text-rose-600 mt-0.5">คิดเป็น Max Drawdown --%</div>
+                    <div class="text-xs text-rose-800 font-bold">เงินสูงสุดที่เคยหายไปในอดีต</div>
+                    <div id="bt-dd-loss-baht" class="text-base font-bold font-mono text-rose-700 mt-0.5"></div>
+                    <div id="bt-dd-loss-pct" class="text-xs font-semibold text-rose-600 mt-0.5"></div>
                   </div>
 
                   <div class="bg-white p-3 rounded-lg border border-emerald-300">
-                    <div class="text-[11px] text-emerald-900 font-bold">3. เงินต้นคงเหลือต่ำสุด ณ จุดวิกฤต</div>
-                    <div id="bt-dd-remaining-baht" class="text-base font-bold font-mono text-emerald-800 mt-0.5">฿0.00</div>
-                    <div class="text-[10px] text-slate-500 mt-0.5">มูลค่าพอร์ตต่ำสุดหากเข้าซื้อก่อนเกิดวิกฤต</div>
+                    <div class="text-xs text-emerald-900 font-bold">เงินต้นคงเหลือต่ำสุด ณ จุดวิกฤต</div>
+                    <div id="bt-dd-remaining-baht" class="text-base font-bold font-mono text-emerald-800 mt-0.5"></div>
+                    <div class="text-xs text-slate-500 mt-0.5">มูลค่าพอร์ตต่ำสุดหากเข้าซื้อก่อนเกิดวิกฤต</div>
                   </div>
 
                   <div class="bg-white p-3 rounded-lg border border-slate-200">
-                    <div class="text-[11px] text-slate-600 font-semibold">4. ช่วงเวลาที่เกิดจุดต่ำสุดในอดีต</div>
-                    <div id="bt-dd-period" class="text-xs font-bold font-mono text-slate-800 mt-1">-- ถึง --</div>
-                    <div id="bt-dd-recovery" class="text-[10px] text-slate-500 mt-1">--</div>
+                    <div class="text-xs text-slate-600 font-semibold">ช่วงเวลาที่เกิดจุดต่ำสุดในอดีต</div>
+                    <div id="bt-dd-period" class="text-xs font-bold font-mono text-slate-800 mt-1"></div>
+                    <div id="bt-dd-recovery" class="text-xs text-slate-500 mt-1"></div>
                   </div>
                 </div>
 
                 <!-- Visual Capital Retention vs Loss Bar -->
                 <div class="bg-white p-3 rounded-lg border border-slate-200 space-y-1.5">
-                  <div class="flex items-center justify-between text-xs">
-                    <span class="font-semibold text-emerald-800">สีเขียว = เงินต้นส่วนที่คงเหลือ ณ จุดต่ำสุด: <span id="bt-bar-keep-label" class="font-mono font-bold">--</span></span>
-                    <span class="font-semibold text-rose-700">สีแดง = เงินที่หายไปสูงสุดในอดีต: <span id="bt-bar-lose-label" class="font-mono font-bold">--</span></span>
+                  <div class="flex items-center justify-between text-xs flex-wrap gap-1">
+                    <span class="font-semibold text-emerald-800">สีเขียว = เงินต้นส่วนที่คงเหลือ ณ จุดต่ำสุด: <span id="bt-bar-keep-label" class="font-mono font-bold"></span></span>
+                    <span class="font-semibold text-rose-700">สีแดง = เงินที่ติดลบสูงสุดในอดีต: <span id="bt-bar-lose-label" class="font-mono font-bold"></span></span>
                   </div>
                   <div class="w-full h-3 rounded-full overflow-hidden flex bg-rose-100 border border-slate-200">
                     <div id="bt-bar-keep-fill" class="h-full bg-emerald-500 transition-all duration-300" style="width: 60%"></div>
@@ -1229,8 +1314,8 @@
               <div>
                 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
                   <div>
-                    <h4 class="text-sm font-bold text-slate-900">กราฟจำลองพอร์ตย้อนหลัง (Historical Backtest)</h4>
-                    <p class="text-xs text-slate-500">เลือกดูได้ทั้งการเติบโตของเงินลงทุนรวม และจำนวนเงินบาทที่ย่อตัวลงในแต่ละช่วงเวลา</p>
+                    <h4 class="text-sm font-bold text-slate-900">กราฟจำลองการเติบโตของพอร์ตย้อนหลัง</h4>
+                    <p class="text-xs text-slate-600">เลือกดูได้ทั้งการเติบโตของเงินลงทุนรวม และจำนวนเงินบาทที่ย่อตัวลงในแต่ละช่วงเวลา</p>
                   </div>
                   <div class="flex gap-1 bg-slate-100 p-1 rounded-lg self-start sm:self-center text-xs">
                     <button
@@ -1256,16 +1341,16 @@
 
               <!-- 4-Strategy Head-to-Head Comparison Table -->
               <div>
-                <h4 class="text-sm font-bold text-slate-900 mb-2">ตารางเปรียบเทียบผลลัพธ์ทั้ง 4 กลยุทธ์ (แสดงยอดเงินบาทสูงสุดที่เคยหายไปในอดีต)</h4>
+                <h4 class="text-sm font-bold text-slate-900 mb-2">ตารางเปรียบเทียบผลลัพธ์ทั้ง 4 แนวทางจัดพอร์ต (แสดงยอดเงินบาทที่เคยติดลบสูงสุดในอดีต)</h4>
                 <div class="overflow-x-auto border border-slate-200 rounded-lg">
                   <table class="w-full text-xs text-left fin-table">
                     <thead>
                       <tr>
-                        <th class="py-2.5 px-3">กลยุทธ์การจัดพอร์ต</th>
+                        <th class="py-2.5 px-3">แนวทางจัดพอร์ต</th>
                         <th class="py-2.5 px-3 text-right">ผลตอบแทนเฉลี่ย/ปี</th>
                         <th class="py-2.5 px-3 text-right">ความผันผวน/ปี</th>
-                        <th class="py-2.5 px-3 text-right bg-rose-50/60 text-rose-900">เงินที่เคยหายไปสูงสุดในอดีต (Max Drawdown)</th>
-                        <th class="py-2.5 px-3 text-right">Sharpe Ratio</th>
+                        <th class="py-2.5 px-3 text-right bg-rose-50/60 text-rose-900">เงินที่เคยติดลบสูงสุดในอดีต</th>
+                        <th class="py-2.5 px-3 text-right">คะแนนความคุ้มเสี่ยง</th>
                         <th class="py-2.5 px-3 text-right">มูลค่าพอร์ตปลายงวด</th>
                         <th class="py-2.5 px-3 text-center">การเลือก</th>
                       </tr>
@@ -1276,11 +1361,11 @@
               </div>
             </div>
 
-            <!-- TAB 2: RISK VS RETURN MAP (EFFICIENT FRONTIER) -->
+            <!-- TAB 2: RISK VS RETURN MAP -->
             <div id="tab-content-frontier" class="tab-pane hidden p-5 space-y-4">
               <div>
-                <h4 class="text-sm font-bold text-slate-900">แผนภาพเปรียบเทียบความเสี่ยงและผลตอบแทน (Efficient Frontier)</h4>
-                <p class="text-xs text-slate-500">
+                <h4 class="text-sm font-bold text-slate-900">แผนภาพเปรียบเทียบความเสี่ยงและผลตอบแทน</h4>
+                <p class="text-xs text-slate-600">
                   แกนนอนคือความผันผวน (ยิ่งซ้ายยิ่งปลอดภัย) แกนตั้งคือผลตอบแทนคาดหวัง (ยิ่งสูงยิ่งดี) จุดพอร์ตที่ดีจะอยู่ด้านบนซ้ายเหนือกว่าการถือหุ้นตัวเดียว
                 </p>
               </div>
@@ -1290,16 +1375,16 @@
             <!-- TAB 3: INDIVIDUAL ASSET STATS & CORRELATION -->
             <div id="tab-content-assets" class="tab-pane hidden p-5 space-y-6">
               <div>
-                <h4 class="text-sm font-bold text-slate-900 mb-2">สถิติผลตอบแทนและจำนวนเงินสูงสุดที่เคยหายไปของหุ้นแต่ละตัว (กรณีถือตัวเดียว 100%)</h4>
+                <h4 class="text-sm font-bold text-slate-900 mb-2">สถิติผลตอบแทนและจำนวนเงินที่เคยติดลบสูงสุดของหุ้นแต่ละตัว (กรณีถือตัวเดียวทั้งพอร์ต)</h4>
                 <div class="overflow-x-auto border border-slate-200 rounded-lg">
                   <table class="w-full text-xs text-left fin-table">
                     <thead>
                       <tr>
                         <th class="py-2.5 px-3">สินทรัพย์</th>
                         <th class="py-2.5 px-3 text-right">ราคาล่าสุด</th>
-                        <th class="py-2.5 px-3 text-right">ผลตอบแทนเฉลี่ย/ปี (CAGR)</th>
+                        <th class="py-2.5 px-3 text-right">ผลตอบแทนเฉลี่ย/ปี</th>
                         <th class="py-2.5 px-3 text-right">ความผันผวน/ปี</th>
-                        <th class="py-2.5 px-3 text-right bg-rose-50/60 text-rose-900">เงินที่เคยหายไปสูงสุด (หากถือตัวเดียว)</th>
+                        <th class="py-2.5 px-3 text-right bg-rose-50/60 text-rose-900">เงินที่เคยติดลบสูงสุด (หากถือตัวเดียว)</th>
                         <th class="py-2.5 px-3 text-right">สัดส่วนในพอร์ตที่เลือก</th>
                       </tr>
                     </thead>
@@ -1310,19 +1395,19 @@
 
               <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div>
-                  <h4 class="text-sm font-bold text-slate-900 mb-1">ความสัมพันธ์ของราคาระหว่างสินทรัพย์ (Correlation)</h4>
-                  <p class="text-xs text-slate-500 mb-2">ค่าใกล้ 0 หรือสีอ่อน หมายถึงเคลื่อนไหวไม่ตามกัน ช่วยลดความเสี่ยงพอร์ตรวมได้ดี</p>
+                  <h4 class="text-sm font-bold text-slate-900 mb-1">ความสัมพันธ์ของราคาระหว่างสินทรัพย์</h4>
+                  <p class="text-xs text-slate-600 mb-2">ค่าใกล้ศูนย์หรือสีอ่อน หมายถึงราคาเคลื่อนไหวไม่ตามกัน ช่วยลดความเสี่ยงพอร์ตรวมได้ดี</p>
                   <div id="correlation-plot-container" class="w-full h-[320px] border border-slate-200 rounded-lg p-2 bg-white"></div>
                 </div>
                 <div>
                   <div class="flex items-center justify-between mb-1">
-                    <h4 class="text-sm font-bold text-slate-900">เปรียบเทียบการเติบโตของหุ้นรายตัว (ฐาน 100)</h4>
-                    <div class="flex gap-1 text-[11px]">
-                      <button id="btn-scale-log" onclick="toggleGrowthScale(true)" class="px-2 py-0.5 rounded bg-slate-900 text-white font-semibold">Log</button>
-                      <button id="btn-scale-linear" onclick="toggleGrowthScale(false)" class="px-2 py-0.5 rounded bg-slate-100 text-slate-600">ปกติ</button>
+                    <h4 class="text-sm font-bold text-slate-900">เปรียบเทียบการเติบโตของหุ้นรายตัว (เริ่มจากฐาน 100 เท่ากัน)</h4>
+                    <div class="flex gap-1 text-xs">
+                      <button id="btn-scale-log" onclick="toggleGrowthScale(true)" class="px-2 py-0.5 rounded bg-slate-900 text-white font-semibold">สัดส่วนเทียบ</button>
+                      <button id="btn-scale-linear" onclick="toggleGrowthScale(false)" class="px-2 py-0.5 rounded bg-slate-100 text-slate-600">ค่าจริง</button>
                     </div>
                   </div>
-                  <p class="text-xs text-slate-500 mb-2">เทียบการเติบโตเมื่อกำหนดให้ราคาวันแรกของทุกตัวเริ่มที่ 100 เท่ากัน</p>
+                  <p class="text-xs text-slate-600 mb-2">เทียบการเติบโตเมื่อกำหนดให้เงินลงทุนวันแรกของทุกตัวเริ่มที่ 100 เท่ากัน</p>
                   <div id="growth-plot-container" class="w-full h-[320px] border border-slate-200 rounded-lg p-2 bg-white"></div>
                 </div>
               </div>
@@ -1330,36 +1415,36 @@
 
           </div>
 
-          <!-- SECTION 4: GOAL-BASED PORTFOLIO BUILDER, DCA SIMULATOR & SAVED PORTFOLIOS (ธีมสีคราม Indigo) -->
+          <!-- GOAL-BASED PORTFOLIO BUILDER, DCA SIMULATOR & SAVED PORTFOLIOS -->
           <div id="section-goal-builder" class="hidden fin-card step-accent-indigo">
             <div class="fin-card-header bg-indigo-50/70 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div>
                 <div class="flex items-center gap-2 flex-wrap">
-                  <span class="px-2.5 py-0.5 text-[11px] font-bold rounded bg-indigo-600 text-white">ส่วนที่ 4: สร้างพอร์ตตามเป้าหมาย &amp; บันทึกพอร์ต</span>
-                  <h3 class="text-sm font-bold text-slate-900">ระบบสร้างพอร์ตการลงทุนตามเป้าหมาย จำลองการออมรายเดือน (DCA) และจัดการพอร์ตส่วนตัว</h3>
+                  <span class="px-2.5 py-0.5 text-xs font-bold rounded bg-indigo-600 text-white">วางแผนพอร์ตตามเป้าหมายและบันทึกพอร์ต</span>
+                  <h3 class="text-sm font-bold text-slate-900">จำลองการออมรายเดือนควบคู่เงินก้อนแรก และบันทึกพอร์ตส่วนตัว</h3>
                 </div>
                 <p class="text-xs text-slate-600 mt-0.5">
-                  ออกแบบพอร์ตให้ตรงกับเป้าหมายการเงินของคุณ คำนวณโอกาสบรรลุเป้าหมายจากเงินก้อนแรก + เงินออมรายเดือน (DCA) พร้อมบันทึกเก็บไว้ใช้งานจริง
+                  ออกแบบพอร์ตให้ตรงกับเป้าหมายการเงินของคุณ คำนวณโอกาสบรรลุเป้าหมายจากเงินก้อนแรกบวกเงินออมรายเดือน พร้อมบันทึกเก็บไว้ใช้งานจริง
                 </p>
               </div>
-              <span id="portfolio-storage-auth-badge" class="text-[10px] font-semibold px-2.5 py-1 rounded bg-slate-100 text-slate-600 border border-slate-200 self-start sm:self-center shrink-0">
-                ยังไม่ได้เข้าสู่ระบบ
+              <span id="portfolio-storage-auth-badge" class="text-xs font-semibold px-2.5 py-1 rounded bg-slate-100 text-slate-600 border border-slate-200 self-start sm:self-center shrink-0">
+                โหมดทดลองใช้ฟรี
               </span>
             </div>
 
             <div class="p-5 space-y-5">
 
-              <!-- ขั้นตอนย่อย 4.1: เลือกต้นแบบเป้าหมายชีวิต (Goal Presets) -->
+              <!-- เลือกต้นแบบเป้าหมายชีวิต -->
               <div class="p-4 rounded-xl bg-indigo-50/40 border border-indigo-200 space-y-3">
                 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div>
                     <div class="flex items-center gap-2">
-                      <span class="px-2 py-0.5 rounded bg-indigo-600 text-white text-[10px] font-bold">ขั้นที่ 4.1</span>
-                      <span class="text-xs font-bold text-slate-900">เลือกต้นแบบพอร์ตตามเป้าหมายการเงิน (คลิกเพื่อตั้งค่าเป้าหมายและกลยุทธ์อัตโนมัติ)</span>
+                      <span class="px-2 py-0.5 rounded bg-indigo-600 text-white text-xs font-bold">ต้นแบบพอร์ตแนะนำ</span>
+                      <span class="text-xs font-bold text-slate-900">เลือกต้นแบบพอร์ตตามเป้าหมายการเงิน (คลิกเพื่อตั้งค่าเป้าหมายอัตโนมัติ)</span>
                     </div>
-                    <p class="text-[11px] text-slate-600 mt-0.5">เลือกเป้าหมายที่ตรงกับคุณ หรือกรอกปรับแต่งตัวเลขเองในขั้นที่ 4.2 ด้านล่าง</p>
+                    <p class="text-xs text-slate-600 mt-0.5">เลือกเป้าหมายที่ตรงกับคุณ หรือกรอกปรับแต่งตัวเลขเองในช่องด้านล่าง</p>
                   </div>
-                  <label class="inline-flex items-center gap-1.5 cursor-pointer select-none text-[11px] font-semibold text-indigo-900 bg-white px-2.5 py-1 rounded-lg border border-indigo-200">
+                  <label class="inline-flex items-center gap-1.5 cursor-pointer select-none text-xs font-semibold text-indigo-900 bg-white px-2.5 py-1 rounded-lg border border-indigo-200">
                     <input type="checkbox" id="goal-template-apply-tickers" checked class="rounded border-indigo-300 text-indigo-600 focus:ring-indigo-500" />
                     <span>ใช้ชุดหุ้นแนะนำตามเป้าหมายด้วย</span>
                   </label>
@@ -1373,11 +1458,11 @@
                     class="goal-preset-card text-left p-3 rounded-xl border-2 border-indigo-600 bg-white hover:bg-indigo-50/50 transition space-y-1"
                   >
                     <div class="flex items-center justify-between">
-                      <span class="px-2 py-0.5 rounded bg-indigo-600 text-white text-[10px] font-bold">เป้าหมายที่ 1</span>
-                      <span class="text-[10px] font-mono font-bold text-indigo-700">Max Sharpe</span>
+                      <span class="px-2 py-0.5 rounded bg-indigo-600 text-white text-xs font-bold">ระยะยาว 10 ปี</span>
+                      <span class="text-xs font-bold text-indigo-700">คุ้มความเสี่ยง</span>
                     </div>
                     <div class="text-xs font-bold text-slate-900 pt-0.5">พอร์ตเกษียณมั่นคง</div>
-                    <p class="text-[11px] text-slate-600 leading-snug">เน้นเติบโตระยะยาว 10 ปี ผสมหุ้นเติบโต ดัชนีตลาด และสินทรัพย์มั่นคง</p>
+                    <p class="text-xs text-slate-600 leading-snug">เน้นเติบโตระยะยาว ผสมหุ้นเติบโต ดัชนีตลาด และสินทรัพย์มั่นคง</p>
                   </button>
 
                   <button
@@ -1387,11 +1472,11 @@
                     class="goal-preset-card text-left p-3 rounded-xl border border-slate-200 bg-white hover:bg-emerald-50/40 transition space-y-1"
                   >
                     <div class="flex items-center justify-between">
-                      <span class="px-2 py-0.5 rounded bg-emerald-600 text-white text-[10px] font-bold">เป้าหมายที่ 2</span>
-                      <span class="text-[10px] font-mono font-bold text-emerald-700">Min Volatility</span>
+                      <span class="px-2 py-0.5 rounded bg-emerald-600 text-white text-xs font-bold">ระยะกลาง 7 ปี</span>
+                      <span class="text-xs font-bold text-emerald-700">แกว่งน้อย</span>
                     </div>
                     <div class="text-xs font-bold text-slate-900 pt-0.5">พอร์ตสร้างเงินปันผล</div>
-                    <p class="text-[11px] text-slate-600 leading-snug">เน้นหุ้นปันผลสม่ำเสมอ ความผันผวนต่ำ สร้างกระแสเงินสดรายปี</p>
+                    <p class="text-xs text-slate-600 leading-snug">เน้นหุ้นปันผลสม่ำเสมอ ความผันผวนต่ำ สร้างกระแสเงินสดรายปี</p>
                   </button>
 
                   <button
@@ -1401,11 +1486,11 @@
                     class="goal-preset-card text-left p-3 rounded-xl border border-slate-200 bg-white hover:bg-blue-50/40 transition space-y-1"
                   >
                     <div class="flex items-center justify-between">
-                      <span class="px-2 py-0.5 rounded bg-blue-600 text-white text-[10px] font-bold">เป้าหมายที่ 3</span>
-                      <span class="text-[10px] font-mono font-bold text-blue-700">Max Sharpe</span>
+                      <span class="px-2 py-0.5 rounded bg-blue-600 text-white text-xs font-bold">เร่งเติบโต 5 ปี</span>
+                      <span class="text-xs font-bold text-blue-700">เน้นเติบโต</span>
                     </div>
                     <div class="text-xs font-bold text-slate-900 pt-0.5">พอร์ตปั้นเงินล้านเติบโตสูง</div>
-                    <p class="text-[11px] text-slate-600 leading-snug">เน้นเร่งการเติบโตของเงินทุนใน 5 ปี ด้วยหุ้นผู้นำเทคโนโลยีระดับโลก</p>
+                    <p class="text-xs text-slate-600 leading-snug">เน้นเร่งการเติบโตของเงินทุนด้วยหุ้นผู้นำเทคโนโลยีระดับโลก</p>
                   </button>
 
                   <button
@@ -1415,23 +1500,23 @@
                     class="goal-preset-card text-left p-3 rounded-xl border border-slate-200 bg-white hover:bg-amber-50/40 transition space-y-1"
                   >
                     <div class="flex items-center justify-between">
-                      <span class="px-2 py-0.5 rounded bg-amber-600 text-white text-[10px] font-bold">เป้าหมายที่ 4</span>
-                      <span class="text-[10px] font-mono font-bold text-amber-700">Risk Parity</span>
+                      <span class="px-2 py-0.5 rounded bg-amber-600 text-white text-xs font-bold">เน้นปลอดภัย 5 ปี</span>
+                      <span class="text-xs font-bold text-amber-700">กระจายสมดุล</span>
                     </div>
                     <div class="text-xs font-bold text-slate-900 pt-0.5">พอร์ตพักเงินชนะเงินเฟ้อ</div>
-                    <p class="text-[11px] text-slate-600 leading-snug">เน้นกระจายความเสี่ยงสมดุล ทองคำ พันธบัตร และหุ้นพื้นฐานแกร่ง</p>
+                    <p class="text-xs text-slate-600 leading-snug">เน้นกระจายความเสี่ยงสมดุล ทองคำ พันธบัตร และหุ้นพื้นฐานแกร่ง</p>
                   </button>
                 </div>
               </div>
 
-              <!-- ขั้นตอนย่อย 4.2: กำหนดตัวเลขเป้าหมายการเงินและแผนออมรายเดือน (DCA) -->
+              <!-- กำหนดตัวเลขเป้าหมายการเงินและแผนออมรายเดือน -->
               <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3.5">
                 <div class="flex items-center justify-between flex-wrap gap-2">
                   <div class="flex items-center gap-2">
-                    <span class="px-2 py-0.5 rounded bg-slate-900 text-white text-[10px] font-bold">ขั้นที่ 4.2</span>
-                    <span class="text-xs font-bold text-slate-900">กำหนดชื่อพอร์ต เงินเป้าหมาย และแผนการออมรายเดือน (DCA)</span>
+                    <span class="px-2 py-0.5 rounded bg-slate-900 text-white text-xs font-bold">ตั้งค่าแผนออมเงิน</span>
+                    <span class="text-xs font-bold text-slate-900">กำหนดชื่อพอร์ต เงินเป้าหมาย และเงินออมเพิ่มรายเดือน</span>
                   </div>
-                  <span class="text-[11px] text-slate-500">พิมพ์ตัวเลขจะมีลูกน้ำคั่นหลักพันอัตโนมัติ และคำนวณกราฟด้านล่างทันที</span>
+                  <span class="text-xs text-slate-600">ปรับตัวเลขแล้วกราฟคาดการณ์ด้านล่างจะอัปเดตทันที</span>
                 </div>
 
                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-end">
@@ -1475,7 +1560,7 @@
                   </div>
 
                   <div class="lg:col-span-2">
-                    <label class="text-xs font-semibold text-slate-700 block mb-1">ออมเพิ่ม/เดือน DCA (<span class="curr-unit-inline">บาท</span>)</label>
+                    <label class="text-xs font-semibold text-slate-700 block mb-1">ออมเพิ่ม/เดือน (<span class="curr-unit-inline">บาท</span>)</label>
                     <input
                       type="text"
                       inputmode="decimal"
@@ -1501,16 +1586,16 @@
                 </div>
               </div>
 
-              <!-- ขั้นตอนย่อย 4.3: สรุปผลวิเคราะห์ความเป็นไปได้ของเป้าหมาย & กราฟจำลอง DCA (Goal Feasibility & Trajectory) -->
+              <!-- สรุปผลวิเคราะห์ความเป็นไปได้ของเป้าหมาย & กราฟจำลองการออม -->
               <div class="p-4 rounded-xl bg-white border border-slate-200 space-y-4">
                 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
                   <div>
                     <div class="flex items-center gap-2">
-                      <span class="px-2 py-0.5 rounded bg-emerald-600 text-white text-[10px] font-bold">ขั้นที่ 4.3</span>
-                      <h4 class="text-xs font-bold text-slate-900">ผลวิเคราะห์โอกาสพิชิตเป้าหมายการเงิน (คำนวณจากเงินต้นก้อนแรก + ออมรายเดือน DCA ทบต้น)</h4>
+                      <span class="px-2 py-0.5 rounded bg-emerald-600 text-white text-xs font-bold">ผลการประเมินเป้าหมาย</span>
+                      <h4 class="text-xs font-bold text-slate-900">โอกาสพิชิตเป้าหมายการเงิน (คำนวณจากเงินต้นก้อนแรก + เงินออมรายเดือนทบต้น)</h4>
                     </div>
-                    <p id="goal-projection-subtitle" class="text-[11px] text-slate-500 mt-0.5">
-                      อ้างอิงผลตอบแทนคาดการณ์และอัตราปันผลจากกลยุทธ์พอร์ตที่เลือกในปัจจุบัน
+                    <p id="goal-projection-subtitle" class="text-xs text-slate-600 mt-0.5">
+                      อ้างอิงผลตอบแทนคาดการณ์และอัตราปันผลจากแนวทางจัดพอร์ตที่เลือกในปัจจุบัน
                     </p>
                   </div>
                   <span id="goal-feasibility-status-badge" class="px-2.5 py-1 rounded-md text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 self-start sm:self-center">
@@ -1521,28 +1606,28 @@
                 <!-- 4 Summary Cards for Goal Projection -->
                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                   <div class="p-3 rounded-lg bg-slate-50 border border-slate-200">
-                    <div class="text-[11px] font-semibold text-slate-500">1. เงินต้นสะสมรวมที่ใส่จริง</div>
-                    <div id="goal-proj-total-principal" class="text-base font-bold font-mono text-slate-900 mt-0.5">--</div>
-                    <div id="goal-proj-principal-breakdown" class="text-[10px] text-slate-500 mt-1">ก้อนแรก -- + ออมสะสม --</div>
+                    <div class="text-xs font-semibold text-slate-600">เงินต้นสะสมรวมที่ใส่จริง</div>
+                    <div id="goal-proj-total-principal" class="text-base font-bold font-mono text-slate-900 mt-0.5"></div>
+                    <div id="goal-proj-principal-breakdown" class="text-xs text-slate-500 mt-1"></div>
                   </div>
 
                   <div class="p-3 rounded-lg bg-indigo-50/50 border border-indigo-200">
-                    <div class="text-[11px] font-semibold text-indigo-950">2. มูลค่าพอร์ตคาดการณ์เมื่อครบกำหนด</div>
-                    <div id="goal-proj-final-wealth" class="text-base font-bold font-mono text-indigo-700 mt-0.5">--</div>
-                    <div id="goal-proj-net-profit" class="text-[10px] font-semibold text-emerald-700 mt-1">กำไรทบต้นคาดการณ์ +--</div>
+                    <div class="text-xs font-semibold text-indigo-950">มูลค่าพอร์ตคาดการณ์เมื่อครบกำหนด</div>
+                    <div id="goal-proj-final-wealth" class="text-base font-bold font-mono text-indigo-700 mt-0.5"></div>
+                    <div id="goal-proj-net-profit" class="text-xs font-semibold text-emerald-700 mt-1"></div>
                   </div>
 
                   <div class="p-3 rounded-lg bg-emerald-50/50 border border-emerald-200">
-                    <div class="text-[11px] font-semibold text-emerald-950">3. เงินปันผลคาดการณ์เมื่อครบกำหนด</div>
-                    <div id="goal-proj-annual-dividend" class="text-base font-bold font-mono text-emerald-700 mt-0.5">-- / ปี</div>
-                    <div id="goal-proj-monthly-dividend" class="text-[10px] font-semibold text-emerald-800 mt-1">เฉลี่ยเดือนละ -- (Yield --%)</div>
+                    <div class="text-xs font-semibold text-emerald-950">เงินปันผลคาดการณ์เมื่อครบกำหนด</div>
+                    <div id="goal-proj-annual-dividend" class="text-base font-bold font-mono text-emerald-700 mt-0.5"></div>
+                    <div id="goal-proj-monthly-dividend" class="text-xs font-semibold text-emerald-800 mt-1"></div>
                   </div>
 
                   <div class="p-3 rounded-lg bg-blue-50/50 border border-blue-200">
-                    <div class="text-[11px] font-semibold text-blue-950">4. ความสำเร็จเทียบเป้าหมาย</div>
+                    <div class="text-xs font-semibold text-blue-950">ความสำเร็จเทียบเป้าหมาย</div>
                     <div class="flex items-baseline justify-between mt-0.5">
-                      <span id="goal-proj-achievement-pct" class="text-base font-bold font-mono text-blue-700">--%</span>
-                      <span id="goal-proj-gap-text" class="text-[10px] font-semibold text-slate-600">--</span>
+                      <span id="goal-proj-achievement-pct" class="text-base font-bold font-mono text-blue-700"></span>
+                      <span id="goal-proj-gap-text" class="text-xs font-semibold text-slate-600"></span>
                     </div>
                     <div class="w-full h-2 bg-slate-200 rounded-full overflow-hidden mt-1.5">
                       <div id="goal-proj-progress-bar" class="h-full bg-emerald-600 rounded-full transition-all duration-300" style="width: 0%"></div>
@@ -1556,8 +1641,8 @@
                 <!-- Goal Wealth Trajectory Chart -->
                 <div>
                   <div class="flex items-center justify-between mb-1.5">
-                    <h5 class="text-xs font-bold text-slate-800">กราฟจำลองเส้นทางการเติบโตของพอร์ตสู่เป้าหมาย (เทียบเงินต้นสะสม vs มูลค่าพอร์ตทบต้นรายปี)</h5>
-                    <span class="text-[11px] text-slate-500">เส้นประสีทอง = เป้าหมายที่ตั้งไว้</span>
+                    <h5 class="text-xs font-bold text-slate-800">กราฟจำลองเส้นทางการเติบโตของพอร์ตสู่เป้าหมาย (เทียบเงินต้นสะสมกับมูลค่าพอร์ตทบต้นรายปี)</h5>
+                    <span class="text-xs text-slate-600">เส้นประสีทอง = เป้าหมายที่ตั้งไว้</span>
                   </div>
                   <div id="goal-projection-chart" class="w-full h-[270px] border border-slate-200 rounded-lg p-2 bg-white"></div>
                 </div>
@@ -1574,7 +1659,7 @@
                       class="py-2.5 px-3.5 rounded-lg text-xs font-semibold bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 transition flex items-center justify-center gap-1.5"
                     >
                       <i data-lucide="printer" class="w-3.5 h-3.5 text-slate-600"></i>
-                      <span>พิมพ์ใบสรุปแผนการลงทุน (PDF)</span>
+                      <span>พิมพ์ใบสรุปแผนการลงทุน</span>
                     </button>
                     <button
                       type="button"
@@ -1589,19 +1674,19 @@
                 </div>
               </div>
 
-              <!-- ขั้นตอนย่อย 4.4: รายการพอร์ตตามเป้าหมายที่บันทึกไว้ (Saved Goal Portfolios) -->
+              <!-- รายการพอร์ตตามเป้าหมายที่บันทึกไว้ -->
               <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
                 <div class="flex items-center justify-between">
                   <div>
                     <h4 class="text-xs font-bold text-slate-900">
-                      รายการพอร์ตตามเป้าหมายที่บันทึกไว้ของคุณ (<span id="saved-portfolios-count" class="text-indigo-700">0</span> พอร์ต)
+                      รายการพอร์ตตามเป้าหมายที่บันทึกไว้ของคุณ (<span id="saved-portfolios-count" class="text-indigo-700"></span> พอร์ต)
                     </h4>
-                    <p class="text-[11px] text-slate-500">สามารถคลิก "ดึงพอร์ตมาใช้งาน" เพื่อโหลดรายชื่อหุ้น งบประมาณ แผน DCA และกลยุทธ์ของพอร์ตนั้นกลับมาคำนวณใหม่ได้ทันที</p>
+                    <p class="text-xs text-slate-600">คลิก "ดึงพอร์ตมาใช้งาน" เพื่อโหลดรายชื่อหุ้น งบประมาณ แผนออมรายเดือน และแนวทางของพอร์ตนั้นกลับมาคำนวณใหม่ได้ทันที</p>
                   </div>
                   <button
                     type="button"
                     onclick="fetchUserPortfolios()"
-                    class="px-2.5 py-1 rounded bg-white hover:bg-slate-100 text-[11px] text-indigo-700 border border-slate-200 font-semibold transition"
+                    class="px-2.5 py-1 rounded bg-white hover:bg-slate-100 text-xs text-indigo-700 border border-slate-200 font-semibold transition"
                   >
                     รีเฟรชรายการพอร์ต
                   </button>
@@ -1624,25 +1709,57 @@
     class="hidden fixed bottom-5 right-5 z-50 px-4 py-3 rounded-lg bg-slate-900 text-white text-xs font-semibold shadow-xl border border-slate-700"
   ></div>
 
-  <!-- FULL-SCREEN MANDATORY LOGIN GATE (ไม่มีอิโมจิ พร้อมพื้นหลังขยับช้าๆ) -->
-  <div id="supabase-config-modal" class="fixed inset-0 z-[100] qf-login-ambient flex items-center justify-center p-4 overflow-y-auto">
+  <!-- OPTIONAL LOGIN & GUEST MODE MODAL -->
+  <div id="supabase-config-modal" class="hidden fixed inset-0 z-[100] qf-login-ambient flex items-center justify-center p-4 overflow-y-auto">
     <div class="qf-orb qf-login-orb-1" aria-hidden="true"></div>
     <div class="qf-orb qf-login-orb-2" aria-hidden="true"></div>
     <canvas id="qf-login-canvas" class="fixed inset-0 w-full h-full pointer-events-none opacity-60" aria-hidden="true"></canvas>
 
-    <div class="relative bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full p-6 sm:p-7 space-y-5 my-auto">
+    <div class="relative bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full p-6 sm:p-7 space-y-4 my-auto">
+      <!-- ปุ่มปิดหน้าต่าง (ทดลองใช้งานทันที) -->
+      <button
+        type="button"
+        onclick="continueAsGuest()"
+        title="ปิดหน้าต่างและทดลองใช้งานทันที"
+        class="absolute top-4 right-4 p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition"
+      >
+        <i data-lucide="x" class="w-5 h-5"></i>
+      </button>
+
       <!-- Brand Header -->
       <div class="text-center space-y-2 border-b border-slate-100 pb-4">
         <div class="w-11 h-11 rounded-xl bg-slate-900 flex items-center justify-center text-white mx-auto shadow-sm">
           <i data-lucide="bar-chart-2" class="w-5 h-5"></i>
         </div>
         <div>
-          <span class="inline-block px-2.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 text-[11px] font-semibold">
-            ระบบยืนยันตัวตนก่อนเข้าใช้งาน
+          <span class="inline-block px-2.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 text-xs font-semibold">
+            เลือกโหมดเข้าใช้งาน (เข้าสู่ระบบ หรือ ทดลองใช้ฟรี)
           </span>
-          <h2 class="text-lg font-bold text-slate-900 tracking-tight mt-1.5">QuantFolio Wealth Analytics</h2>
-          <p class="text-xs text-slate-500 mt-0.5">กรุณาเข้าสู่ระบบเพื่อใช้งานระบบวิเคราะห์พอร์ตและจัดการข้อมูลพอร์ตส่วนตัว</p>
+          <h2 class="text-lg font-bold text-slate-900 tracking-tight mt-1.5">ระบบวิเคราะห์และจัดพอร์ตลงทุน QuantFolio</h2>
+          <p class="text-xs text-slate-600 mt-0.5">เข้าสู่ระบบเพื่อบันทึกพอร์ตส่วนตัว หรือเลือกทดลองใช้งานได้ทันทีโดยไม่ต้องสมัครสมาชิก</p>
         </div>
+      </div>
+
+      <!-- ปุ่มทางเลือกหลักสำหรับบุคคลทั่วไป: ทดลองใช้งานทันทีโดยไม่ต้อง Login -->
+      <div class="p-3 rounded-xl bg-emerald-50/70 border border-emerald-200 space-y-1.5">
+        <button
+          type="button"
+          id="btn-continue-guest"
+          onclick="continueAsGuest()"
+          class="w-full py-2.5 px-4 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition flex items-center justify-center gap-2"
+        >
+          <i data-lucide="play-circle" class="w-4 h-4"></i>
+          <span>ทดลองใช้งานทันทีโดยไม่ต้องเข้าสู่ระบบ</span>
+        </button>
+        <p class="text-xs text-emerald-800 text-center">
+          เปิดใช้งานการคำนวณพอร์ต กราฟย้อนหลัง และใบคำสั่งซื้อ-ขายได้ครบทุกฟังก์ชันทันที
+        </p>
+      </div>
+
+      <div class="relative flex py-0.5 items-center">
+        <div class="grow border-t border-slate-200"></div>
+        <span class="shrink mx-3 text-xs font-medium text-slate-500">หรือเข้าสู่ระบบเพื่อบันทึกพอร์ตลงบัญชี</span>
+        <div class="grow border-t border-slate-200"></div>
       </div>
 
       <!-- สลับโหมด: เข้าสู่ระบบ / สมัครสมาชิกใหม่ -->
@@ -1653,7 +1770,7 @@
           onclick="switchAuthTab('signin')"
           class="py-2 text-xs font-bold rounded-md bg-white text-slate-900 shadow-xs transition"
         >
-          เข้าสู่ระบบ (Sign In)
+          เข้าสู่ระบบ
         </button>
         <button
           type="button"
@@ -1661,7 +1778,7 @@
           onclick="switchAuthTab('signup')"
           class="py-2 text-xs font-semibold rounded-md text-slate-600 hover:text-slate-900 transition"
         >
-          สมัครสมาชิกใหม่ (Sign Up)
+          สมัครสมาชิกใหม่
         </button>
       </div>
 
@@ -1680,7 +1797,7 @@
           />
         </div>
         <div>
-          <label class="text-xs font-semibold text-slate-700 block mb-1">อีเมล (Email)</label>
+          <label class="text-xs font-semibold text-slate-700 block mb-1">อีเมล</label>
           <input
             type="email"
             id="real-auth-email"
@@ -1713,7 +1830,7 @@
       <!-- เส้นคั่น OR -->
       <div class="relative flex py-0.5 items-center">
         <div class="grow border-t border-slate-200"></div>
-        <span class="shrink mx-3 text-[11px] font-medium text-slate-400">หรือเชื่อมต่อด้วยบัญชี Google</span>
+        <span class="shrink mx-3 text-xs font-medium text-slate-500">หรือเชื่อมต่อด้วยบัญชี Google</span>
         <div class="grow border-t border-slate-200"></div>
       </div>
 
@@ -1730,11 +1847,11 @@
             <path fill="#FBBC05" d="M5.28 14.24c-.24-.72-.38-1.49-.38-2.24s.14-1.52.38-2.24V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.99-3.14z"/>
             <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.99 3.14c.95-2.85 3.6-4.96 6.72-4.96z"/>
           </svg>
-          <span>Continue with Google (Google OAuth)</span>
+          <span>เข้าสู่ระบบด้วยบัญชี Google</span>
         </button>
 
         <div class="text-center pt-1">
-          <span id="google-provider-status-badge" class="text-[11px] font-medium px-2.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 inline-block">
+          <span id="google-provider-status-badge" class="text-xs font-medium px-2.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 inline-block">
             สถานะ: พร้อมเข้าสู่ระบบด้วยอีเมลและรหัสผ่านทันที
           </span>
         </div>
@@ -1743,9 +1860,9 @@
   </div>
 
   <!-- FOOTER -->
-  <footer class="relative z-10 bg-white/90 border-t border-slate-200 py-4 text-xs text-slate-500 mt-8">
+  <footer class="relative z-10 bg-white/90 border-t border-slate-200 py-4 text-xs text-slate-600 mt-8">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2">
-      <div class="font-medium text-slate-700">QuantFolio Wealth Analytics — ระบบวิเคราะห์พอร์ตการลงทุนและออกคำสั่ง Rebalance ด้วยข้อมูลจริงจาก Yahoo Finance</div>
+      <div class="font-medium text-slate-700">QuantFolio — ระบบวิเคราะห์พอร์ตการลงทุนและสรุปคำสั่งซื้อ-ขายด้วยข้อมูลตลาดจริง</div>
       <div>ข้อมูลสถิติในอดีตใช้เพื่อประกอบการตัดสินใจวางแผนการลงทุนเท่านั้น</div>
     </div>
   </footer>

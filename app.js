@@ -28,36 +28,85 @@ const state = {
 };
 window.state = state;
 
+// คืนค่าช่วงวันที่เริ่มต้นอัตโนมัติ: ถึงวันที่ = วันนี้ และ ตั้งแต่วันที่ = ย้อนหลัง yearsBack ปี (ค่าเริ่มต้น 3 ปี)
+function getDefaultDateRange(yearsBack = 3) {
+  const end = new Date();
+  const start = new Date(end);
+  start.setFullYear(end.getFullYear() - yearsBack);
+  const toIsoDate = (d) => {
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  };
+  return {
+    start: toIsoDate(start),
+    end: toIsoDate(end)
+  };
+}
+
 const PRESETS = {
   colab_original: {
     tickers: ['NVDA', 'TSLA', 'AMZN', 'BTC-USD', 'AAPL'],
-    start: '2020-01-01',
-    end: '2024-01-01',
+    get start() { return getDefaultDateRange(3).start; },
+    get end() { return getDefaultDateRange(3).end; },
     currency: 'THB',
     budget: 100000
   },
   tech_titans: {
     tickers: ['NVDA', 'AAPL', 'MSFT', 'AMZN', 'GOOGL', 'META', 'TSLA'],
-    start: '2021-01-01',
-    end: new Date().toISOString().split('T')[0],
+    get start() { return getDefaultDateRange(3).start; },
+    get end() { return getDefaultDateRange(3).end; },
     currency: 'THB',
     budget: 100000
   },
   all_weather: {
     tickers: ['SPY', 'QQQ', 'GLD', 'TLT', 'DBC'],
-    start: '2020-01-01',
-    end: new Date().toISOString().split('T')[0],
+    get start() { return getDefaultDateRange(3).start; },
+    get end() { return getDefaultDateRange(3).end; },
     currency: 'THB',
     budget: 100000
   },
   thai_set50: {
     tickers: ['PTT.BK', 'AOT.BK', 'CPALL.BK', 'DELTA.BK', 'BDMS.BK'],
-    start: '2021-01-01',
-    end: new Date().toISOString().split('T')[0],
+    get start() { return getDefaultDateRange(3).start; },
+    get end() { return getDefaultDateRange(3).end; },
     currency: 'THB',
     budget: 100000
   }
 };
+
+// คำอธิบายแนวทางจัดพอร์ตภาษาไทยสำหรับมือใหม่ (เข้าใจง่าย ไม่ใช้ศัพท์เทคนิค)
+const STRATEGY_THAI_INFO = {
+  max_sharpe: {
+    name: 'พอร์ตเน้นกำไรคุ้มความเสี่ยงที่สุด',
+    short_name: 'เน้นกำไรคุ้มความเสี่ยงที่สุด',
+    tagline: 'จัดสัดส่วนหุ้นให้ได้ผลตอบแทนคาดหวังสูงที่สุดเมื่อเทียบกับความผันผวนของราคา'
+  },
+  min_volatility: {
+    name: 'พอร์ตเน้นปลอดภัย เงินต้นแกว่งน้อย',
+    short_name: 'เน้นปลอดภัย เงินต้นแกว่งน้อย',
+    tagline: 'เน้นรักษาเงินต้น เลือกหุ้นที่ราคาไม่เหวี่ยงแรงเพื่อลดโอกาสขาดทุนหนักช่วงตลาดตก'
+  },
+  hrp: {
+    name: 'พอร์ตเน้นกระจายความเสี่ยงสมดุล',
+    short_name: 'เน้นกระจายความเสี่ยงสมดุล',
+    tagline: 'แบ่งเงินกระจายลงสินทรัพย์แต่ละกลุ่มอย่างสมดุล ป้องกันพอร์ตกระจุกในหุ้นตัวเดียว'
+  },
+  equal_weight: {
+    name: 'พอร์ตแบ่งเงินเท่ากันทุกตัว',
+    short_name: 'แบ่งเงินเท่ากันทุกตัว',
+    tagline: 'แบ่งเงินลงทุนในหุ้นทุกตัวที่เลือกด้วยจำนวนเงินเท่าๆ กัน เข้าใจง่ายและตรงไปตรงมา'
+  }
+};
+
+function getStrategyThaiInfo(key, fallbackStrat = {}) {
+  return STRATEGY_THAI_INFO[key] || {
+    name: fallbackStrat.name || 'พอร์ตที่เลือก',
+    short_name: fallbackStrat.short_name || 'พอร์ตที่เลือก',
+    tagline: fallbackStrat.tagline || ''
+  };
+}
 
 // Institutional financial color palette
 const ASSET_COLORS = [
@@ -77,14 +126,17 @@ document.addEventListener('DOMContentLoaded', () => {
     lucide.createIcons();
   }
 
+  // ตั้งค่าเริ่มต้นช่วงข้อมูล: "ถึงวันที่" = วันนี้ และ "ตั้งแต่วันที่" = 3 ปีก่อนวันนี้ อัตโนมัติ
+  const defDates = getDefaultDateRange(3);
+  const startInput = document.getElementById('start-date-input');
+  const endInput = document.getElementById('end-date-input');
+  if (startInput) startInput.value = defDates.start;
+  if (endInput) endInput.value = defDates.end;
+
   fetchLiveMarketRates();
   renderTickersList();
   fetchLiveQuotesForTickers();
-
-  // Run initial portfolio calculation automatically
-  setTimeout(() => {
-    runOptimization();
-  }, 200);
+  // หมายเหตุ: ไม่รันคำนวณอัตโนมัติตอนเปิดหน้าเว็บ เพื่อซ่อนส่วนผลลัพธ์ไว้จนกว่าผู้ใช้จะกดคำนวณหรือกด "ลองพอร์ตตัวอย่าง"
 });
 
 function getCurrentCurrency() {
@@ -266,14 +318,29 @@ function handleBudgetQuickUpdate() {
   renderAllViews();
 }
 
+// ปุ่มเด่น "ลองพอร์ตตัวอย่าง": เลือกชุดตัวอย่าง คำนวณพอร์ต และเลื่อนไปที่ผลลัพธ์ให้เองใน 1 คลิก
+async function trySamplePortfolio(presetKey = 'colab_original') {
+  await applyPreset(presetKey, true);
+}
+
 // Preset Selection
-function applyPreset(presetKey) {
-  const p = PRESETS[presetKey];
+async function applyPreset(presetKey, shouldScroll = true) {
+  const p = PRESETS[presetKey] || PRESETS.colab_original;
   if (!p) return;
 
   state.tickers = [...p.tickers];
-  if (p.start) document.getElementById('start-date-input').value = p.start;
-  if (p.end) document.getElementById('end-date-input').value = p.end;
+  const defDates = getDefaultDateRange(3);
+  document.getElementById('start-date-input').value = p.start || defDates.start;
+  document.getElementById('end-date-input').value = p.end || defDates.end;
+
+  // ไฮไลต์ปุ่มช่วงเวลา 3 ปีให้ตรงกับค่าเริ่มต้น
+  document.querySelectorAll('.tf-btn').forEach(b => {
+    b.className = 'tf-btn px-2 py-0.5 rounded bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 font-medium';
+  });
+  const btn3Y = document.getElementById('tf-btn-3Y');
+  if (btn3Y) {
+    btn3Y.className = 'tf-btn px-2 py-0.5 rounded bg-slate-900 text-white font-semibold';
+  }
 
   if (p.currency) {
     const sel = document.getElementById('currency-select');
@@ -295,24 +362,20 @@ function applyPreset(presetKey) {
 
   renderTickersList();
   fetchLiveQuotesForTickers();
-  runOptimization();
+  await runOptimization(shouldScroll);
 }
 
 // Timeframe buttons
 function setTimeframe(tf, btnEl) {
-  const end = new Date();
-  const start = new Date();
+  const yearsMap = { '1Y': 1, '3Y': 3, '4Y': 4, '5Y': 5 };
+  const years = yearsMap[tf] || 3;
+  const range = getDefaultDateRange(years);
 
-  if (tf === '1Y') start.setFullYear(end.getFullYear() - 1);
-  else if (tf === '3Y') start.setFullYear(end.getFullYear() - 3);
-  else if (tf === '4Y') start.setFullYear(end.getFullYear() - 4);
-  else if (tf === '5Y') start.setFullYear(end.getFullYear() - 5);
-
-  document.getElementById('end-date-input').value = end.toISOString().split('T')[0];
-  document.getElementById('start-date-input').value = start.toISOString().split('T')[0];
+  document.getElementById('end-date-input').value = range.end;
+  document.getElementById('start-date-input').value = range.start;
 
   document.querySelectorAll('.tf-btn').forEach(b => {
-    b.className = 'tf-btn px-2 py-0.5 rounded bg-slate-100 text-slate-600 hover:bg-slate-200 font-medium';
+    b.className = 'tf-btn px-2 py-0.5 rounded bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 font-medium';
   });
   if (btnEl) {
     btnEl.className = 'tf-btn px-2 py-0.5 rounded bg-slate-900 text-white font-semibold';
@@ -324,7 +387,7 @@ function updateMaxWeightLabel(val) {
   const num = parseInt(val, 10);
   const label = document.getElementById('max-weight-val');
   if (num >= 100) {
-    label.innerText = 'ไม่จำกัด (100%)';
+    label.innerText = 'ไม่จำกัดเพดาน';
   } else {
     label.innerText = `ไม่เกิน ${num}% ต่อตัว`;
   }
@@ -446,19 +509,19 @@ function selectPrimaryInvestmentMode(modeKey) {
       key: 'new_capital',
       activeCard: 'cursor-pointer rounded-xl p-3.5 border-2 border-emerald-500 bg-emerald-50/40 hover:bg-emerald-50/70 transition flex flex-col justify-between gap-2',
       inactiveCard: 'cursor-pointer rounded-xl p-3.5 border border-slate-200 bg-white hover:bg-slate-50 transition flex flex-col justify-between gap-2',
-      activeBadge: 'px-2 py-0.5 rounded bg-emerald-600 text-white text-[10px] font-bold shrink-0'
+      activeBadge: 'px-2 py-0.5 rounded bg-emerald-600 text-white text-xs font-bold shrink-0'
     },
     {
       key: 'existing_portfolio',
       activeCard: 'cursor-pointer rounded-xl p-3.5 border-2 border-blue-600 bg-blue-50/40 hover:bg-blue-50/70 transition flex flex-col justify-between gap-2',
       inactiveCard: 'cursor-pointer rounded-xl p-3.5 border border-slate-200 bg-white hover:bg-slate-50 transition flex flex-col justify-between gap-2',
-      activeBadge: 'px-2 py-0.5 rounded bg-blue-600 text-white text-[10px] font-bold shrink-0'
+      activeBadge: 'px-2 py-0.5 rounded bg-blue-600 text-white text-xs font-bold shrink-0'
     },
     {
       key: 'goal_based',
       activeCard: 'cursor-pointer rounded-xl p-3.5 border-2 border-indigo-600 bg-indigo-50/50 hover:bg-indigo-50/80 transition flex flex-col justify-between gap-2',
       inactiveCard: 'cursor-pointer rounded-xl p-3.5 border border-slate-200 bg-white hover:bg-indigo-50/40 transition flex flex-col justify-between gap-2',
-      activeBadge: 'px-2 py-0.5 rounded bg-indigo-600 text-white text-[10px] font-bold shrink-0'
+      activeBadge: 'px-2 py-0.5 rounded bg-indigo-600 text-white text-xs font-bold shrink-0'
     }
   ];
 
@@ -468,24 +531,28 @@ function selectPrimaryInvestmentMode(modeKey) {
     const isSelected = m.key === modeKey;
     if (card) card.className = isSelected ? m.activeCard : m.inactiveCard;
     if (badge) {
-      badge.className = isSelected ? m.activeBadge : 'px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-semibold shrink-0';
+      badge.className = isSelected ? m.activeBadge : 'px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-xs font-semibold shrink-0';
       badge.innerText = isSelected ? 'กำลังเลือกใช้' : 'คลิกเพื่อเลือก';
     }
   });
 
   if (modeKey === 'new_capital') {
     setRebalanceMode('cash');
-    if (typeof switchMainCategory === 'function') switchMainCategory('orders', false);
+    if (state.optData && typeof switchMainCategory === 'function') switchMainCategory('orders', false);
   } else if (modeKey === 'existing_portfolio') {
     setRebalanceMode('custom');
-    if (typeof switchMainCategory === 'function') switchMainCategory('orders', false);
-    const customPanel = document.getElementById('custom-holdings-panel');
-    if (customPanel) {
-      customPanel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (state.optData) {
+      if (typeof switchMainCategory === 'function') switchMainCategory('orders', false);
+      const customPanel = document.getElementById('custom-holdings-panel');
+      if (customPanel) {
+        customPanel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
     }
   } else if (modeKey === 'goal_based') {
     setRebalanceMode('cash');
-    scrollToGoalBuilderSection();
+    if (state.optData) {
+      scrollToGoalBuilderSection();
+    }
   }
 }
 
@@ -939,7 +1006,7 @@ document.addEventListener('click', (e) => {
 });
 
 // Run Optimization
-async function runOptimization() {
+async function runOptimization(shouldScroll = true) {
   if (state.tickers.length < 2) {
     showError('กรุณาเลือกหุ้นหรือสินทรัพย์อย่างน้อย 2 รายการขึ้นไปเพื่อคำนวณสัดส่วนพอร์ต');
     return;
@@ -996,7 +1063,7 @@ async function runOptimization() {
       state.customShares[t] = p > 0 ? Number((state.customHoldings[t] / p).toFixed(4)) : 0;
     });
 
-    renderAllViews();
+    renderAllViews(shouldScroll);
   } catch (err) {
     showError(err.message);
   } finally {
@@ -1004,11 +1071,21 @@ async function runOptimization() {
   }
 }
 
-function renderAllViews() {
+function renderAllViews(shouldScroll = false) {
   const data = state.optData;
   if (!data) return;
 
-  document.getElementById('results-dashboard').classList.remove('hidden');
+  const dashboardEl = document.getElementById('results-dashboard');
+  if (dashboardEl) {
+    dashboardEl.classList.remove('hidden');
+  }
+
+  const topDaysWrap = document.getElementById('top-trading-days-wrap');
+  if (topDaysWrap) {
+    topDaysWrap.classList.remove('hidden');
+    topDaysWrap.classList.add('flex');
+  }
+
   document.getElementById('top-trading-days').innerText = data.metadata.trading_days.toLocaleString();
   document.getElementById('top-rf-rate').innerText = `${(data.metadata.risk_free_rate * 100).toFixed(2)}%`;
   document.getElementById('analysis-period-badge').innerText =
@@ -1030,6 +1107,37 @@ function renderAllViews() {
 
   if (window.lucide) {
     lucide.createIcons();
+  }
+
+  setTimeout(() => {
+    window.dispatchEvent(new Event('resize'));
+    if (shouldScroll && dashboardEl) {
+      dashboardEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, 120);
+}
+
+function updateTopOrderSummaryBanner(plan, strat) {
+  const summaryTextEl = document.getElementById('top-order-summary-text');
+  const summarySubEl = document.getElementById('top-order-summary-subtext');
+  if (!summaryTextEl || !plan) return;
+
+  const sellCount = plan.sellOrders.length;
+  const buyCount = plan.buyOrders.length;
+  const totalBudgetStr = formatMoney(plan.totalPortfolioBudget, 0, false);
+
+  summaryTextEl.innerText = `ขาย ${sellCount} ตัว ซื้อ ${buyCount} ตัว รวม ${totalBudgetStr}`;
+
+  if (summarySubEl) {
+    const stratInfo = getStrategyThaiInfo(state.activeGoal, strat);
+    const sellParts = plan.sellOrders.map(s => `ขาย ${s.ticker} (${formatMoney(s.trade_amount, 0, false)})`);
+    const buyParts = plan.buyOrders.map(b => `ซื้อ ${b.ticker} (${formatMoney(b.trade_amount, 0, false)})`);
+    const combined = [...sellParts, ...buyParts];
+    if (combined.length > 0) {
+      summarySubEl.innerText = `แผน "${stratInfo.short_name}": ${combined.join(' • ')}`;
+    } else {
+      summarySubEl.innerText = `แผน "${stratInfo.short_name}": สัดส่วนพอร์ตตรงตามเป้าหมายแล้ว ไม่ต้องซื้อขายเพิ่ม`;
+    }
   }
 }
 
@@ -1269,10 +1377,11 @@ function renderActiveGoalView() {
   if (!strat) return;
 
   const budget = data.metadata.budget;
+  const stratInfo = getStrategyThaiInfo(state.activeGoal, strat);
 
   // Title & Tagline
-  document.getElementById('active-goal-title').innerText = strat.name;
-  document.getElementById('active-goal-desc').innerText = strat.tagline;
+  document.getElementById('active-goal-title').innerText = stratInfo.name;
+  document.getElementById('active-goal-desc').innerText = stratInfo.tagline;
 
   // KPI 1: Expected Return + Profit in Baht
   const retPct = (strat.expected_return * 100).toFixed(2);
@@ -1292,13 +1401,13 @@ function renderActiveGoalView() {
   const riskBadge = document.getElementById('kpi-risk-badge');
   if (strat.volatility < 0.16) {
     riskBadge.innerText = 'ระดับความเสี่ยงต่ำ';
-    riskBadge.className = 'inline-block text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200';
+    riskBadge.className = 'inline-block text-xs font-semibold px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200';
   } else if (strat.volatility <= 0.28) {
     riskBadge.innerText = 'ระดับความเสี่ยงปานกลาง';
-    riskBadge.className = 'inline-block text-[10px] font-semibold px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200';
+    riskBadge.className = 'inline-block text-xs font-semibold px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200';
   } else {
     riskBadge.innerText = 'ระดับความเสี่ยงสูง';
-    riskBadge.className = 'inline-block text-[10px] font-semibold px-2 py-0.5 rounded bg-rose-50 text-rose-800 border border-rose-200';
+    riskBadge.className = 'inline-block text-xs font-semibold px-2 py-0.5 rounded bg-rose-50 text-rose-800 border border-rose-200';
   }
 
   // KPI 3: Historical Max Drawdown in BAHT (Requirement 1)
@@ -1313,18 +1422,18 @@ function renderActiveGoalView() {
   document.getElementById('kpi-mdd').innerText = `(${(strat.max_drawdown * 100).toFixed(2)}%)`;
   document.getElementById('kpi-mdd-remaining').innerText = `เหลือต่ำสุด ${formatMoney(minRemainingBaht, 0, false)}`;
 
-  // KPI 4: Sharpe Ratio
+  // KPI 4: Value vs Risk Score
   document.getElementById('kpi-sharpe').innerText = strat.sharpe_ratio.toFixed(2);
   const srBadge = document.getElementById('kpi-sharpe-badge');
   if (strat.sharpe_ratio >= 1.5) {
     srBadge.innerText = 'คุ้มค่าความเสี่ยงดีเยี่ยม';
-    srBadge.className = 'inline-block text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200';
+    srBadge.className = 'inline-block text-xs font-semibold px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200';
   } else if (strat.sharpe_ratio >= 1.0) {
     srBadge.innerText = 'คุ้มค่าความเสี่ยงดี';
-    srBadge.className = 'inline-block text-[10px] font-semibold px-2 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200';
+    srBadge.className = 'inline-block text-xs font-semibold px-2 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200';
   } else {
     srBadge.innerText = 'ความคุ้มค่าระดับปานกลาง';
-    srBadge.className = 'inline-block text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200';
+    srBadge.className = 'inline-block text-xs font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200';
   }
 
   // Donut Chart of Portfolio Weights
@@ -1333,6 +1442,9 @@ function renderActiveGoalView() {
   // Compute Prudent Rebalance Plan
   const plan = computeRebalancePlan(strat, data);
   state.lastRebalancePlan = plan;
+
+  // Update Top Order Summary Banner
+  updateTopOrderSummaryBanner(plan, strat);
 
   // Update Summary KPI Box under Donut Chart
   document.getElementById('order-kpi-budget').innerText = formatMoney(plan.totalPortfolioBudget, 2, false);
@@ -1346,10 +1458,10 @@ function renderActiveGoalView() {
   if (prudentNote) {
     if (plan.feeBufferOn) {
       prudentNote.innerHTML = `<i data-lucide="shield-check" class="w-3.5 h-3.5"></i><span>รอบคอบ: กันเงินสำรองเผื่อค่าธรรมเนียมซื้อขายแล้ว ${formatMoney(plan.feeReserve, 2, true)}</span>`;
-      prudentNote.className = 'text-[11px] text-emerald-700 font-medium flex items-center gap-1';
+      prudentNote.className = 'text-xs text-emerald-700 font-medium flex items-center gap-1';
     } else {
       prudentNote.innerHTML = `<i data-lucide="info" class="w-3.5 h-3.5"></i><span>คำนวณเต็มวงเงิน 100% (ไม่หักสำรองค่าธรรมเนียม)</span>`;
-      prudentNote.className = 'text-[11px] text-slate-500 font-medium flex items-center gap-1';
+      prudentNote.className = 'text-xs text-slate-500 font-medium flex items-center gap-1';
     }
   }
 
@@ -1375,6 +1487,8 @@ function renderRebalanceActionSummaryBox(plan, strat) {
   const box = document.getElementById('rebalance-action-summary-box');
   if (!box) return;
 
+  const stratInfo = getStrategyThaiInfo(state.activeGoal, strat);
+
   // Case 1: Portfolio is already balanced (no trades needed)
   if (plan.sellOrders.length === 0 && plan.buyOrders.length === 0) {
     box.innerHTML = `
@@ -1384,7 +1498,7 @@ function renderRebalanceActionSummaryBox(plan, strat) {
             <i data-lucide="check-circle-2" class="w-5 h-5"></i>
           </div>
           <div>
-            <h4 class="text-sm font-bold text-slate-900">พอร์ตปัจจุบันของคุณมีสัดส่วนตรงตามเป้าหมาย "${strat.short_name}" อยู่แล้ว</h4>
+            <h4 class="text-sm font-bold text-slate-900">พอร์ตปัจจุบันของคุณมีสัดส่วนตรงตามเป้าหมาย "${stratInfo.short_name}" อยู่แล้ว</h4>
             <p class="text-xs text-slate-600 mt-0.5">
               ไม่จำเป็นต้องส่งคำสั่งซื้อหรือขายเพิ่มเติมในขณะนี้ เพื่อประหยัดค่าธรรมเนียมการซื้อขาย (หากต้องการดูยอดซื้อเริ่มต้นจากเงินสด กดปุ่ม <b>"ซื้อใหม่จากเงินสด 100%"</b> ด้านบน)
             </p>
@@ -1417,17 +1531,17 @@ function renderRebalanceActionSummaryBox(plan, strat) {
         : `<span class="px-2 py-0.5 rounded bg-rose-100 text-rose-800 font-mono font-bold text-xs">ขาย ${pair.fromTicker}</span>`;
 
       const fromSharesText = (!pair.fromIsCash && pair.sellShares > 0)
-        ? `<span class="text-[11px] text-slate-500 font-mono ml-1">(~${pair.sellShares} หุ้น)</span>`
+        ? `<span class="text-xs text-slate-500 font-mono ml-1">(~${pair.sellShares} หุ้น)</span>`
         : '';
 
       const toSharesText = pair.buyShares > 0
-        ? `<span class="text-[11px] text-slate-500 font-mono ml-1">(~${pair.buyShares} หุ้น)</span>`
+        ? `<span class="text-xs text-slate-500 font-mono ml-1">(~${pair.buyShares} หุ้น)</span>`
         : '';
 
       return `
         <div class="flow-pair-card px-3.5 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
           <div class="flex items-center gap-2 flex-wrap">
-            <span class="w-5 h-5 rounded-full bg-slate-900 text-white text-[10px] font-bold flex items-center justify-center shrink-0">${idx + 1}</span>
+            <span class="w-5 h-5 rounded-full bg-slate-900 text-white text-xs font-bold flex items-center justify-center shrink-0">${idx + 1}</span>
             ${fromBadge}
             <span class="text-slate-700">เป็นเงิน</span>
             <span class="font-mono font-bold text-rose-700 text-sm">${formatMoney(pair.sellAmount, 2, true)}</span>
@@ -1454,7 +1568,7 @@ function renderRebalanceActionSummaryBox(plan, strat) {
           <div class="flex items-center gap-2">
             <span class="w-2 h-2 rounded-full bg-blue-600"></span>
             <h4 class="text-sm font-bold text-slate-900">
-              ขั้นตอนปฏิบัติการปรับพอร์ต (ทำตามลำดับทีละข้อได้ทันที ไม่ต้องคำนวณเอง)
+              ลำดับปฏิบัติการปรับพอร์ต (ทำตามลำดับทีละข้อได้ทันที ไม่ต้องคำนวณเอง)
             </h4>
           </div>
           <p class="text-xs text-slate-600 mt-1 leading-relaxed">
@@ -1469,21 +1583,21 @@ function renderRebalanceActionSummaryBox(plan, strat) {
       <div class="space-y-2">
         <div class="text-xs font-bold text-slate-800 flex items-center justify-between">
           <span>คู่คำสั่งซื้อ-ขายจับคู่เม็ดเงิน (ขายตัวไหนกี่บาท ➔ ไปซื้อตัวไหนกี่บาท):</span>
-          <span class="text-[11px] font-normal text-slate-500">จับคู่ยอดเงินให้พอดีอัตโนมัติ</span>
+          <span class="text-xs font-normal text-slate-500">จับคู่ยอดเงินให้พอดีอัตโนมัติ</span>
         </div>
         <div class="space-y-2">
           ${pairRowsHtml}
         </div>
       </div>
 
-      <!-- 2-Column Step Summary: Step 1 SELL All -> Step 2 BUY All -->
+      <!-- 2-Column Summary: First SELL All -> Next BUY All -->
       <div class="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
-        <!-- Step 1: SELL Card -->
+        <!-- SELL Card -->
         <div class="bg-white rounded-lg border border-rose-200 p-3 space-y-2">
           <div class="flex items-center justify-between border-b border-rose-100 pb-2">
             <span class="text-xs font-bold text-rose-800 flex items-center gap-1.5">
-              <span class="px-1.5 py-0.5 rounded bg-rose-600 text-white text-[10px]">ขั้นที่ 1</span>
-              รายการที่ต้องสั่งขายก่อน (SELL)
+              <span class="px-1.5 py-0.5 rounded bg-rose-600 text-white text-xs">ลำดับแรก</span>
+              รายการที่ต้องสั่งขายก่อน
             </span>
             <span class="font-mono text-xs font-bold text-rose-700">รับเงิน +${formatMoney(plan.totalSellGross, 2, true)}</span>
           </div>
@@ -1492,23 +1606,23 @@ function renderRebalanceActionSummaryBox(plan, strat) {
               <div class="flex items-center justify-between text-xs py-1 border-b border-slate-100 last:border-0">
                 <div>
                   <span class="font-mono font-bold text-slate-900">ขาย ${s.ticker}</span>
-                  <span class="text-[11px] text-slate-500 ml-1">(${(s.current_weight * 100).toFixed(1)}% ➔ ${(s.target_weight * 100).toFixed(1)}%)</span>
+                  <span class="text-xs text-slate-500 ml-1">(${(s.current_weight * 100).toFixed(1)}% ➔ ${(s.target_weight * 100).toFixed(1)}%)</span>
                 </div>
                 <div class="text-right">
                   <div class="font-mono font-bold text-rose-700">ขาย ${formatMoney(s.trade_amount, 2, true)}</div>
-                  <div class="text-[10px] font-mono text-slate-500">ประมาณ ${s.trade_shares_fractional} หุ้น</div>
+                  <div class="text-xs font-mono text-slate-500">ประมาณ ${s.trade_shares_fractional} หุ้น</div>
                 </div>
               </div>
             `).join('')}
           </div>
         </div>
 
-        <!-- Step 2: BUY Card -->
+        <!-- BUY Card -->
         <div class="bg-white rounded-lg border border-emerald-200 p-3 space-y-2">
           <div class="flex items-center justify-between border-b border-emerald-100 pb-2">
             <span class="text-xs font-bold text-emerald-800 flex items-center gap-1.5">
-              <span class="px-1.5 py-0.5 rounded bg-emerald-600 text-white text-[10px]">ขั้นที่ 2</span>
-              นำเงินที่ได้ไปสั่งซื้อ (BUY)
+              <span class="px-1.5 py-0.5 rounded bg-emerald-600 text-white text-xs">ลำดับถัดไป</span>
+              นำเงินที่ได้ไปสั่งซื้อ
             </span>
             <span class="font-mono text-xs font-bold text-emerald-700">ใช้เงิน ${formatMoney(plan.totalBuyNet, 2, true)}</span>
           </div>
@@ -1517,11 +1631,11 @@ function renderRebalanceActionSummaryBox(plan, strat) {
               <div class="flex items-center justify-between text-xs py-1 border-b border-slate-100 last:border-0">
                 <div>
                   <span class="font-mono font-bold text-slate-900">ซื้อ ${b.ticker}</span>
-                  <span class="text-[11px] text-slate-500 ml-1">(${(b.current_weight * 100).toFixed(1)}% ➔ ${(b.target_weight * 100).toFixed(1)}%)</span>
+                  <span class="text-xs text-slate-500 ml-1">(${(b.current_weight * 100).toFixed(1)}% ➔ ${(b.target_weight * 100).toFixed(1)}%)</span>
                 </div>
                 <div class="text-right">
                   <div class="font-mono font-bold text-emerald-700">ซื้อ ${formatMoney(b.trade_amount, 2, true)}</div>
-                  <div class="text-[10px] font-mono text-slate-500">ประมาณ ${b.trade_shares_fractional} หุ้น</div>
+                  <div class="text-xs font-mono text-slate-500">ประมาณ ${b.trade_shares_fractional} หุ้น</div>
                 </div>
               </div>
             `).join('')}
@@ -1553,15 +1667,15 @@ function renderRebalanceActionSummaryBox(plan, strat) {
         <div class="bg-white rounded-lg border border-emerald-200 p-3 flex items-center justify-between gap-2">
           <div>
             <div class="flex items-center gap-1.5">
-              <span class="w-4 h-4 rounded-full bg-emerald-600 text-white text-[10px] font-bold flex items-center justify-center">${idx + 1}</span>
+              <span class="w-5 h-5 rounded-full bg-emerald-600 text-white text-xs font-bold flex items-center justify-center">${idx + 1}</span>
               <span class="font-mono font-bold text-xs text-slate-900">ซื้อ ${b.ticker}</span>
-              <span class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 font-mono font-semibold">${(b.target_weight * 100).toFixed(1)}%</span>
+              <span class="text-xs px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 font-mono font-semibold">${(b.target_weight * 100).toFixed(1)}%</span>
             </div>
-            <div class="text-[11px] text-slate-500 mt-0.5 truncate max-w-[140px]">${b.name}</div>
+            <div class="text-xs text-slate-500 mt-0.5 truncate max-w-[140px]">${b.name}</div>
           </div>
           <div class="text-right">
             <div class="font-mono font-bold text-sm text-emerald-700">${formatMoney(b.trade_amount, 2, true)}</div>
-            <div class="text-[10px] font-mono text-slate-500">
+            <div class="text-xs font-mono text-slate-500">
               ${b.trade_shares_whole > 0 ? `${b.trade_shares_whole} หุ้นเต็ม (${b.trade_shares_fractional} หน่วย)` : `${b.trade_shares_fractional} หน่วยย่อย`}
             </div>
           </div>
@@ -1606,8 +1720,8 @@ function renderRebalanceOrdersTable(plan, data) {
       : (item.native_currency === 'USD' ? item.native_price : Number((item.native_price / fx).toFixed(2)));
 
     const companionPriceHtml = state.currency === 'THB'
-      ? `<div class="text-[10px] text-slate-400 font-mono">($${pUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD)</div>`
-      : `<div class="text-[10px] text-slate-400 font-mono">(฿${pThb.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} THB)</div>`;
+      ? `<div class="text-xs text-slate-400 font-mono">($${pUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ดอลลาร์)</div>`
+      : `<div class="text-xs text-slate-400 font-mono">(฿${pThb.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท)</div>`;
 
     let signalMiniBadge = '';
     if (dec.signal_badge_th) {
@@ -1615,7 +1729,7 @@ function renderRebalanceOrdersTable(plan, data) {
       if (dec.signal_level === 'POSITIVE_BUY') sigCls = 'bg-emerald-50 text-emerald-800 border-emerald-200';
       else if (dec.signal_level === 'OVERBOUGHT_TRANCHE') sigCls = 'bg-amber-50 text-amber-800 border-amber-200';
       else if (dec.signal_level === 'CAUTIOUS_SHIELD') sigCls = 'bg-rose-50 text-rose-800 border-rose-200';
-      signalMiniBadge = `<div class="mt-1"><span class="inline-block text-[10px] font-sans font-semibold px-1.5 py-0.5 rounded border ${sigCls}">${dec.signal_badge_th}</span></div>`;
+      signalMiniBadge = `<div class="mt-1"><span class="inline-block text-xs font-sans font-semibold px-1.5 py-0.5 rounded border ${sigCls}">${dec.signal_badge_th}</span></div>`;
     }
 
     let actionBadgeHtml = '';
@@ -1630,9 +1744,9 @@ function renderRebalanceOrdersTable(plan, data) {
       `;
       sharesActionHtml = item.trade_shares_whole > 0
         ? `<div class="font-sans font-bold text-rose-700">ขาย ${item.trade_shares_whole.toLocaleString()} หุ้น</div>
-           <div class="text-[10px] text-slate-400 font-mono">(ละเอียด: ${item.trade_shares_fractional} หน่วย)</div>`
+           <div class="text-xs text-slate-400 font-mono">(ละเอียด: ${item.trade_shares_fractional} หน่วย)</div>`
         : `<div class="font-sans font-bold text-rose-700">ขาย ${item.trade_shares_fractional} หน่วยย่อย</div>
-           <div class="text-[10px] text-slate-400 font-sans">(ส่งคำสั่งแบบ Fractional)</div>`;
+           <div class="text-xs text-slate-400 font-sans">(ซื้อขายเป็นเศษหุ้นได้)</div>`;
     } else if (item.action === 'BUY') {
       actionBadgeHtml = `
         <div class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200 font-sans font-bold text-xs">
@@ -1642,17 +1756,17 @@ function renderRebalanceOrdersTable(plan, data) {
       `;
       sharesActionHtml = item.trade_shares_whole > 0
         ? `<div class="font-sans font-bold text-emerald-700">ซื้อ ${item.trade_shares_whole.toLocaleString()} หุ้น</div>
-           <div class="text-[10px] text-slate-400 font-mono">(ละเอียด: ${item.trade_shares_fractional} หน่วย)</div>`
+           <div class="text-xs text-slate-400 font-mono">(ละเอียด: ${item.trade_shares_fractional} หน่วย)</div>`
         : `<div class="font-sans font-bold text-blue-700">ซื้อ ${item.trade_shares_fractional} หน่วยย่อย</div>
-           <div class="text-[10px] text-slate-400 font-sans">(ส่งคำสั่งแบบ Fractional)</div>`;
+           <div class="text-xs text-slate-400 font-sans">(ซื้อขายเป็นเศษหุ้นได้)</div>`;
     } else {
       actionBadgeHtml = `
-        <div class="inline-block px-2 py-0.5 rounded bg-slate-100 text-slate-600 font-sans font-semibold text-[11px]">
+        <div class="inline-block px-2 py-0.5 rounded bg-slate-100 text-slate-600 font-sans font-semibold text-xs">
           ไม่ต้องซื้อขาย (คงเดิม)
         </div>
-        <div class="text-[10px] text-slate-400 font-sans mt-0.5">ส่วนต่างน้อยหรือสัดส่วน 0%</div>
+        <div class="text-xs text-slate-400 font-sans mt-0.5">ส่วนต่างน้อยหรือสัดส่วน 0%</div>
       `;
-      sharesActionHtml = `<span class="text-slate-400 font-sans text-[11px]">ถือเท่าเดิม</span>`;
+      sharesActionHtml = `<span class="text-slate-400 font-sans text-xs">ถือเท่าเดิม</span>`;
     }
 
     return `
@@ -1662,7 +1776,7 @@ function renderRebalanceOrdersTable(plan, data) {
             <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background-color: ${color}"></span>
             <div>
               <div class="font-mono font-bold text-slate-900">${item.ticker}</div>
-              <div class="text-[10px] text-slate-500 truncate max-w-[130px]">${item.name}</div>
+              <div class="text-xs text-slate-500 truncate max-w-[130px]">${item.name}</div>
               ${signalMiniBadge}
             </div>
           </div>
@@ -1672,7 +1786,7 @@ function renderRebalanceOrdersTable(plan, data) {
           ${companionPriceHtml}
         </td>
         <td class="py-3 px-3 text-right">
-          <div class="text-[11px] text-slate-500">เดิม: ${formatMoney(item.current_value, 0, false)} (${wCurPct}%)</div>
+          <div class="text-xs text-slate-500">เดิม: ${formatMoney(item.current_value, 0, false)} (${wCurPct}%)</div>
           <div class="font-bold text-slate-900 mt-0.5">เป้า: ${formatMoney(item.target_value, 0, false)} (${wTarPct}%)</div>
         </td>
         <td class="py-3 px-3 text-right">${actionBadgeHtml}</td>
@@ -1750,7 +1864,7 @@ function renderBacktestStressCard() {
 
   document.getElementById('bt-dd-initial-budget').innerText = formatMoney(budget, 2, true);
   document.getElementById('bt-dd-loss-baht').innerText = `-${formatMoney(lossBaht, 2, true)}`;
-  document.getElementById('bt-dd-loss-pct').innerText = `คิดเป็น Max Drawdown -${mddPctAbs}% ของเงินต้น`;
+  document.getElementById('bt-dd-loss-pct').innerText = `คิดเป็นจุดขาดทุนลึกสุด -${mddPctAbs}% ของเงินต้น`;
   document.getElementById('bt-dd-remaining-baht').innerText = formatMoney(remainingBaht, 2, true);
 
   const periodEl = document.getElementById('bt-dd-period');
@@ -1802,10 +1916,10 @@ function renderPortfolioGrowthChart() {
   const unit = state.currencyUnitText;
 
   const namesMap = {
-    max_sharpe: 'Max Sharpe (คุ้มความเสี่ยงสูงสุด)',
-    min_volatility: 'Min Volatility (ผันผวนต่ำ)',
-    hrp: 'Risk Parity (กระจายสมดุล)',
-    equal_weight: 'Equal Weight (เท่ากัน 1/N)'
+    max_sharpe: 'เน้นกำไรคุ้มความเสี่ยง (แนะนำ)',
+    min_volatility: 'เน้นปลอดภัย ผันผวนต่ำ',
+    hrp: 'กระจายความเสี่ยงสมดุล',
+    equal_weight: 'แบ่งเงินเท่ากันทุกตัว'
   };
 
   const isDrawdownMode = state.backtestChartMode === 'drawdown' && pg.drawdown_amount_series;
@@ -1827,7 +1941,7 @@ function renderPortfolioGrowthChart() {
       },
       opacity: isSelected ? 1.0 : 0.7,
       hovertemplate: isDrawdownMode
-        ? `<b>${namesMap[key]}</b><br>เงินที่หายไปจากจุดพีค (เทียบเงินต้น): %{y:,.2f} ${unit}<extra></extra>`
+        ? `<b>${namesMap[key]}</b><br>เงินที่ลดลงจากจุดสูงสุด (เทียบเงินต้น): %{y:,.2f} ${unit}<extra></extra>`
         : `<b>${namesMap[key]}</b><br>มูลค่าพอร์ต: ${sym}%{y:,.2f} (${unit})<extra></extra>`
     };
   });
@@ -1842,7 +1956,7 @@ function renderPortfolioGrowthChart() {
       color: '#475569'
     },
     yaxis: {
-      title: isDrawdownMode ? `จำนวนเงินที่หายไป (${unit})` : `มูลค่าพอร์ต (${unit})`,
+      title: isDrawdownMode ? `จำนวนเงินที่ลดลงชั่วคราว (${unit})` : `มูลค่าพอร์ต (${unit})`,
       gridcolor: '#f1f5f9',
       linecolor: '#e2e8f0',
       color: isDrawdownMode ? '#be123c' : '#475569',
@@ -1870,6 +1984,7 @@ function renderStrategyCompareTable() {
 
   tbody.innerHTML = order.map(key => {
     const s = data.strategies[key];
+    const stratInfo = getStrategyThaiInfo(key, s);
     const isSelected = key === state.activeGoal;
     const rowBg = isSelected ? 'bg-blue-50/70' : '';
     const mddBaht = s.max_drawdown_amount !== undefined
@@ -1884,18 +1999,18 @@ function renderStrategyCompareTable() {
         <td class="py-3 px-3 font-sans">
           <div class="flex items-center gap-2">
             <span class="w-2.5 h-2.5 rounded-full" style="background-color: ${STRATEGY_COLORS[key]}"></span>
-            <span class="font-bold text-slate-900">${s.short_name}</span>
-            ${isSelected ? `<span class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-600 text-white">กำลังเลือก</span>` : ''}
+            <span class="font-bold text-slate-900">${stratInfo.short_name}</span>
+            ${isSelected ? `<span class="text-xs font-semibold px-1.5 py-0.5 rounded bg-blue-600 text-white">กำลังเลือก</span>` : ''}
           </div>
         </td>
         <td class="py-3 px-3 text-right">
           <div class="font-bold ${s.expected_return >= 0 ? 'text-emerald-700' : 'text-rose-700'}">${(s.expected_return * 100).toFixed(2)}%</div>
-          <div class="text-[10px] text-slate-500">~${formatMoney(budget * s.expected_return, 0, true)}/ปี</div>
+          <div class="text-xs text-slate-500">~${formatMoney(budget * s.expected_return, 0, true)}/ปี</div>
         </td>
         <td class="py-3 px-3 text-right text-slate-700 font-semibold">${(s.volatility * 100).toFixed(2)}%</td>
         <td class="py-3 px-3 text-right bg-rose-50/35">
           <div class="font-bold text-rose-700">-${formatMoney(mddBaht, 2, true)}</div>
-          <div class="text-[10px] text-rose-600">(${(s.max_drawdown * 100).toFixed(2)}% | เหลือต่ำสุด ${formatMoney(minRemBaht, 0, false)})</div>
+          <div class="text-xs text-rose-600">(${(s.max_drawdown * 100).toFixed(2)}% | เหลือต่ำสุด ${formatMoney(minRemBaht, 0, false)})</div>
         </td>
         <td class="py-3 px-3 text-right font-bold text-blue-700">${s.sharpe_ratio.toFixed(2)}</td>
         <td class="py-3 px-3 text-right font-bold text-slate-900">${formatMoney(s.final_historical_value, 2, false)}</td>
@@ -1924,7 +2039,7 @@ function renderEfficientFrontierPlot() {
       x: ef.monte_carlo.map(p => p.vol),
       y: ef.monte_carlo.map(p => p.ret),
       mode: 'markers',
-      name: 'พอร์ตสุ่มเปรียบเทียบ',
+      name: 'พอร์ตจำลองเปรียบเทียบ',
       marker: {
         size: 4,
         color: ef.monte_carlo.map(p => p.sharpe),
@@ -1940,7 +2055,7 @@ function renderEfficientFrontierPlot() {
       x: ef.curve.map(p => p.vol),
       y: ef.curve.map(p => p.ret),
       mode: 'lines',
-      name: 'เส้นพอร์ตที่มีประสิทธิภาพสูงสุด (Efficient Frontier)',
+      name: 'เส้นขอบเขตพอร์ตที่คุ้มค่าที่สุด',
       line: { color: '#1d4ed8', width: 2.5 },
       hoverinfo: 'skip'
     });
@@ -1959,10 +2074,10 @@ function renderEfficientFrontierPlot() {
   });
 
   const markerConfigs = [
-    { key: 'max_sharpe', label: 'Max Sharpe', color: '#dc2626', symbol: 'star', size: 16 },
-    { key: 'min_volatility', label: 'Min Volatility', color: '#059669', symbol: 'diamond', size: 13 },
-    { key: 'hrp', label: 'Risk Parity (HRP)', color: '#7c3aed', symbol: 'circle', size: 13 },
-    { key: 'equal_weight', label: 'Equal Weight (1/N)', color: '#334155', symbol: 'square', size: 11 }
+    { key: 'max_sharpe', label: 'เน้นกำไรคุ้มความเสี่ยง', color: '#dc2626', symbol: 'star', size: 16 },
+    { key: 'min_volatility', label: 'เน้นปลอดภัย ผันผวนต่ำ', color: '#059669', symbol: 'diamond', size: 13 },
+    { key: 'hrp', label: 'กระจายความเสี่ยงสมดุล', color: '#7c3aed', symbol: 'circle', size: 13 },
+    { key: 'equal_weight', label: 'แบ่งเงินเท่ากันทุกตัว', color: '#334155', symbol: 'square', size: 11 }
   ];
 
   markerConfigs.forEach(cfg => {
@@ -1974,14 +2089,14 @@ function renderEfficientFrontierPlot() {
       name: cfg.label,
       text: [cfg.label],
       textposition: 'bottom center',
-      textfont: { color: cfg.color, size: 11, family: 'Inter' },
+      textfont: { color: cfg.color, size: 11, family: 'Inter, IBM Plex Sans Thai' },
       marker: {
         symbol: cfg.symbol,
         size: cfg.size,
         color: cfg.color,
         line: { color: '#ffffff', width: 2 }
       },
-      hovertemplate: `<b>${cfg.label}</b><br>ความผันผวน: %{x:.2%}<br>ผลตอบแทนคาดหวัง: %{y:.2%}<br>Sharpe Ratio: ${s.sharpe_ratio.toFixed(2)}<extra></extra>`
+      hovertemplate: `<b>${cfg.label}</b><br>ความผันผวน: %{x:.2%}<br>ผลตอบแทนคาดหวัง: %{y:.2%}<br>คะแนนความคุ้มค่า: ${s.sharpe_ratio.toFixed(2)}<extra></extra>`
     });
   });
 
@@ -1997,7 +2112,7 @@ function renderEfficientFrontierPlot() {
       color: '#475569'
     },
     yaxis: {
-      title: 'ผลตอบแทนคาดหวังเฉลี่ยต่อปี (CAGR)',
+      title: 'ผลตอบแทนคาดหวังเฉลี่ยต่อปี',
       tickformat: '.0%',
       gridcolor: '#f1f5f9',
       linecolor: '#e2e8f0',
@@ -2040,8 +2155,8 @@ function renderAssetStatsTable() {
     const priceThb = stat.price_thb !== undefined ? stat.price_thb : (isTHB ? stat.latest_price : stat.latest_price * fx);
     const priceUsd = stat.price_usd !== undefined ? stat.price_usd : (isTHB ? stat.latest_price / fx : stat.latest_price);
     const companionPriceHtml = isTHB
-      ? `<div class="text-[10px] text-slate-400 font-mono">($${Number(priceUsd).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD)</div>`
-      : `<div class="text-[10px] text-slate-400 font-mono">(฿${Number(priceThb).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} THB)</div>`;
+      ? `<div class="text-xs text-slate-400 font-mono">($${Number(priceUsd).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ดอลลาร์)</div>`
+      : `<div class="text-xs text-slate-400 font-mono">(฿${Number(priceThb).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท)</div>`;
 
     return `
       <tr>
@@ -2062,7 +2177,7 @@ function renderAssetStatsTable() {
         <td class="py-2.5 px-3 text-right text-slate-700">${(stat.volatility * 100).toFixed(2)}%</td>
         <td class="py-2.5 px-3 text-right bg-rose-50/35">
           <div class="font-bold text-rose-700">-${formatMoney(mddBaht, 2, true)}</div>
-          <div class="text-[10px] text-rose-600">(${(stat.max_drawdown * 100).toFixed(2)}% | เหลือต่ำสุด ${formatMoney(minRemBaht, 0, false)})</div>
+          <div class="text-xs text-rose-600">(${(stat.max_drawdown * 100).toFixed(2)}% | เหลือต่ำสุด ${formatMoney(minRemBaht, 0, false)})</div>
         </td>
         <td class="py-2.5 px-3 text-right font-bold ${Number(w) > 0 ? 'text-blue-700' : 'text-slate-400'}">${w}%</td>
       </tr>
@@ -2093,7 +2208,7 @@ function renderCorrelationAndGrowthPlots() {
     zmin: -0.2,
     zmax: 1.0,
     showscale: false,
-    hovertemplate: '<b>%{x} vs %{y}</b><br>ความสัมพันธ์: %{z:.2f}<extra></extra>'
+    hovertemplate: '<b>%{x} เทียบกับ %{y}</b><br>ความสัมพันธ์: %{z:.2f}<extra></extra>'
   };
 
   const corrLayout = {
@@ -2141,7 +2256,7 @@ function renderGrowth100Plot() {
       orientation: 'h',
       x: 0,
       y: 1.14,
-      font: { size: 10, color: '#334155' }
+      font: { size: 11, color: '#334155' }
     },
     hovermode: 'x unified'
   };
@@ -2165,14 +2280,15 @@ function toggleGrowthScale(isLog) {
 function copyOrderSheet() {
   if (!state.optData || !state.lastRebalancePlan) return;
   const strat = state.optData.strategies[state.activeGoal];
+  const stratInfo = getStrategyThaiInfo(state.activeGoal, strat);
   const plan = state.lastRebalancePlan;
   const mddBaht = strat.max_drawdown_amount || Math.abs(strat.max_drawdown) * plan.totalPortfolioBudget;
 
-  let text = `สรุปแผนการปรับพอร์ตและคำสั่งซื้อ-ขาย — QuantFolio Wealth Analytics\n`;
-  text += `กลยุทธ์เป้าหมาย: ${strat.name}\n`;
-  text += `มูลค่าพอร์ตรวมที่ใช้คำนวณ: ${formatMoney(plan.totalPortfolioBudget, 2, true)}\n`;
+  let text = `สรุปแผนการปรับพอร์ตและคำสั่งซื้อ-ขาย — QuantFolio ระบบจัดพอร์ตการลงทุน\n`;
+  text += `แนวทางเป้าหมาย: ${stratInfo.name}\n`;
+  text += `สรุปคำสั่ง: ขาย ${plan.sellOrders.length} ตัว ซื้อ ${plan.buyOrders.length} ตัว รวม ${formatMoney(plan.totalPortfolioBudget, 0, false)}\n`;
   text += `ผลตอบแทนคาดหวัง: ${(strat.expected_return * 100).toFixed(2)}% ต่อปี | ความผันผวน: ${(strat.volatility * 100).toFixed(2)}%\n`;
-  text += `จุดขาดทุนสูงสุดในอดีต (Max Drawdown): -${formatMoney(mddBaht, 2, true)} (${(strat.max_drawdown * 100).toFixed(2)}%)\n`;
+  text += `จุดขาดทุนสูงสุดในอดีต: -${formatMoney(mddBaht, 2, true)} (${(strat.max_drawdown * 100).toFixed(2)}%)\n`;
   text += `==================================================\n`;
 
   if (plan.flowPairs.length > 0 && plan.sellOrders.length > 0) {
@@ -2185,7 +2301,7 @@ function copyOrderSheet() {
   }
 
   if (plan.sellOrders.length > 0) {
-    text += `[ขั้นตอนที่ 1: รายการสั่งขาย (SELL) เพื่อให้ได้เงินสด]\n`;
+    text += `[ลำดับแรก: รายการสั่งขายเพื่อให้ได้เงินสด]\n`;
     plan.sellOrders.forEach(s => {
       text += `- ขาย ${s.ticker} (${s.name}): เป็นเงิน ${formatMoney(s.trade_amount, 2, true)} (ประมาณ ${s.trade_shares_fractional} หุ้น)\n`;
     });
@@ -2194,16 +2310,36 @@ function copyOrderSheet() {
   }
 
   if (plan.buyOrders.length > 0) {
-    text += `[ขั้นตอนที่ 2: รายการสั่งซื้อ (BUY)]\n`;
+    text += `[ลำดับถัดไป: รายการสั่งซื้อ]\n`;
     plan.buyOrders.forEach(b => {
       text += `- ซื้อ ${b.ticker} (${b.name}): เป็นเงิน ${formatMoney(b.trade_amount, 2, true)} (ประมาณ ${b.trade_shares_fractional} หุ้น @ ${formatMoney(b.price, 2, false)})\n`;
     });
     text += `รวมใช้เงินซื้อสุทธิ: ${formatMoney(plan.totalBuyNet, 2, true)} | เงินสดสำรองคงเหลือ: ${formatMoney(plan.leftoverCash, 2, true)}\n`;
   }
 
-  navigator.clipboard.writeText(text).then(() => {
-    alert('คัดลอกคำสั่งซื้อ-ขายปรับพอร์ต เรียบร้อยแล้ว สามารถนำไปวางในบันทึกหรือส่งคำสั่งซื้อขายจริงได้ทันทีครับ');
-  });
+  const showCopyFeedback = () => {
+    const topLabel = document.getElementById('top-copy-orders-btn-label');
+    if (topLabel) {
+      const oldText = topLabel.innerText;
+      topLabel.innerText = 'คัดลอกคำสั่งแล้ว ✓';
+      setTimeout(() => { topLabel.innerText = oldText; }, 2800);
+    }
+    const toastEl = document.getElementById('portfolio-toast');
+    const toastMsgEl = document.getElementById('portfolio-toast-msg');
+    if (toastEl && toastMsgEl) {
+      toastMsgEl.innerText = 'คัดลอกคำสั่งซื้อ-ขายเรียบร้อยแล้ว นำไปวางในแอปจดบันทึกหรือส่งคำสั่งได้ทันที';
+      toastEl.classList.remove('hidden');
+      setTimeout(() => { toastEl.classList.add('hidden'); }, 3500);
+    }
+  };
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(showCopyFeedback).catch(() => {
+      showCopyFeedback();
+    });
+  } else {
+    showCopyFeedback();
+  }
 }
 
 function downloadOrderCSV() {
@@ -2287,6 +2423,7 @@ function renderExistingPortfolioAudit(plan, strat, data) {
 
   auditBox.classList.remove('hidden');
 
+  const stratInfo = getStrategyThaiInfo(state.activeGoal, strat);
   const tickers = data.metadata.tickers;
   const statsMap = {};
   data.asset_stats.forEach(s => { statsMap[s.ticker] = s; });
@@ -2350,65 +2487,65 @@ function renderExistingPortfolioAudit(plan, strat, data) {
 
   let diagnosisBadges = [];
   if (maxSingleWeight > 0.45) {
-    diagnosisBadges.push(`<span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300 text-[11px] font-bold">กระจุกตัวสูง: ${maxSingleTicker} คิดเป็น ${(maxSingleWeight * 100).toFixed(1)}% ของพอร์ต</span>`);
+    diagnosisBadges.push(`<span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300 text-xs font-bold">กระจุกตัวสูง: ${maxSingleTicker} คิดเป็น ${(maxSingleWeight * 100).toFixed(1)}% ของพอร์ต</span>`);
   } else {
-    diagnosisBadges.push(`<span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-300 text-[11px] font-bold">การกระจายความเสี่ยงเริ่มต้นอยู่ในเกณฑ์สมดุล</span>`);
+    diagnosisBadges.push(`<span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-bold">การกระจายความเสี่ยงเริ่มต้นอยู่ในเกณฑ์สมดุล</span>`);
   }
 
   if (sharpeDiff > 0.05) {
-    diagnosisBadges.push(`<span class="px-2 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-300 text-[11px] font-bold">การปรับพอร์ตช่วยเพิ่ม Sharpe Ratio +${sharpeDiff.toFixed(2)}</span>`);
+    diagnosisBadges.push(`<span class="px-2 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-300 text-xs font-bold">การปรับพอร์ตช่วยเพิ่มคะแนนความคุ้มค่า +${sharpeDiff.toFixed(2)}</span>`);
   }
 
   auditBox.innerHTML = `
     <div class="flex flex-col md:flex-row md:items-center justify-between gap-2 pb-2.5 mb-3 border-b border-slate-200">
       <div>
-        <div class="text-xs font-extrabold text-slate-900 uppercase tracking-wider">ผลตรวจสุขภาพพอร์ตปัจจุบันของคุณ เทียบกับพอร์ตเป้าหมาย (${strat.name})</div>
-        <p class="text-[11px] text-slate-600 mt-0.5">เปรียบเทียบพอร์ตที่คุณถืออยู่จริง ณ ปัจจุบัน กับสัดส่วนพอร์ตเป้าหมายตามทฤษฎีเชิงปริมาณ</p>
+        <div class="text-xs font-extrabold text-slate-900">ผลตรวจสุขภาพพอร์ตปัจจุบันของคุณ เทียบกับพอร์ตเป้าหมาย (${stratInfo.name})</div>
+        <p class="text-xs text-slate-600 mt-0.5">เปรียบเทียบพอร์ตที่คุณถืออยู่จริง ณ ปัจจุบัน กับสัดส่วนพอร์ตเป้าหมายที่ระบบแนะนำ</p>
       </div>
       <div class="flex flex-wrap gap-1.5">${diagnosisBadges.join('')}</div>
     </div>
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 text-xs">
       <div class="p-2.5 rounded-lg bg-slate-50 border border-slate-200">
-        <div class="text-[10px] font-bold text-slate-500 uppercase">ผลตอบแทนคาดหวัง/ปี</div>
+        <div class="text-xs font-bold text-slate-500">ผลตอบแทนคาดหวัง/ปี</div>
         <div class="mt-1 flex items-baseline justify-between">
           <span class="text-slate-600">พอร์ตเดิม: <strong class="font-mono text-slate-900">${(currReturn * 100).toFixed(2)}%</strong></span>
           <span class="text-emerald-700 font-bold font-mono">➔ ${(targetReturn * 100).toFixed(2)}%</span>
         </div>
-        <div class="text-[10px] mt-1 ${returnDiffPct >= 0 ? 'text-emerald-700' : 'text-slate-500'} font-semibold">
+        <div class="text-xs mt-1 ${returnDiffPct >= 0 ? 'text-emerald-700' : 'text-slate-500'} font-semibold">
           ${returnDiffPct >= 0 ? `เพิ่มขึ้น +${returnDiffPct.toFixed(2)}% ต่อปี` : `ลดลง ${returnDiffPct.toFixed(2)}% เพื่อลดความเสี่ยง`}
         </div>
       </div>
 
       <div class="p-2.5 rounded-lg bg-slate-50 border border-slate-200">
-        <div class="text-[10px] font-bold text-slate-500 uppercase">ความผันผวนต่อปี (Risk)</div>
+        <div class="text-xs font-bold text-slate-500">ความผันผวนต่อปี (ความเสี่ยง)</div>
         <div class="mt-1 flex items-baseline justify-between">
           <span class="text-slate-600">พอร์ตเดิม: <strong class="font-mono text-slate-900">${(currVol * 100).toFixed(2)}%</strong></span>
           <span class="text-blue-700 font-bold font-mono">➔ ${(targetVol * 100).toFixed(2)}%</span>
         </div>
-        <div class="text-[10px] mt-1 ${volDiffPct <= 0 ? 'text-emerald-700' : 'text-amber-700'} font-semibold">
+        <div class="text-xs mt-1 ${volDiffPct <= 0 ? 'text-emerald-700' : 'text-amber-700'} font-semibold">
           ${volDiffPct <= 0 ? `ความผันผวนลดลง ${volDiffPct.toFixed(2)}%` : `ความผันผวนเปลี่ยน +${volDiffPct.toFixed(2)}%`}
         </div>
       </div>
 
       <div class="p-2.5 rounded-lg bg-slate-50 border border-slate-200">
-        <div class="text-[10px] font-bold text-slate-500 uppercase">ความคุ้มค่า (Sharpe Ratio)</div>
+        <div class="text-xs font-bold text-slate-500">คะแนนความคุ้มค่าต่อความเสี่ยง</div>
         <div class="mt-1 flex items-baseline justify-between">
           <span class="text-slate-600">พอร์ตเดิม: <strong class="font-mono text-slate-900">${currSharpe.toFixed(2)}</strong></span>
           <span class="text-indigo-700 font-bold font-mono">➔ ${targetSharpe.toFixed(2)}</span>
         </div>
-        <div class="text-[10px] mt-1 text-indigo-700 font-semibold">
-          ${sharpeDiff >= 0 ? `ประสิทธิภาพดีขึ้น +${sharpeDiff.toFixed(2)} เท่า` : `เน้นกระจายความเสี่ยงตามโครงสร้าง`}
+        <div class="text-xs mt-1 text-indigo-700 font-semibold">
+          ${sharpeDiff >= 0 ? `ความคุ้มค่าดีขึ้น +${sharpeDiff.toFixed(2)}` : `เน้นกระจายความเสี่ยงให้สมดุล`}
         </div>
       </div>
 
       <div class="p-2.5 rounded-lg bg-rose-50/60 border border-rose-200">
-        <div class="text-[10px] font-bold text-rose-800 uppercase">จุดขาดทุนสูงสุดประเมิน</div>
+        <div class="text-xs font-bold text-rose-800">จุดขาดทุนสูงสุดประเมิน</div>
         <div class="mt-1 flex items-baseline justify-between">
           <span class="text-rose-700 font-mono">-${formatMoney(currMddAmt, 0, true)}</span>
           <span class="text-rose-900 font-bold font-mono">➔ -${formatMoney(targetMddAmt, 0, true)}</span>
         </div>
-        <div class="text-[10px] mt-1 text-rose-700 font-semibold">
-          เป้าหมายคุม Drawdown ที่ -${(targetMddPct * 100).toFixed(1)}%
+        <div class="text-xs mt-1 text-rose-700 font-semibold">
+          เป้าหมายคุมช่วงขาดทุนสูงสุดที่ -${(targetMddPct * 100).toFixed(1)}%
         </div>
       </div>
     </div>
@@ -2491,8 +2628,8 @@ function renderNewsAndSignalSection() {
   const countBadge = document.getElementById('news-count-badge');
   if (countBadge) {
     countBadge.innerText = articles.length > 0
-      ? `วิเคราะห์ข่าวตลาดจริงแล้ว ${articles.length} ข่าว (จาก Yahoo Finance & Google News)`
-      : `ใช้สัญญาณแนวโน้มราคา (RSI-14 & SMA 50/200) เป็นตัวช่วยตัดสินใจ`;
+      ? `วิเคราะห์ข่าวตลาดจริงแล้ว ${articles.length} ข่าว`
+      : `ใช้สัญญาณแนวโน้มราคาล่าสุดเป็นตัวช่วยตัดสินใจ`;
   }
 
   // 1. Render Asset Signal & Entry Guidance Table
@@ -2512,10 +2649,10 @@ function renderNewsAndSignalSection() {
 
       const sentScore = Number(dec.news_sentiment_score ?? newsObj.news_sentiment_score ?? 0);
       const sentBadge = sentScore > 0.12
-        ? `<span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-300 text-[10px] font-bold">เชิงบวก (+${sentScore.toFixed(2)})</span>`
+        ? `<span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-bold">เชิงบวก (+${sentScore.toFixed(2)})</span>`
         : sentScore < -0.12
-        ? `<span class="px-2 py-0.5 rounded bg-rose-100 text-rose-800 border border-rose-300 text-[10px] font-bold">ระมัดระวัง (${sentScore.toFixed(2)})</span>`
-        : `<span class="px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-300 text-[10px] font-bold">เป็นกลาง (${sentScore.toFixed(2)})</span>`;
+        ? `<span class="px-2 py-0.5 rounded bg-rose-100 text-rose-800 border border-rose-300 text-xs font-bold">ระมัดระวัง (${sentScore.toFixed(2)})</span>`
+        : `<span class="px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-300 text-xs font-bold">เป็นกลาง (${sentScore.toFixed(2)})</span>`;
 
       const signalLevel = dec.signal_level || 'NEUTRAL_ACCUMULATE';
       let actionBadgeClass = 'bg-blue-100 text-blue-800 border-blue-300';
@@ -2536,29 +2673,29 @@ function renderNewsAndSignalSection() {
         <tr class="hover:bg-slate-50/90 transition">
           <td class="py-2.5 px-3 font-sans">
             <div class="font-mono font-bold text-slate-900">${t}</div>
-            <div class="text-[11px] text-slate-500 truncate max-w-[140px]">${stat.name}</div>
+            <div class="text-xs text-slate-500 truncate max-w-[140px]">${stat.name}</div>
           </td>
           <td class="py-2.5 px-3 text-right font-mono">
             <div class="font-bold text-slate-900">฿${Number(priceThb).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-            <div class="text-[11px] text-blue-700 font-semibold">$${Number(priceUsd).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD</div>
+            <div class="text-xs text-blue-700 font-semibold">$${Number(priceUsd).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ดอลลาร์</div>
           </td>
           <td class="py-2.5 px-3 text-center font-sans">
             <div class="text-xs font-bold text-slate-800">${tech.trend_label_th || 'ทรงตัว'}</div>
-            <div class="text-[10px] text-slate-500 font-mono">RSI(14): ${tech.rsi_14 !== undefined ? tech.rsi_14.toFixed(1) : '50.0'} | 1M: ${mom1mPct >= 0 ? '+' : ''}${mom1mPct.toFixed(1)}%</div>
+            <div class="text-xs text-slate-500 font-mono">ดัชนีแรงซื้อขาย: ${tech.rsi_14 !== undefined ? tech.rsi_14.toFixed(1) : '50.0'} | 1 เดือน: ${mom1mPct >= 0 ? '+' : ''}${mom1mPct.toFixed(1)}%</div>
           </td>
           <td class="py-2.5 px-3 text-center font-sans">
             <div>${sentBadge}</div>
-            <div class="text-[10px] text-slate-500 mt-0.5">ข่าวที่วิเคราะห์: ${newsCount} ข่าว</div>
+            <div class="text-xs text-slate-500 mt-0.5">ข่าวที่วิเคราะห์: ${newsCount} ข่าว</div>
           </td>
           <td class="py-2.5 px-3 text-right font-mono">
             <div class="text-slate-600">${histW}% ➔ <strong class="text-slate-900">${newsW}%</strong></div>
-            <div class="text-[10px]">${diffHtml}</div>
+            <div class="text-xs">${diffHtml}</div>
           </td>
           <td class="py-2.5 px-3 font-sans">
-            <span class="inline-block px-2 py-0.5 rounded border text-[10px] font-bold ${actionBadgeClass}">
+            <span class="inline-block px-2 py-0.5 rounded border text-xs font-bold ${actionBadgeClass}">
               ${dec.signal_badge_th || 'สมดุล/สะสมตามแผน'} — ${dec.execution_tactic_th || 'จัดสรรตามสัดส่วนมาตรฐาน'}
             </span>
-            <p class="text-[11px] text-slate-600 mt-1 leading-relaxed">${dec.decision_reason_th || '-'}</p>
+            <p class="text-xs text-slate-600 mt-1 leading-relaxed">${dec.decision_reason_th || ''}</p>
           </td>
         </tr>
       `;
@@ -2571,7 +2708,7 @@ function renderNewsAndSignalSection() {
     if (!articles || articles.length === 0) {
       newsGrid.innerHTML = `
         <div class="col-span-2 p-4 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-500 text-center">
-          ไม่พบหัวข้อข่าวล่าสุดในช่วงเวลานี้ ระบบใช้สัญญาณแนวโน้มราคา (Technical Trend & RSI) เป็นตัวช่วยตัดสินใจหลัก
+          ไม่พบหัวข้อข่าวล่าสุดในช่วงเวลานี้ ระบบใช้สัญญาณแนวโน้มราคาเป็นตัวช่วยตัดสินใจหลัก
         </div>
       `;
     } else {
@@ -2588,13 +2725,13 @@ function renderNewsAndSignalSection() {
             class="block p-3 rounded-xl bg-slate-50/80 hover:bg-blue-50/50 border border-slate-200/90 hover:border-blue-300 transition group">
             <div class="flex items-center justify-between gap-2 mb-1.5">
               <div class="flex items-center gap-1.5">
-                <span class="px-2 py-0.5 rounded bg-slate-900 text-white font-mono text-[10px] font-bold">${art.ticker}</span>
-                <span class="text-[11px] font-semibold text-slate-500 truncate max-w-[160px]">${art.publisher || 'Financial News'}</span>
+                <span class="px-2 py-0.5 rounded bg-slate-900 text-white font-mono text-xs font-bold">${art.ticker}</span>
+                <span class="text-xs font-semibold text-slate-500 truncate max-w-[160px]">${art.publisher || 'สำนักข่าวการเงิน'}</span>
               </div>
-              <span class="px-2 py-0.5 rounded border text-[10px] font-bold ${badgeStyle}">${art.sentiment_label_th || 'เป็นกลาง'}</span>
+              <span class="px-2 py-0.5 rounded border text-xs font-bold ${badgeStyle}">${art.sentiment_label_th || 'เป็นกลาง'}</span>
             </div>
             <div class="text-xs font-bold text-slate-800 group-hover:text-blue-700 leading-snug line-clamp-2">${art.title}</div>
-            <div class="mt-1.5 flex items-center justify-between text-[10px] text-slate-400">
+            <div class="mt-1.5 flex items-center justify-between text-xs text-slate-400">
               <span>เวลาเผยแพร่: ${art.published_at || 'ล่าสุด'}</span>
               <span class="text-blue-600 font-semibold group-hover:underline">อ่านข่าวต้นฉบับ ➔</span>
             </div>
@@ -2609,7 +2746,7 @@ async function refreshLiveMarketNews() {
   if (!state.tickers || state.tickers.length === 0) return;
   const newsGrid = document.getElementById('market-news-articles-grid');
   if (newsGrid) {
-    newsGrid.innerHTML = `<div class="col-span-2 p-4 text-center text-xs text-slate-500">กำลังดึงข้อมูลข่าวสารตลาดล่าสุดจาก Yahoo Finance และ Google News...</div>`;
+    newsGrid.innerHTML = `<div class="col-span-2 p-4 text-center text-xs text-slate-500">กำลังดึงข้อมูลข่าวสารตลาดล่าสุด...</div>`;
   }
   try {
     const q = encodeURIComponent(state.tickers.join(','));
@@ -2637,7 +2774,7 @@ async function runSystemVerificationModal() {
   panel.classList.remove('hidden');
   grid.innerHTML = `
     <div class="col-span-3 p-4 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 font-medium">
-      กำลังรันชุดทดสอบความถูกต้องของระบบ (Real-time Market Feed, Dual Currency THB/USD, Portfolio Solver, Rebalance Engine, Market News Signal)...
+      กำลังตรวจสอบความพร้อมของข้อมูลราคา อัตราแลกเปลี่ยน และระบบคำนวณพอร์ต...
     </div>
   `;
 
@@ -2653,7 +2790,7 @@ async function runSystemVerificationModal() {
       const clientPass = diff <= 1.0 || plan.totalPortfolioBudget > 0;
       checks.push({
         id: 'client_rebalance_integrity',
-        name: 'ตรวจสอบสมการใบสั่งซื้อ-ขายปรับพอร์ต (Client Rebalance Audit)',
+        name: 'ตรวจสอบความถูกต้องของยอดซื้อ-ขายปรับพอร์ต',
         passed: clientPass,
         detail: `งบพอร์ตรวม ${formatMoney(plan.totalPortfolioBudget, 2, true)} | ซื้อสุทธิ ${formatMoney(plan.totalBuyNet, 2, true)} | เงินสดคงเหลือ ${formatMoney(plan.leftoverCash, 2, true)}`
       });
@@ -2663,11 +2800,11 @@ async function runSystemVerificationModal() {
       <div class="p-3 rounded-lg border ${c.passed ? 'bg-emerald-50/70 border-emerald-200' : 'bg-rose-50/70 border-rose-200'}">
         <div class="flex items-center justify-between gap-2 mb-1">
           <span class="text-xs font-bold ${c.passed ? 'text-emerald-950' : 'text-rose-950'}">${c.name}</span>
-          <span class="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${c.passed ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'}">
-            ${c.passed ? 'PASSED' : 'CHECK'}
+          <span class="px-2 py-0.5 rounded text-xs font-extrabold ${c.passed ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'}">
+            ${c.passed ? 'พร้อมใช้งาน' : 'ตรวจสอบ'}
           </span>
         </div>
-        <p class="text-[11px] text-slate-600 leading-relaxed font-mono">${c.detail}</p>
+        <p class="text-xs text-slate-600 leading-relaxed font-mono">${c.detail}</p>
       </div>
     `).join('');
   } catch (err) {
@@ -2828,7 +2965,13 @@ function switchMainCategory(catKey, shouldScroll = false) {
 }
 
 function scrollToGoalBuilderSection() {
-  switchMainCategory('goals', true);
+  if (!state.optData) {
+    runOptimization(false).then(() => {
+      switchMainCategory('goals', true);
+    });
+  } else {
+    switchMainCategory('goals', true);
+  }
 }
 
 function applyGoalBasedTemplate(templateKey, shouldScroll = false) {
@@ -2869,15 +3012,14 @@ function applyGoalBasedTemplate(templateKey, shouldScroll = false) {
     renderTickersList();
     fetchLiveQuotesForTickers();
     selectGoal(tpl.strategy);
-    runOptimization();
+    runOptimization(shouldScroll);
   } else {
     selectGoal(tpl.strategy);
     handleBudgetQuickUpdate();
     recalculateGoalProjection();
-  }
-
-  if (shouldScroll) {
-    scrollToGoalBuilderSection();
+    if (shouldScroll) {
+      scrollToGoalBuilderSection();
+    }
   }
 }
 
@@ -2898,14 +3040,14 @@ function computeGoalProjectionMetrics() {
   let rawExpectedReturn = 0.12;
   let annualVol = 0.16;
   let divYield = 0.02;
-  let strategyName = 'Max Sharpe Ratio';
+  let strategyName = getStrategyThaiInfo(state.activeGoal).short_name;
 
   if (state.optData && state.optData.strategies && state.optData.strategies[state.activeGoal]) {
     const strat = state.optData.strategies[state.activeGoal];
     rawExpectedReturn = Number(strat.expected_return || 0.12);
     annualVol = Number(strat.volatility || 0.16);
     divYield = Number(strat.dividend_yield !== undefined ? strat.dividend_yield : 0.018);
-    strategyName = strat.short_name || strat.name || state.activeGoal;
+    strategyName = getStrategyThaiInfo(state.activeGoal, strat).short_name;
   }
 
   // Prudent long-term compounding cap (prevent extreme multi-year distortion while preserving strategy differences)
@@ -2953,7 +3095,7 @@ function computeGoalProjectionMetrics() {
   const estAnnualDividendAtEnd = Math.round(projectedFinalWealth * divYield);
   const estMonthlyDividendAtEnd = Math.round(estAnnualDividendAtEnd / 12);
 
-  // Calculate required monthly DCA to reach targetAmount if currently below target
+  // Calculate required monthly savings to reach targetAmount if currently below target
   const totalMonths = years * 12;
   const fvInitial = initialBudget * Math.pow(1 + rBaseMonth, totalMonths);
   const annuityFactor = rBaseMonth > 0 ? ((Math.pow(1 + rBaseMonth, totalMonths) - 1) / rBaseMonth) : totalMonths;
@@ -2993,7 +3135,7 @@ function recalculateGoalProjection() {
 
   const subEl = document.getElementById('goal-projection-subtitle');
   if (subEl) {
-    subEl.innerText = `กลยุทธ์ที่เลือก: ${m.strategyName} | อัตราผลตอบแทนทบต้นที่ใช้จำลอง ${(m.effectiveAnnualReturn * 100).toFixed(2)}%/ปี | อัตราเงินปันผลเฉลี่ย ${(m.divYield * 100).toFixed(2)}%/ปี`;
+    subEl.innerText = `แนวทางที่เลือก: ${m.strategyName} | อัตราผลตอบแทนทบต้นที่ใช้จำลอง ${(m.effectiveAnnualReturn * 100).toFixed(2)}%/ปี | อัตราเงินปันผลเฉลี่ย ${(m.divYield * 100).toFixed(2)}%/ปี`;
   }
 
   const totalPrinEl = document.getElementById('goal-proj-total-principal');
@@ -3013,7 +3155,7 @@ function recalculateGoalProjection() {
   const monDivEl = document.getElementById('goal-proj-monthly-dividend');
   if (annDivEl) annDivEl.innerText = `${formatMoney(m.estAnnualDividendAtEnd, 0, true)} / ปี`;
   if (monDivEl) {
-    monDivEl.innerText = `เฉลี่ยเดือนละ ${formatMoney(m.estMonthlyDividendAtEnd, 0, true)} (Yield ${(m.divYield * 100).toFixed(2)}%)`;
+    monDivEl.innerText = `เฉลี่ยเดือนละ ${formatMoney(m.estMonthlyDividendAtEnd, 0, true)} (ปันผล ${(m.divYield * 100).toFixed(2)}%/ปี)`;
   }
 
   const pctEl = document.getElementById('goal-proj-achievement-pct');
@@ -3034,7 +3176,7 @@ function recalculateGoalProjection() {
   if (m.achievementPct >= 100) {
     if (gapEl) {
       gapEl.innerText = `เกินเป้า +${formatMoney(Math.abs(m.gapAmount), 0, false)}`;
-      gapEl.className = 'text-[10px] font-bold text-emerald-700';
+      gapEl.className = 'text-xs font-bold text-emerald-700';
     }
     if (statusBadge) {
       statusBadge.innerText = `บรรลุเป้าหมาย (${m.achievementPct}%)`;
@@ -3045,8 +3187,8 @@ function recalculateGoalProjection() {
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
             <b class="text-emerald-900">สรุปแผนพิชิตเป้าหมาย: มีความเป็นไปได้สูงที่จะบรรลุเป้าหมาย ${formatMoney(m.targetAmount, 0, true)} ภายใน ${m.years} ปี</b>
-            <div class="text-[11px] text-slate-600 mt-0.5">
-              จากการเริ่มต้นด้วยเงินก้อนแรก <b>${formatMoney(m.initialBudget, 0, true)}</b> และออมเพิ่มเดือนละ <b>${formatMoney(m.monthlyDca, 0, true)}</b> ในกลยุทธ์ <b>${m.strategyName}</b> คาดว่าพอร์ตจะเติบโตเป็น <b>${formatMoney(m.projectedFinalWealth, 0, true)}</b> (สร้างกระแสเงินปันผลราว <b>${formatMoney(m.estMonthlyDividendAtEnd, 0, true)}/เดือน</b>)
+            <div class="text-xs text-slate-600 mt-0.5">
+              จากการเริ่มต้นด้วยเงินก้อนแรก <b>${formatMoney(m.initialBudget, 0, true)}</b> และออมเพิ่มเดือนละ <b>${formatMoney(m.monthlyDca, 0, true)}</b> ในแนวทาง <b>${m.strategyName}</b> คาดว่าพอร์ตจะเติบโตเป็น <b>${formatMoney(m.projectedFinalWealth, 0, true)}</b> (สร้างกระแสเงินปันผลราว <b>${formatMoney(m.estMonthlyDividendAtEnd, 0, true)}/เดือน</b>)
             </div>
           </div>
         </div>
@@ -3056,7 +3198,7 @@ function recalculateGoalProjection() {
     const extraDcaNeeded = Math.max(0, m.requiredMonthlyDca - m.monthlyDca);
     if (gapEl) {
       gapEl.innerText = `ขาดอีก ${formatMoney(Math.abs(m.gapAmount), 0, false)}`;
-      gapEl.className = 'text-[10px] font-bold text-amber-700';
+      gapEl.className = 'text-xs font-bold text-amber-700';
     }
     if (statusBadge) {
       statusBadge.innerText = `คาดว่าจะได้ ${m.achievementPct}% ของเป้าหมาย`;
@@ -3067,16 +3209,16 @@ function recalculateGoalProjection() {
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
             <b class="text-amber-900">คำแนะนำเพื่อพิชิตเป้าหมาย ${formatMoney(m.targetAmount, 0, true)} ให้สำเร็จ 100% ภายใน ${m.years} ปี:</b>
-            <div class="text-[11px] text-slate-700 mt-0.5">
-              ปัจจุบันพอร์ตคาดว่าจะโตไปที่ <b>${formatMoney(m.projectedFinalWealth, 0, true)}</b> (ยังขาดอีก <b>${formatMoney(Math.abs(m.gapAmount), 0, true)}</b>) แนะนำให้ปรับเพิ่มเงินออมรายเดือน (DCA) อีก <b>+${formatMoney(extraDcaNeeded, 0, true)}/เดือน</b> (รวมออมเดือนละ <b>${formatMoney(m.requiredMonthlyDca, 0, true)}</b>)
+            <div class="text-xs text-slate-700 mt-0.5">
+              ปัจจุบันพอร์ตคาดว่าจะโตไปที่ <b>${formatMoney(m.projectedFinalWealth, 0, true)}</b> (ยังขาดอีก <b>${formatMoney(Math.abs(m.gapAmount), 0, true)}</b>) แนะนำให้ปรับเพิ่มเงินออมรายเดือนอีก <b>+${formatMoney(extraDcaNeeded, 0, true)}/เดือน</b> (รวมออมเดือนละ <b>${formatMoney(m.requiredMonthlyDca, 0, true)}</b>)
             </div>
           </div>
           <button
             type="button"
             onclick="document.getElementById('save-monthly-dca').value='${formatNumberWithCommas(m.requiredMonthlyDca, 0)}'; recalculateGoalProjection();"
-            class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold shrink-0 transition"
+            class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shrink-0 transition"
           >
-            ปรับค่า DCA เป็น ${formatMoney(m.requiredMonthlyDca, 0, false)}/เดือน ทันที
+            ปรับเงินออมเป็น ${formatMoney(m.requiredMonthlyDca, 0, false)}/เดือน ทันที
           </button>
         </div>
       `;
@@ -3094,17 +3236,17 @@ function renderGoalProjectionChart(m) {
   const traceBull = {
     x: m.yearsAxis,
     y: m.bullWealthSeries,
-    name: 'กรณีตลาดดี (Bull Case)',
+    name: 'กรณีตลาดเป็นใจ (โตไวกว่าปกติ)',
     type: 'scatter',
     mode: 'lines',
     line: { color: '#10b981', width: 1.5, dash: 'dot' },
-    hovertemplate: `%{x}: ${sym}%{y:,.0f}<extra>กรณีตลาดดี</extra>`
+    hovertemplate: `%{x}: ${sym}%{y:,.0f}<extra>กรณีตลาดเป็นใจ</extra>`
   };
 
   const traceBase = {
     x: m.yearsAxis,
     y: m.baseWealthSeries,
-    name: 'มูลค่าพอร์ตคาดการณ์ (Base Case)',
+    name: 'มูลค่าพอร์ตคาดการณ์ตามปกติ',
     type: 'scatter',
     mode: 'lines+markers',
     marker: { size: 6, color: '#4f46e5' },
@@ -3117,7 +3259,7 @@ function renderGoalProjectionChart(m) {
   const tracePrincipal = {
     x: m.yearsAxis,
     y: m.principalSeries,
-    name: 'เงินต้นสะสมที่ใส่จริง (ก้อนแรก + DCA)',
+    name: 'เงินต้นสะสมที่ใส่จริง (ก้อนแรก + ออมรายเดือน)',
     type: 'scatter',
     mode: 'lines+markers',
     marker: { size: 4, color: '#64748b' },
@@ -3139,10 +3281,10 @@ function renderGoalProjectionChart(m) {
     margin: { t: 15, r: 20, b: 35, l: 65 },
     paper_bgcolor: 'transparent',
     plot_bgcolor: 'transparent',
-    font: { family: 'Inter, Noto Sans Thai, sans-serif', size: 11, color: '#334155' },
+    font: { family: 'Inter, IBM Plex Sans Thai, sans-serif', size: 11, color: '#334155' },
     xaxis: { gridcolor: '#f1f5f9' },
     yaxis: { gridcolor: '#f1f5f9', tickprefix: sym, separatethousands: true },
-    legend: { orientation: 'h', y: 1.14, x: 0, font: { size: 10 } },
+    legend: { orientation: 'h', y: 1.14, x: 0, font: { size: 11 } },
     hovermode: 'x unified'
   };
 
@@ -3157,7 +3299,6 @@ function openPrintableGoalReport() {
   const portfolioName = (document.getElementById('save-portfolio-name')?.value || 'แผนพอร์ตการลงทุนตามเป้าหมาย').trim();
   const strat = (state.optData && state.optData.strategies && state.optData.strategies[state.activeGoal]) || null;
   const weights = strat ? strat.weights : {};
-  const plan = state.lastRebalancePlan;
 
   const weightRowsHtml = Object.entries(weights)
     .filter(([, w]) => w > 0.0005)
@@ -3174,7 +3315,7 @@ function openPrintableGoalReport() {
 
   const win = window.open('', '_blank', 'width=900,height=780');
   if (!win) {
-    alert('กรุณาอนุญาตให้เปิดหน้าต่าง Pop-up เพื่อพิมพ์ใบสรุปแผนการลงทุน');
+    alert('กรุณาอนุญาตให้เปิดหน้าต่างใหม่เพื่อพิมพ์ใบสรุปแผนการลงทุน');
     return;
   }
 
@@ -3190,22 +3331,22 @@ function openPrintableGoalReport() {
         .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #1e293b; padding-bottom: 14px; margin-bottom: 18px; }
         .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 18px; }
         .card { border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; background: #f8fafc; }
-        .label { font-size: 11px; color: #475569; font-weight: 600; }
+        .label { font-size: 12px; color: #475569; font-weight: 600; }
         .val { font-size: 16px; font-weight: 800; color: #0f172a; margin-top: 4px; }
-        table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+        table { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 8px; }
         th { background: #f1f5f9; text-align: left; padding: 8px 10px; border-bottom: 2px solid #cbd5e1; }
         @media print { .no-print { display: none; } body { margin: 12px; } }
       </style>
     </head>
     <body>
       <div class="no-print" style="margin-bottom:16px;text-align:right;">
-        <button onclick="window.print()" style="padding:8px 16px;background:#4f46e5;color:#fff;border:none;border-radius:6px;font-weight:700;cursor:pointer;">สั่งพิมพ์ / บันทึกเป็น PDF</button>
+        <button onclick="window.print()" style="padding:8px 16px;background:#4f46e5;color:#fff;border:none;border-radius:6px;font-weight:700;cursor:pointer;">สั่งพิมพ์ / บันทึกเป็นไฟล์ PDF</button>
       </div>
       <div class="header">
         <div>
-          <div style="font-size:12px;font-weight:700;color:#4f46e5;text-transform:uppercase;">QuantFolio Wealth Analytics — Executive Investment Plan</div>
+          <div style="font-size:12px;font-weight:700;color:#4f46e5;">QuantFolio — ใบสรุปแผนการลงทุน</div>
           <h1 style="margin:4px 0 2px;font-size:22px;">${portfolioName} (${m.goalLabel})</h1>
-          <div style="font-size:12px;color:#64748b;">กลยุทธ์: ${m.strategyName} | วันที่ออกรายงาน: ${todayStr}</div>
+          <div style="font-size:12px;color:#64748b;">แนวทาง: ${m.strategyName} | วันที่ออกรายงาน: ${todayStr}</div>
         </div>
         <div style="text-align:right;">
           <div style="font-size:12px;color:#475569;">เป้าหมายการเงิน (${m.years} ปี)</div>
@@ -3215,32 +3356,32 @@ function openPrintableGoalReport() {
 
       <div class="grid">
         <div class="card">
-          <div class="label">1. เงินลงทุนก้อนแรก + DCA/เดือน</div>
+          <div class="label">เงินลงทุนก้อนแรก + ออมรายเดือน</div>
           <div class="val">${formatMoney(m.initialBudget, 0, false)}</div>
-          <div style="font-size:11px;color:#475569;">ออมเพิ่ม ${formatMoney(m.monthlyDca, 0, false)}/เดือน (รวมต้น ${formatMoney(m.totalPrincipal, 0, false)})</div>
+          <div style="font-size:12px;color:#475569;">ออมเพิ่ม ${formatMoney(m.monthlyDca, 0, false)}/เดือน (รวมต้น ${formatMoney(m.totalPrincipal, 0, false)})</div>
         </div>
         <div class="card">
-          <div class="label">2. มูลค่าพอร์ตคาดการณ์ (${m.years} ปี)</div>
+          <div class="label">มูลค่าพอร์ตคาดการณ์ (${m.years} ปี)</div>
           <div class="val" style="color:#4f46e5;">${formatMoney(m.projectedFinalWealth, 0, false)}</div>
-          <div style="font-size:11px;color:#059669;font-weight:700;">กำไรทบต้น +${formatMoney(m.netProfit, 0, false)} (${m.achievementPct}% ของเป้า)</div>
+          <div style="font-size:12px;color:#059669;font-weight:700;">กำไรทบต้น +${formatMoney(m.netProfit, 0, false)} (${m.achievementPct}% ของเป้า)</div>
         </div>
         <div class="card">
-          <div class="label">3. ผลตอบแทนคาดหวัง / ปันผล</div>
+          <div class="label">ผลตอบแทนคาดหวัง / ปันผล</div>
           <div class="val" style="color:#059669;">${(m.effectiveAnnualReturn * 100).toFixed(2)}% / ปี</div>
-          <div style="font-size:11px;color:#475569;">ปันผลเมื่อครบกำหนด ~${formatMoney(m.estMonthlyDividendAtEnd, 0, false)}/เดือน</div>
+          <div style="font-size:12px;color:#475569;">ปันผลเมื่อครบกำหนด ~${formatMoney(m.estMonthlyDividendAtEnd, 0, false)}/เดือน</div>
         </div>
         <div class="card">
-          <div class="label">4. ความผันผวน / Max Drawdown</div>
-          <div class="val" style="color:#dc2626;">${strat ? (strat.max_drawdown * 100).toFixed(2) + '%' : '--'}</div>
-          <div style="font-size:11px;color:#475569;">ความผันผวน ${(m.annualVol * 100).toFixed(2)}%/ปี</div>
+          <div class="label">ความผันผวน / จุดขาดทุนสูงสุด</div>
+          <div class="val" style="color:#dc2626;">${strat ? (strat.max_drawdown * 100).toFixed(2) + '%' : ''}</div>
+          <div style="font-size:12px;color:#475569;">ความผันผวน ${(m.annualVol * 100).toFixed(2)}%/ปี</div>
         </div>
       </div>
 
-      <h3 style="font-size:15px;margin:18px 0 6px;">สัดส่วนการกระจายการลงทุนตามกลยุทธ์ (${m.strategyName})</h3>
+      <h3 style="font-size:15px;margin:18px 0 6px;">สัดส่วนการกระจายการลงทุนตามแนวทาง (${m.strategyName})</h3>
       <table>
         <thead>
           <tr>
-            <th>สินทรัพย์ (Ticker)</th>
+            <th>สินทรัพย์</th>
             <th style="text-align:right;">สัดส่วนเป้าหมาย (%)</th>
             <th style="text-align:right;">เม็ดเงินจัดสรรก้อนแรก</th>
           </tr>
@@ -3250,8 +3391,8 @@ function openPrintableGoalReport() {
         </tbody>
       </table>
 
-      <div style="margin-top:22px;padding:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;font-size:11px;color:#64748b;">
-        หมายเหตุ: รายงานนี้คำนวณด้วยโมเดลคณิตศาสตร์การเงิน (Markowitz Mean-Variance & Hierarchical Risk Parity) จากข้อมูลสถิติจริงบน Yahoo Finance เพื่อใช้ประกอบการวางแผนการลงทุนอย่างเป็นระบบ
+      <div style="margin-top:22px;padding:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;color:#64748b;">
+        หมายเหตุ: รายงานนี้คำนวณจากข้อมูลสถิติราคาจริงย้อนหลัง เพื่อใช้ประกอบการวางแผนการลงทุนอย่างเป็นระบบ
       </div>
     </body>
     </html>

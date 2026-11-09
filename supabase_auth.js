@@ -319,7 +319,22 @@ async function loginOrSignUpWithRealGmail() {
 }
 
 /**
- * ออกจากระบบ (Logout) และล็อกหน้าจอกลับสู่หน้า Login ทันที
+ * เข้าใช้งานในโหมดทดลองใช้งานทั่วไป (Guest Mode) โดยไม่ต้องเข้าสู่ระบบ
+ */
+function continueAsGuest() {
+  sessionStorage.setItem('qf_guest_mode', '1');
+  const modal = document.getElementById('supabase-config-modal');
+  const mainWorkspace = document.getElementById('main-app-workspace');
+  if (modal) modal.classList.add('hidden');
+  document.body.style.overflow = '';
+  if (mainWorkspace) {
+    mainWorkspace.classList.remove('pointer-events-none', 'select-none', 'blur-xs');
+  }
+  showPortfolioToast('เข้าสู่โหมดทดลองใช้งาน (Guest Mode) — สามารถใช้งานวิเคราะห์พอร์ตได้ครบทุกฟังก์ชัน');
+}
+
+/**
+ * ออกจากระบบ (Logout) และสลับเป็นโหมดทดลองใช้งานหรือเลือกเข้าสู่ระบบใหม่
  */
 async function logoutUser() {
   try {
@@ -328,11 +343,13 @@ async function logoutUser() {
     }
   } catch (e) {}
   localStorage.removeItem('qf_verified_session_user');
+  sessionStorage.removeItem('qf_guest_mode');
   currentUser = null;
   hasSupabaseJwtSession = false;
   savedPortfoliosList = [];
   updateAuthUI(null);
   renderSavedPortfoliosList([]);
+  showPortfolioToast('ออกจากระบบเรียบร้อยแล้ว — คุณสามารถทดลองใช้งานต่อในโหมด Guest หรือเข้าสู่ระบบใหม่ได้');
 }
 
 /**
@@ -349,17 +366,18 @@ function updateAuthUI(user) {
   const savePanelBadge = document.getElementById('portfolio-storage-auth-badge');
 
   if (!user) {
-    if (modal) modal.classList.remove('hidden');
-    document.body.style.overflow = 'hidden';
+    // เปิดหน้าเว็บให้ทดลองใช้งานฟอร์มได้ทันทีโดยไม่บังคับแสดงป๊อปอัป (เปิดเมื่อผู้ใช้กดปุ่มเข้าสู่ระบบหรือกดบันทึกพอร์ต)
+    if (modal) modal.classList.add('hidden');
+    document.body.style.overflow = '';
     if (mainWorkspace) {
-      mainWorkspace.classList.add('pointer-events-none', 'select-none', 'blur-xs');
+      mainWorkspace.classList.remove('pointer-events-none', 'select-none', 'blur-xs');
     }
 
     if (loggedOutBox) loggedOutBox.classList.remove('hidden');
     if (loggedInBox) loggedInBox.classList.add('hidden');
     if (savePanelBadge) {
-      savePanelBadge.innerText = 'ยังไม่ได้เข้าสู่ระบบ';
-      savePanelBadge.className = 'text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200';
+      savePanelBadge.innerText = 'โหมดทดลองใช้ฟรี (เข้าสู่ระบบเมื่อต้องการบันทึกพอร์ต)';
+      savePanelBadge.className = 'text-xs font-semibold px-2.5 py-1 rounded bg-amber-50 text-amber-800 border border-amber-200';
     }
     return;
   }
@@ -398,6 +416,10 @@ function updateAuthUI(user) {
 async function saveUserPortfolio() {
   if (!currentUser) {
     openSupabaseConfigModal();
+    showAuthAlert(
+      'กรุณาเข้าสู่ระบบด้วยอีเมลหรือบัญชี Google เพื่อบันทึกพอร์ตเก็บไว้ในบัญชีของคุณ (หรือกดปุ่ม "ทดลองใช้งานทันที" ด้านบนเพื่อวิเคราะห์พอร์ตต่อโดยไม่ต้องบันทึก)',
+      'info'
+    );
     return;
   }
 
@@ -743,7 +765,15 @@ function renderSavedPortfoliosList(portfolios) {
   const countBadge = document.getElementById('saved-portfolios-count');
   const headerCountBadge = document.getElementById('header-saved-portfolios-count');
   if (countBadge) countBadge.innerText = portfolios.length;
-  if (headerCountBadge) headerCountBadge.innerText = portfolios.length;
+  if (headerCountBadge) {
+    if (portfolios.length > 0) {
+      headerCountBadge.innerText = portfolios.length;
+      headerCountBadge.classList.remove('hidden');
+    } else {
+      headerCountBadge.innerText = '';
+      headerCountBadge.classList.add('hidden');
+    }
+  }
   if (!container) return;
 
   if (!currentUser) {
@@ -765,10 +795,10 @@ function renderSavedPortfoliosList(portfolios) {
   }
 
   const stratLabels = {
-    max_sharpe: 'Max Sharpe Ratio',
-    min_volatility: 'Min Volatility',
-    hrp: 'Risk Parity (HRP)',
-    equal_weight: 'Equal Weight (1/N)'
+    max_sharpe: 'เน้นกำไรคุ้มความเสี่ยงที่สุด',
+    min_volatility: 'เน้นปลอดภัย เงินต้นแกว่งน้อย',
+    hrp: 'เน้นกระจายความเสี่ยงสมดุล',
+    equal_weight: 'แบ่งเงินเท่ากันทุกตัว'
   };
 
   container.innerHTML = portfolios.map(p => {
@@ -858,6 +888,9 @@ async function openSupabaseConfigModal() {
   const modal = document.getElementById('supabase-config-modal');
   if (!modal) return;
   modal.classList.remove('hidden');
+  if (window.lucide && typeof window.lucide.createIcons === 'function') {
+    window.lucide.createIcons();
+  }
 
   const statusBadge = document.getElementById('google-provider-status-badge');
   if (statusBadge) {
@@ -873,9 +906,14 @@ async function openSupabaseConfigModal() {
 }
 
 function closeSupabaseConfigModal() {
-  if (!currentUser) return;
+  sessionStorage.setItem('qf_guest_mode', '1');
   const modal = document.getElementById('supabase-config-modal');
+  const mainWorkspace = document.getElementById('main-app-workspace');
   if (modal) modal.classList.add('hidden');
+  document.body.style.overflow = '';
+  if (mainWorkspace) {
+    mainWorkspace.classList.remove('pointer-events-none', 'select-none', 'blur-xs');
+  }
 }
 
 function showPortfolioToast(msg) {
