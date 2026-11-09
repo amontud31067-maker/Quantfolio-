@@ -238,14 +238,18 @@ async function fetchLiveMarketRates() {
       const data = await res.json();
       const rfEl = document.getElementById('top-rf-rate');
       if (rfEl && data.percentage) {
-        rfEl.innerText = data.percentage;
+        rfEl.innerText = data.is_fallback_rf ? `${data.percentage} (ค่าสำรอง)` : data.percentage;
       }
       if (data.usd_thb_rate) {
         state.fxRate = Number(data.usd_thb_rate);
         const fxInput = document.getElementById('fx-rate-input');
         if (fxInput) fxInput.value = state.fxRate.toFixed(2);
         const topFx = document.getElementById('top-fx-rate');
-        if (topFx) topFx.innerText = `${state.fxRate.toFixed(2)} บาท/$`;
+        if (topFx) {
+          topFx.innerText = data.is_fallback_fx
+            ? `${state.fxRate.toFixed(2)} บาท/$ (ค่าสำรอง)`
+            : `${state.fxRate.toFixed(2)} บาท/$`;
+        }
       }
     }
   } catch (e) {
@@ -284,16 +288,25 @@ function handleBudgetQuickUpdate() {
   // Dynamically scale all monetary metrics in optData so UI updates at 0ms latency
   Object.keys(state.optData.strategies).forEach(k => {
     const s = state.optData.strategies[k];
-    const mddPct = Math.abs(s.max_drawdown || 0);
     s.expected_annual_profit = Number((s.expected_return * budget).toFixed(2));
-    s.max_drawdown_amount = Number((mddPct * budget).toFixed(2));
-    s.min_capital_remaining = Number(Math.max(0, budget - s.max_drawdown_amount).toFixed(2));
     if (s.drawdown_details) {
-      s.drawdown_details.max_drawdown_amount = s.max_drawdown_amount;
-      s.drawdown_details.min_capital_remaining = s.min_capital_remaining;
       s.drawdown_details.peak_value = Number((s.drawdown_details.peak_value * ratio).toFixed(2));
       s.drawdown_details.trough_value = Number((s.drawdown_details.trough_value * ratio).toFixed(2));
       s.drawdown_details.peak_to_trough_amount = Number((s.drawdown_details.peak_to_trough_amount * ratio).toFixed(2));
+      if (s.drawdown_details.min_portfolio_value !== undefined) {
+        s.drawdown_details.min_portfolio_value = Number((s.drawdown_details.min_portfolio_value * ratio).toFixed(2));
+      }
+      if (s.drawdown_details.initial_budget_scaled_loss !== undefined) {
+        s.drawdown_details.initial_budget_scaled_loss = Number((s.drawdown_details.initial_budget_scaled_loss * ratio).toFixed(2));
+      }
+      s.max_drawdown_amount = s.drawdown_details.peak_to_trough_amount;
+      s.min_capital_remaining = s.drawdown_details.trough_value;
+      s.drawdown_details.max_drawdown_amount = s.max_drawdown_amount;
+      s.drawdown_details.min_capital_remaining = s.min_capital_remaining;
+    } else {
+      const mddPct = Math.abs(s.max_drawdown || 0);
+      s.max_drawdown_amount = Number(((s.max_drawdown_amount !== undefined ? s.max_drawdown_amount : mddPct * oldBudget) * ratio).toFixed(2));
+      s.min_capital_remaining = Number(((s.min_capital_remaining !== undefined ? s.min_capital_remaining : Math.max(0, oldBudget - s.max_drawdown_amount)) * ratio).toFixed(2));
     }
     s.final_historical_value = Number((s.final_historical_value * ratio).toFixed(2));
   });
@@ -653,7 +666,7 @@ function getAssetPriceInCurrentCurrency(ticker) {
       return isThai ? Number((q.price / fx).toFixed(2)) : q.price;
     }
   }
-  return 1;
+  return 0;
 }
 
 function setHoldingsInputUnit(unit) {
@@ -1087,7 +1100,15 @@ function renderAllViews(shouldScroll = false) {
   }
 
   document.getElementById('top-trading-days').innerText = data.metadata.trading_days.toLocaleString();
-  document.getElementById('top-rf-rate').innerText = `${(data.metadata.risk_free_rate * 100).toFixed(2)}%`;
+  const rfPctText = `${(data.metadata.risk_free_rate * 100).toFixed(2)}%`;
+  document.getElementById('top-rf-rate').innerText = data.metadata.is_fallback_rf
+    ? `${rfPctText} (ค่าสำรอง)`
+    : rfPctText;
+  const topFxEl = document.getElementById('top-fx-rate');
+  if (topFxEl && data.metadata.usd_thb_rate) {
+    const fxVal = Number(data.metadata.usd_thb_rate).toFixed(2);
+    topFxEl.innerText = data.metadata.is_fallback_fx ? `${fxVal} บาท/$ (ค่าสำรอง)` : `${fxVal} บาท/$`;
+  }
   document.getElementById('analysis-period-badge').innerText =
     `ข้อมูลจริง: ${data.metadata.start_date} ถึง ${data.metadata.end_date} (${data.metadata.trading_days} วันทำการ)`;
 
@@ -1200,7 +1221,7 @@ function computeRebalancePlan(strat, data) {
     const currentWeight = totalPortfolioBudget > 0 ? currentVal / totalPortfolioBudget : 0;
     const targetVal = Number((totalPortfolioBudget * wTarget).toFixed(2));
     const rawDelta = Number((targetVal - currentVal).toFixed(2));
-    const price = priceMap[t] || 1;
+    const price = priceMap[t] > 0 ? priceMap[t] : 0;
     const stat = statMap[t] || {};
 
     return {
@@ -1297,11 +1318,11 @@ function computeRebalancePlan(strat, data) {
 
   // Compute exact shares & fractional shares for every item
   items.forEach(item => {
-    const p = item.price > 0 ? item.price : 1;
-    item.trade_shares_fractional = Number((item.trade_amount / p).toFixed(4));
-    item.trade_shares_whole = Math.floor((item.trade_amount + 0.01) / p);
-    item.target_shares_fractional = Number((item.target_value / p).toFixed(4));
-    item.target_shares_whole = Math.floor((item.target_value + 0.01) / p);
+    const p = item.price > 0 ? item.price : 0;
+    item.trade_shares_fractional = p > 0 ? Number((item.trade_amount / p).toFixed(4)) : 0;
+    item.trade_shares_whole = p > 0 ? Math.floor((item.trade_amount + 0.01) / p) : 0;
+    item.target_shares_fractional = p > 0 ? Number((item.target_value / p).toFixed(4)) : 0;
+    item.target_shares_whole = p > 0 ? Math.floor((item.target_value + 0.01) / p) : 0;
   });
 
   const totalBuyNet = Number(buyOrders.reduce((acc, b) => acc + b.trade_amount, 0).toFixed(2));
@@ -1410,17 +1431,22 @@ function renderActiveGoalView() {
     riskBadge.className = 'inline-block text-xs font-semibold px-2 py-0.5 rounded bg-rose-50 text-rose-800 border border-rose-200';
   }
 
-  // KPI 3: Historical Max Drawdown in BAHT (Requirement 1)
-  const mddBaht = strat.max_drawdown_amount !== undefined
-    ? strat.max_drawdown_amount
-    : Math.abs(strat.max_drawdown) * budget;
-  const minRemainingBaht = strat.min_capital_remaining !== undefined
-    ? strat.min_capital_remaining
-    : Math.max(0, budget - mddBaht);
+  // KPI 3: Historical Max Drawdown in BAHT (Peak-to-Trough)
+  const ddInfo = strat.drawdown_details || {};
+  const mddBaht = ddInfo.peak_to_trough_amount !== undefined
+    ? ddInfo.peak_to_trough_amount
+    : (strat.max_drawdown_amount !== undefined
+      ? strat.max_drawdown_amount
+      : Math.abs(strat.max_drawdown) * budget);
+  const minRemainingBaht = ddInfo.trough_value !== undefined
+    ? ddInfo.trough_value
+    : (strat.min_capital_remaining !== undefined
+      ? strat.min_capital_remaining
+      : Math.max(0, budget - mddBaht));
 
   document.getElementById('kpi-mdd-baht').innerText = `-${formatMoney(mddBaht, 0, true)}`;
   document.getElementById('kpi-mdd').innerText = `(${(strat.max_drawdown * 100).toFixed(2)}%)`;
-  document.getElementById('kpi-mdd-remaining').innerText = `เหลือต่ำสุด ${formatMoney(minRemainingBaht, 0, false)}`;
+  document.getElementById('kpi-mdd-remaining').innerText = `มูลค่า ณ จุดต่ำสุด ${formatMoney(minRemainingBaht, 0, false)}`;
 
   // KPI 4: Value vs Risk Score
   document.getElementById('kpi-sharpe').innerText = strat.sharpe_ratio.toFixed(2);
@@ -1852,19 +1878,23 @@ function renderBacktestStressCard() {
 
   const budget = Number(data.metadata.budget) || 100000;
   const dd = strat.drawdown_details || {};
-  const lossBaht = strat.max_drawdown_amount !== undefined
-    ? strat.max_drawdown_amount
-    : Number((Math.abs(strat.max_drawdown) * budget).toFixed(2));
-  const remainingBaht = strat.min_capital_remaining !== undefined
-    ? strat.min_capital_remaining
-    : Number(Math.max(0, budget - lossBaht).toFixed(2));
+  const lossBaht = dd.peak_to_trough_amount !== undefined
+    ? dd.peak_to_trough_amount
+    : (strat.max_drawdown_amount !== undefined
+      ? strat.max_drawdown_amount
+      : Number((Math.abs(strat.max_drawdown) * budget).toFixed(2)));
+  const remainingBaht = dd.trough_value !== undefined
+    ? dd.trough_value
+    : (strat.min_capital_remaining !== undefined
+      ? strat.min_capital_remaining
+      : Number(Math.max(0, budget - lossBaht).toFixed(2)));
 
   const mddPctAbs = Math.abs(strat.max_drawdown * 100).toFixed(2);
   const keepPct = Math.max(0, Math.min(100, 100 - Math.abs(strat.max_drawdown * 100))).toFixed(1);
 
   document.getElementById('bt-dd-initial-budget').innerText = formatMoney(budget, 2, true);
   document.getElementById('bt-dd-loss-baht').innerText = `-${formatMoney(lossBaht, 2, true)}`;
-  document.getElementById('bt-dd-loss-pct').innerText = `คิดเป็นจุดขาดทุนลึกสุด -${mddPctAbs}% ของเงินต้น`;
+  document.getElementById('bt-dd-loss-pct').innerText = `ย่อตัวสูงสุดจากจุดพีค -${mddPctAbs}% (Peak ${formatMoney(dd.peak_value || budget, 0, true)})`;
   document.getElementById('bt-dd-remaining-baht').innerText = formatMoney(remainingBaht, 2, true);
 
   const periodEl = document.getElementById('bt-dd-period');
@@ -2325,7 +2355,7 @@ function copyOrderSheet() {
       setTimeout(() => { topLabel.innerText = oldText; }, 2800);
     }
     const toastEl = document.getElementById('portfolio-toast');
-    const toastMsgEl = document.getElementById('portfolio-toast-msg');
+    const toastMsgEl = document.getElementById('portfolio-toast-text') || document.getElementById('portfolio-toast-msg');
     if (toastEl && toastMsgEl) {
       toastMsgEl.innerText = 'คัดลอกคำสั่งซื้อ-ขายเรียบร้อยแล้ว นำไปวางในแอปจดบันทึกหรือส่งคำสั่งได้ทันที';
       toastEl.classList.remove('hidden');
@@ -2597,6 +2627,23 @@ function toggleNewsSignalAdjustment(enable) {
   renderAllViews();
 }
 
+function escapeHtmlText(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function sanitizeExternalUrl(url) {
+  const raw = String(url ?? '').trim();
+  if (/^https?:\/\//i.test(raw)) {
+    return escapeHtmlText(raw);
+  }
+  return '#';
+}
+
 function renderNewsAndSignalSection() {
   const data = state.optData;
   if (!data) return;
@@ -2719,20 +2766,26 @@ function renderNewsAndSignalSection() {
           : sent === 'negative'
           ? 'bg-rose-100 text-rose-800 border-rose-300'
           : 'bg-slate-100 text-slate-700 border-slate-300';
+        const safeHref = sanitizeExternalUrl(art.link);
+        const safeTicker = escapeHtmlText(art.ticker);
+        const safePublisher = escapeHtmlText(art.publisher || 'สำนักข่าวการเงิน');
+        const safeSentiment = escapeHtmlText(art.sentiment_label_th || 'เป็นกลาง');
+        const safeTitle = escapeHtmlText(art.title);
+        const safePubAt = escapeHtmlText(art.published_at || 'ล่าสุด');
 
         return `
-          <a href="${art.link || '#'}" target="_blank" rel="noopener noreferrer"
+          <a href="${safeHref}" target="_blank" rel="noopener noreferrer"
             class="block p-3 rounded-xl bg-slate-50/80 hover:bg-blue-50/50 border border-slate-200/90 hover:border-blue-300 transition group">
             <div class="flex items-center justify-between gap-2 mb-1.5">
               <div class="flex items-center gap-1.5">
-                <span class="px-2 py-0.5 rounded bg-slate-900 text-white font-mono text-xs font-bold">${art.ticker}</span>
-                <span class="text-xs font-semibold text-slate-500 truncate max-w-[160px]">${art.publisher || 'สำนักข่าวการเงิน'}</span>
+                <span class="px-2 py-0.5 rounded bg-slate-900 text-white font-mono text-xs font-bold">${safeTicker}</span>
+                <span class="text-xs font-semibold text-slate-500 truncate max-w-[160px]">${safePublisher}</span>
               </div>
-              <span class="px-2 py-0.5 rounded border text-xs font-bold ${badgeStyle}">${art.sentiment_label_th || 'เป็นกลาง'}</span>
+              <span class="px-2 py-0.5 rounded border text-xs font-bold ${badgeStyle}">${safeSentiment}</span>
             </div>
-            <div class="text-xs font-bold text-slate-800 group-hover:text-blue-700 leading-snug line-clamp-2">${art.title}</div>
+            <div class="text-xs font-bold text-slate-800 group-hover:text-blue-700 leading-snug line-clamp-2">${safeTitle}</div>
             <div class="mt-1.5 flex items-center justify-between text-xs text-slate-400">
-              <span>เวลาเผยแพร่: ${art.published_at || 'ล่าสุด'}</span>
+              <span>เวลาเผยแพร่: ${safePubAt}</span>
               <span class="text-blue-600 font-semibold group-hover:underline">อ่านข่าวต้นฉบับ ➔</span>
             </div>
           </a>
@@ -3296,7 +3349,8 @@ function renderGoalProjectionChart(m) {
 
 function openPrintableGoalReport() {
   const m = computeGoalProjectionMetrics();
-  const portfolioName = (document.getElementById('save-portfolio-name')?.value || 'แผนพอร์ตการลงทุนตามเป้าหมาย').trim();
+  const rawPortfolioName = (document.getElementById('save-portfolio-name')?.value || 'แผนพอร์ตการลงทุนตามเป้าหมาย').trim();
+  const portfolioName = escapeHtmlText(rawPortfolioName);
   const strat = (state.optData && state.optData.strategies && state.optData.strategies[state.activeGoal]) || null;
   const weights = strat ? strat.weights : {};
 
@@ -3306,8 +3360,9 @@ function openPrintableGoalReport() {
     .map(([ticker, w]) => {
       const pct = (w * 100).toFixed(2);
       const amt = formatMoney(m.initialBudget * w, 2, true);
+      const safeTicker = escapeHtmlText(ticker);
       return `<tr>
-        <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;font-weight:700;">${ticker}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;font-weight:700;">${safeTicker}</td>
         <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;text-align:right;">${pct}%</td>
         <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;text-align:right;font-weight:600;">${amt}</td>
       </tr>`;
@@ -3366,9 +3421,9 @@ function openPrintableGoalReport() {
           <div style="font-size:12px;color:#059669;font-weight:700;">กำไรทบต้น +${formatMoney(m.netProfit, 0, false)} (${m.achievementPct}% ของเป้า)</div>
         </div>
         <div class="card">
-          <div class="label">ผลตอบแทนคาดหวัง / ปันผล</div>
+          <div class="label">ผลตอบแทนคาดหวังรวม (Total Return)</div>
           <div class="val" style="color:#059669;">${(m.effectiveAnnualReturn * 100).toFixed(2)}% / ปี</div>
-          <div style="font-size:12px;color:#475569;">ปันผลเมื่อครบกำหนด ~${formatMoney(m.estMonthlyDividendAtEnd, 0, false)}/เดือน</div>
+          <div style="font-size:12px;color:#475569;">รวมปันผลแล้ว (~${formatMoney(m.estMonthlyDividendAtEnd, 0, false)}/เดือน เมื่อครบกำหนด)</div>
         </div>
         <div class="card">
           <div class="label">ความผันผวน / จุดขาดทุนสูงสุด</div>
@@ -3398,4 +3453,14 @@ function openPrintableGoalReport() {
     </html>
   `);
   win.document.close();
+}
+
+if (typeof window !== 'undefined') {
+  window.QuantFolioCalc = {
+    getAssetPriceInCurrentCurrency,
+    computeRebalancePlan,
+    computeGoalProjectionMetrics,
+    escapeHtmlText,
+    sanitizeExternalUrl
+  };
 }

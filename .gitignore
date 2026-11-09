@@ -1,0 +1,9 @@
+__pycache__/
+*.py[cod]
+yf_cache/
+cloudflared.exe
+.env
+.venv/
+venv/
+quantfolio_users_db.json
+*.db

@@ -35,11 +35,18 @@ except ImportError:
 
     class expected_returns:
         @staticmethod
-        def mean_historical_return(prices: pd.DataFrame, frequency: int = 252) -> pd.Series:
-            rets = prices.pct_change().dropna()
+        def mean_historical_return(prices: pd.DataFrame, frequency: Optional[int] = None) -> pd.Series:
+            rets = prices.pct_change().dropna(how="all")
             if len(rets) == 0:
                 return pd.Series(0.0, index=prices.columns)
-            return (1.0 + rets).prod() ** (frequency / len(rets)) - 1.0
+            if frequency is None and isinstance(prices.index, pd.DatetimeIndex) and len(prices.index) >= 2:
+                cal_days = max(1.0, float((prices.index[-1] - prices.index[0]).days))
+                years = cal_days / 365.25
+                first_prices = prices.bfill().iloc[0]
+                last_prices = prices.ffill().iloc[-1]
+                return (last_prices / first_prices) ** (1.0 / years) - 1.0
+            freq = float(frequency or 252)
+            return (1.0 + rets).prod() ** (freq / len(rets)) - 1.0
 
     class risk_models:
         class CovarianceShrinkage:
@@ -54,9 +61,18 @@ except ImportError:
                     return pd.DataFrame(np.eye(n) * 0.04, index=self.rets.columns, columns=self.rets.columns)
                 X_centered = X - X.mean(axis=0, keepdims=True)
                 sample_cov = (X_centered.T @ X_centered) / (t - 1)
+                if n <= 1:
+                    return pd.DataFrame(sample_cov * self.frequency, index=self.rets.columns, columns=self.rets.columns)
                 mu_tr = np.trace(sample_cov) / n
                 F = np.eye(n) * mu_tr
-                delta = 0.15
+                # Analytical Ledoit-Wolf optimal shrinkage intensity (avoids hardcoded delta = 0.15 bias)
+                X2 = X_centered ** 2
+                sum_sq_cov_diff = float(np.sum((X2.T @ X2) / t - sample_cov ** 2)) / t
+                misspecification = float(np.sum((sample_cov - F) ** 2))
+                if misspecification > 1e-16:
+                    delta = float(np.clip(sum_sq_cov_diff / misspecification, 0.0, 1.0))
+                else:
+                    delta = 0.0
                 shrunk = (1.0 - delta) * sample_cov + delta * F
                 return pd.DataFrame(shrunk * self.frequency, index=self.rets.columns, columns=self.rets.columns)
 
@@ -390,12 +406,19 @@ def get_ticker_currency(ticker: str) -> str:
     return "THB" if ticker.strip().upper().endswith(".BK") else "USD"
 
 
+_last_fx_is_fallback: bool = False
+_last_rf_is_fallback: bool = False
+THB_RISK_FREE_RATE_DEFAULT: float = 0.0225  # Thai Government Bond / BOT reference rate (2.25%)
+
+
 def get_usd_thb_rate(default_rate: float = 34.50) -> float:
     """Fetch current USD/THB exchange rate (THB=X) from Yahoo Finance with 30-minute cache."""
+    global _last_fx_is_fallback
     now = time.time()
     if 'usd_thb' in _fx_cache:
         ts, cached_val = _fx_cache['usd_thb']
         if now - ts < FX_CACHE_TTL:
+            _last_fx_is_fallback = False
             return cached_val
 
     try:
@@ -409,20 +432,33 @@ def get_usd_thb_rate(default_rate: float = 34.50) -> float:
                 if 20.0 <= latest <= 60.0:
                     rate = round(latest, 2)
                     _fx_cache['usd_thb'] = (now, rate)
+                    _last_fx_is_fallback = False
                     return rate
     except Exception as e:
-        print(f"Notice: Failed to fetch THB=X ({e}), using default {default_rate:.2f}")
+        print(f"Notice: Failed to fetch THB=X ({e}), using fallback {default_rate:.2f} without caching")
 
-    _fx_cache['usd_thb'] = (now, default_rate)
+    # Do NOT cache fallback rate so next request retries live data
+    _last_fx_is_fallback = True
     return default_rate
 
 
-def get_risk_free_rate(default_rate: float = 0.04) -> float:
-    """Fetch current 13-week US Treasury Bill yield (^IRX) with 1-hour cache."""
+def get_risk_free_rate(default_rate: float = 0.04, currency: str = "USD") -> float:
+    """
+    Fetch risk-free rate matched to the portfolio's base currency:
+    - THB: Thai Government Bond / BOT policy reference rate (~2.25%)
+    - USD: 13-week US Treasury Bill yield (^IRX) with 1-hour cache
+    """
+    global _last_rf_is_fallback
+    curr = (currency or "USD").strip().upper()
+    if curr == "THB":
+        _last_rf_is_fallback = False
+        return THB_RISK_FREE_RATE_DEFAULT
+
     now = time.time()
-    if 'rf' in _rf_cache:
-        ts, cached_val = _rf_cache['rf']
+    if 'rf_usd' in _rf_cache:
+        ts, cached_val = _rf_cache['rf_usd']
         if now - ts < RF_CACHE_TTL:
+            _last_rf_is_fallback = False
             return cached_val
 
     try:
@@ -434,13 +470,83 @@ def get_risk_free_rate(default_rate: float = 0.04) -> float:
                 val = clean.iloc[-1]
                 latest = float(val.values[0]) if hasattr(val, 'values') else float(val)
                 rate = round(latest / 100.0, 4)
-                _rf_cache['rf'] = (now, rate)
+                _rf_cache['rf_usd'] = (now, rate)
+                _last_rf_is_fallback = False
                 return rate
     except Exception as e:
-        print(f"Notice: Failed to fetch ^IRX ({e}), using default {default_rate:.2%}")
+        print(f"Notice: Failed to fetch ^IRX ({e}), using fallback {default_rate:.2%} without caching")
 
-    _rf_cache['rf'] = (now, default_rate)
+    # Do NOT cache fallback rate so next request retries live data
+    _last_rf_is_fallback = True
     return default_rate
+
+
+def _infer_effective_trading_days(prices: pd.DataFrame) -> int:
+    """Infer effective trading days per year from actual price index (365 for 24/7 crypto, 252 for equities)."""
+    if isinstance(prices.index, pd.DatetimeIndex) and len(prices.index) >= 20:
+        cal_days = float((prices.index[-1] - prices.index[0]).days)
+        if cal_days >= 30.0:
+            years = cal_days / 365.25
+            obs_per_year = (len(prices) - 1) / years
+            if obs_per_year >= 310:
+                return 365
+            return TRADING_DAYS
+    all_crypto = all(str(c).upper().endswith("-USD") for c in prices.columns)
+    return 365 if all_crypto else TRADING_DAYS
+
+
+def convert_prices_to_base_currency(
+    prices: pd.DataFrame,
+    base_currency: str = "THB",
+    fx_series: Optional[pd.Series] = None,
+    fallback_fx_rate: float = 34.50
+) -> pd.DataFrame:
+    """
+    Convert historical asset price series into a single consistent base currency (THB or USD)
+    using daily historical FX rates (THB=X) before computing returns, covariance, or backtests.
+    """
+    target_curr = (base_currency or "THB").strip().upper()
+    cols = list(prices.columns)
+    needs_fx = any(get_ticker_currency(t) != target_curr for t in cols)
+    if not needs_fx:
+        return prices.copy()
+
+    if fx_series is None and isinstance(prices.index, pd.DatetimeIndex) and len(prices.index) >= 2:
+        s_str = prices.index[0].strftime("%Y-%m-%d")
+        e_str = (prices.index[-1] + pd.Timedelta(days=2)).strftime("%Y-%m-%d")
+        fx_cache_key = (("THB=X",), s_str, e_str)
+        now = time.time()
+        if fx_cache_key in _price_cache and (now - _price_cache[fx_cache_key][0] < PRICE_CACHE_TTL):
+            fx_series = _price_cache[fx_cache_key][1]["THB=X"]
+        else:
+            try:
+                with _yf_lock:
+                    raw_fx = yf.download("THB=X", start=s_str, end=e_str, auto_adjust=True, progress=False)
+                if not raw_fx.empty:
+                    fx_col = raw_fx["Close"] if "Close" in raw_fx.columns else raw_fx
+                    if isinstance(fx_col, pd.DataFrame):
+                        fx_col = fx_col.iloc[:, 0]
+                    fx_clean = fx_col.dropna()
+                    if not fx_clean.empty:
+                        fx_series = fx_clean
+                        _price_cache[fx_cache_key] = (now, pd.DataFrame({"THB=X": fx_clean}), ["THB=X"], [])
+            except Exception:
+                fx_series = None
+
+    if fx_series is not None and not fx_series.empty:
+        aligned_fx = fx_series.reindex(prices.index).ffill().bfill()
+        aligned_fx = aligned_fx.fillna(fallback_fx_rate)
+    else:
+        aligned_fx = pd.Series(float(fallback_fx_rate), index=prices.index)
+
+    converted = prices.copy().astype(float)
+    for t in cols:
+        native_curr = get_ticker_currency(t)
+        if native_curr == "USD" and target_curr == "THB":
+            converted[t] = converted[t] * aligned_fx
+        elif native_curr == "THB" and target_curr == "USD":
+            converted[t] = converted[t] / aligned_fx.replace(0.0, np.nan).ffill().fillna(fallback_fx_rate)
+    return converted
 
 
 def fetch_historical_prices(
@@ -478,10 +584,16 @@ def fetch_historical_prices(
                 progress=False
             )
     except Exception as e:
-        raise ValueError(f"ไม่สามารถดึงข้อมูลจาก Yahoo Finance ได้: {str(e)}")
+        err_msg = str(e)
+        if "429" in err_msg or "rate" in err_msg.lower() or "too many" in err_msg.lower():
+            raise ValueError("ระบบดึงข้อมูลราคาติดข้อจำกัดความถี่ (Rate Limit) จาก Yahoo Finance กรุณารอสักครู่แล้วลองใหม่อีกครั้ง")
+        raise ValueError(f"ไม่สามารถเชื่อมต่อ Yahoo Finance ได้ในขณะนี้ ({err_msg})")
 
     if raw.empty:
-        raise ValueError(f"ไม่พบข้อมูลราคาของ {clean_tickers} ในช่วงเวลา {start_date} ถึง {end_date}")
+        raise ValueError(
+            f"ไม่สามารถดึงข้อมูลราคาของ {clean_tickers} ในช่วงเวลา {start_date} ถึง {end_date} "
+            f"(อาจเกิดจากชื่อย่อหุ้นไม่ถูกต้อง หรือ Yahoo Finance จำกัดการเรียกข้อมูลชั่วคราว)"
+        )
 
     if 'Close' in raw.columns:
         close_df = raw['Close']
@@ -506,7 +618,14 @@ def fetch_historical_prices(
             f"(พบข้อมูล: {valid_tickers}, ไม่พบข้อมูล: {missing_tickers})"
         )
 
-    prices = close_df[valid_tickers].dropna()
+    # Align calendars across markets (e.g. SET .BK holidays vs US holidays vs 24/7 Crypto):
+    # Trim leading NaNs before all assets started trading, then forward-fill holiday gaps up to 5 days
+    sub_df = close_df[valid_tickers].copy()
+    first_valid_dates = [sub_df[t].first_valid_index() for t in valid_tickers if sub_df[t].first_valid_index() is not None]
+    if first_valid_dates:
+        common_start = max(first_valid_dates)
+        sub_df = sub_df.loc[common_start:]
+    prices = sub_df.ffill(limit=5).dropna()
 
     if len(prices) < 20:
         raise ValueError(f"จำนวนวันทำการที่ข้อมูลทับซ้อนกันน้อยเกินไป ({len(prices)} วัน) กรุณาขยายช่วงเวลาให้กว้างขึ้น")
@@ -528,15 +647,20 @@ def compute_max_drawdown(wealth_series: pd.Series) -> float:
 
 def compute_drawdown_details(cum_growth: pd.Series, budget: float) -> Dict[str, Any]:
     """
-    Compute comprehensive drawdown analytics both as percentage and as exact
-    monetary amount (Baht) based on user's initial capital (`budget`), plus
-    historical peak-to-trough dates and recovery duration.
+    Compute comprehensive drawdown analytics:
+    - max_drawdown_pct: worst peak-to-trough percentage drop
+    - peak_to_trough_amount / max_drawdown_amount: actual monetary drop from historical peak_wealth to trough_wealth
+    - min_capital_remaining / trough_value: actual portfolio value at the trough of the worst drawdown
+    - min_portfolio_value: lowest portfolio value ever reached since day 1
+    - initial_budget_scaled_loss: equivalent loss if `budget` were invested right at the peak
     """
     if cum_growth.empty:
         return {
             "max_drawdown_pct": 0.0,
             "max_drawdown_amount": 0.0,
             "min_capital_remaining": round(budget, 2),
+            "min_portfolio_value": round(budget, 2),
+            "initial_budget_scaled_loss": 0.0,
             "peak_to_trough_amount": 0.0,
             "peak_value": round(budget, 2),
             "trough_value": round(budget, 2),
@@ -551,11 +675,7 @@ def compute_drawdown_details(cum_growth: pd.Series, budget: float) -> Dict[str, 
     dd_series = (cum_growth - running_max) / running_max
     mdd_pct = float(dd_series.min())
 
-    # 1. Exact monetary amount lost relative to user's initial budget
-    max_loss_amount = round(abs(mdd_pct) * budget, 2)
-    min_remaining = round(max(0.0, budget - max_loss_amount), 2)
-
-    # 2. Historical Peak, Trough, and Recovery Dates
+    # Historical Peak, Trough, and Recovery Dates
     trough_idx = dd_series.idxmin()
     peak_slice = cum_growth.loc[:trough_idx]
     peak_idx = peak_slice.idxmax() if not peak_slice.empty else trough_idx
@@ -566,21 +686,25 @@ def compute_drawdown_details(cum_growth: pd.Series, budget: float) -> Dict[str, 
     peak_wealth = round(peak_level * budget, 2)
     trough_wealth = round(trough_level * budget, 2)
     peak_to_trough_loss = round(max(0.0, peak_wealth - trough_wealth), 2)
+    initial_budget_scaled_loss = round(abs(mdd_pct) * budget, 2)
+    min_portfolio_value = round(min(float(budget), float(cum_growth.min()) * budget), 2)
 
     after_trough = cum_growth.loc[trough_idx:]
     recovered = after_trough[after_trough >= peak_level]
     if not recovered.empty and len(recovered) > 1:
         rec_idx = recovered.index[0]
-        recovery_date = rec_idx.strftime('%Y-%m-%d')
-        recovery_days = int((rec_idx - peak_idx).days)
+        recovery_date = rec_idx.strftime('%Y-%m-%d') if hasattr(rec_idx, 'strftime') else str(rec_idx)
+        recovery_days = int((rec_idx - peak_idx).days) if hasattr(rec_idx - peak_idx, 'days') else None
     else:
         recovery_date = None
         recovery_days = None
 
     return {
         "max_drawdown_pct": round(mdd_pct, 4),
-        "max_drawdown_amount": max_loss_amount,
-        "min_capital_remaining": min_remaining,
+        "max_drawdown_amount": peak_to_trough_loss,
+        "min_capital_remaining": trough_wealth,
+        "min_portfolio_value": min_portfolio_value,
+        "initial_budget_scaled_loss": initial_budget_scaled_loss,
         "peak_to_trough_amount": peak_to_trough_loss,
         "peak_value": peak_wealth,
         "trough_value": trough_wealth,
@@ -1002,20 +1126,15 @@ def _solve_all_strategies(
     rf_rate: float,
     signal_scores: Optional[Dict[str, float]] = None
 ) -> Dict[str, Dict[str, Any]]:
-    """Solve Max Sharpe, Min Volatility, HRP, and Equal Weight for a given expected return vector."""
-    # 1. Min Volatility
+    """
+    Solve Max Sharpe, Min Volatility, HRP, and Equal Weight.
+    Note: Min Volatility and HRP depend strictly on the risk/covariance structure
+    and are NOT post-multiplied by news/technical signal scores.
+    """
+    # 1. Min Volatility (Pure minimum variance portfolio)
     ef_min = EfficientFrontier(mu_vec, S_mat, weight_bounds=weight_bounds)
     ef_min.min_volatility()
     w_min = ef_min.clean_weights()
-    if signal_scores:
-        # Apply gentle risk-shield tilt on Min Volatility when news/trend signals are negative
-        adj_min = {}
-        for t in valid_tickers:
-             tilt_factor = 1.0 + 0.15 * float(signal_scores.get(t, 0.0))
-             adj_min[t] = max(weight_bounds[0], float(w_min.get(t, 0.0)) * max(0.75, min(1.25, tilt_factor)))
-        s_min = sum(adj_min.values())
-        if s_min > 0:
-            w_min = {t: round(adj_min[t] / s_min, 5) for t in valid_tickers}
     w_min_s = pd.Series(w_min).reindex(valid_tickers).fillna(0.0)
     ret_min = float(w_min_s @ mu_vec)
     vol_min = float(np.sqrt(max(1e-12, w_min_s @ S_mat @ w_min_s)))
@@ -1040,18 +1159,10 @@ def _solve_all_strategies(
     vol_eq = float(np.sqrt(max(1e-12, w_eq_s @ S_mat @ w_eq_s)))
     sr_eq = (ret_eq - rf_rate) / vol_eq if vol_eq > 0 else 0.0
 
-    # 4. HRP (with optional signal tilt)
+    # 4. HRP (Pure Hierarchical Risk Parity without post-hoc news distortion)
     hrp = HRPOpt(returns_df)
     w_hrp_raw = hrp.optimize()
     w_hrp = {t: float(w_hrp_raw.get(t, 0.0)) for t in valid_tickers}
-    if signal_scores:
-        adj_hrp = {}
-        for t in valid_tickers:
-            tilt_factor = 1.0 + 0.18 * float(signal_scores.get(t, 0.0))
-            adj_hrp[t] = max(0.0, w_hrp[t] * max(0.75, min(1.25, tilt_factor)))
-        s_hrp = sum(adj_hrp.values())
-        if s_hrp > 0:
-            w_hrp = {t: round(adj_hrp[t] / s_hrp, 5) for t in valid_tickers}
     w_hrp_s = pd.Series(w_hrp).reindex(valid_tickers).fillna(0.0)
     ret_hrp = float(w_hrp_s @ mu_vec)
     vol_hrp = float(np.sqrt(max(1e-12, w_hrp_s @ S_mat @ w_hrp_s)))
@@ -1063,6 +1174,139 @@ def _solve_all_strategies(
         "hrp": {"weights": w_hrp, "ret": ret_hrp, "vol": vol_hrp, "sr": sr_hrp, "error": None},
         "equal_weight": {"weights": w_eq, "ret": ret_eq, "vol": vol_eq, "sr": sr_eq, "error": None}
     }
+
+
+def simulate_drifting_backtest_with_fees(
+    returns_df: pd.DataFrame,
+    target_weights: pd.Series,
+    rebalance_every: int = 63,
+    fee_bps: float = 15.0
+) -> pd.Series:
+    """
+    Simulate realistic portfolio cumulative growth (starting at 1.0) with:
+    - Drifting asset weights between rebalance dates
+    - Periodic rebalancing every `rebalance_every` trading days (63 days = quarterly; 0 = Buy & Hold)
+    - Transaction fee deduction (`fee_bps` basis points, e.g. 15 bps = 0.15%) on entry and turnover
+    """
+    if returns_df.empty:
+        return pd.Series(dtype=float)
+
+    fee_rate = max(0.0, float(fee_bps)) / 10000.0
+    w_target = target_weights.reindex(returns_df.columns).fillna(0.0).values.astype(float)
+    w_sum = w_target.sum()
+    if w_sum > 0:
+        w_target = w_target / w_sum
+
+    ret_mat = returns_df.values
+    n_days = len(ret_mat)
+    cum_values = np.zeros(n_days, dtype=float)
+
+    # Deduct initial entry fee
+    wealth = 1.0 * (1.0 - fee_rate * w_target.sum())
+    curr_w = w_target.copy()
+
+    for d in range(n_days):
+        if rebalance_every > 0 and d > 0 and (d % rebalance_every == 0):
+            turnover = 0.5 * float(np.sum(np.abs(w_target - curr_w)))
+            wealth *= max(0.0, 1.0 - turnover * fee_rate)
+            curr_w = w_target.copy()
+
+        asset_growth = curr_w * (1.0 + ret_mat[d])
+        day_factor = float(asset_growth.sum())
+        wealth *= day_factor
+        if day_factor > 1e-12:
+            curr_w = asset_growth / day_factor
+        cum_values[d] = wealth
+
+    return pd.Series(cum_values, index=returns_df.index)
+
+
+def compute_walk_forward_backtest(
+    prices_base: pd.DataFrame,
+    valid_tickers: List[str],
+    weight_bounds: Tuple[float, float],
+    rf_rate: float,
+    effective_freq: int,
+    backtest_split: Optional[str] = None,
+    rebalance_every: int = 63,
+    fee_bps: float = 15.0
+) -> Dict[str, pd.Series]:
+    """
+    Strict Out-of-Sample Walk-Forward Backtest (zero look-ahead bias):
+    At each rebalance point t, weights are optimized using ONLY historical prices up to t
+    (and never using today's live news sentiment), then held out-of-sample over [t, t + rebalance_every).
+    """
+    returns_df = prices_base[valid_tickers].pct_change().dropna()
+    n_total = len(returns_df)
+    if n_total < 30:
+        w_eq = pd.Series(1.0 / len(valid_tickers), index=valid_tickers)
+        eq_curve = simulate_drifting_backtest_with_fees(returns_df, w_eq, rebalance_every, fee_bps)
+        return {k: eq_curve for k in ("max_sharpe", "min_volatility", "hrp", "equal_weight")}
+
+    # Determine initial training window end index
+    min_train = min(max(30, n_total // 3), max(20, n_total - 5))
+    split_idx = min_train
+    if backtest_split:
+        try:
+            split_dt = pd.to_datetime(backtest_split)
+            after_mask = returns_df.index >= split_dt
+            if after_mask.any():
+                candidate_idx = int(np.argmax(after_mask))
+                if 20 <= candidate_idx < n_total - 2:
+                    split_idx = candidate_idx
+        except Exception:
+            pass
+
+    fee_rate = max(0.0, float(fee_bps)) / 10000.0
+    step = max(21, int(rebalance_every)) if rebalance_every > 0 else (n_total - split_idx)
+    strat_keys = ("max_sharpe", "min_volatility", "hrp", "equal_weight")
+
+    # Initialize using equal weight during initial warm-up training window, or start OOS tracking from split_idx
+    w_init_train_prices = prices_base[valid_tickers].iloc[: split_idx + 1]
+    mu_init = expected_returns.mean_historical_return(w_init_train_prices, frequency=None)
+    S_init = risk_models.CovarianceShrinkage(w_init_train_prices, frequency=effective_freq).ledoit_wolf()
+    init_sol = _solve_all_strategies(
+        mu_init, S_init, returns_df.iloc[:split_idx], valid_tickers, weight_bounds, rf_rate, None
+    )
+
+    ret_mat = returns_df[valid_tickers].values
+    curr_w_dict = {}
+    wealth_dict = {}
+    cum_arr_dict = {}
+
+    for k in strat_keys:
+        w_vec = pd.Series(init_sol[k]["weights"]).reindex(valid_tickers).fillna(0.0).values.astype(float)
+        if w_vec.sum() > 0:
+            w_vec = w_vec / w_vec.sum()
+        curr_w_dict[k] = w_vec
+        wealth_dict[k] = 1.0 * (1.0 - fee_rate * w_vec.sum())
+        cum_arr_dict[k] = np.ones(n_total, dtype=float)
+
+    # Solve all 4 strategies together once per rebalance date (avoids redundant 4x re-solving)
+    for d in range(n_total):
+        if d >= split_idx and ((d - split_idx) % step == 0):
+            train_prices = prices_base[valid_tickers].iloc[: d + 1]
+            train_rets = returns_df[valid_tickers].iloc[:d]
+            mu_t = expected_returns.mean_historical_return(train_prices, frequency=None)
+            S_t = risk_models.CovarianceShrinkage(train_prices, frequency=effective_freq).ledoit_wolf()
+            sol_t = _solve_all_strategies(mu_t, S_t, train_rets, valid_tickers, weight_bounds, rf_rate, None)
+            for k in strat_keys:
+                new_w = pd.Series(sol_t[k]["weights"]).reindex(valid_tickers).fillna(0.0).values.astype(float)
+                if new_w.sum() > 0:
+                    new_w = new_w / new_w.sum()
+                turnover = 0.5 * float(np.sum(np.abs(new_w - curr_w_dict[k])))
+                wealth_dict[k] *= max(0.0, 1.0 - turnover * fee_rate)
+                curr_w_dict[k] = new_w
+
+        for k in strat_keys:
+            asset_growth = curr_w_dict[k] * (1.0 + ret_mat[d])
+            day_factor = float(asset_growth.sum())
+            wealth_dict[k] *= day_factor
+            if day_factor > 1e-12:
+                curr_w_dict[k] = asset_growth / day_factor
+            cum_arr_dict[k][d] = wealth_dict[k]
+
+    return {k: pd.Series(cum_arr_dict[k], index=returns_df.index) for k in strat_keys}
 
 
 def run_portfolio_optimization(
@@ -1080,26 +1324,36 @@ def run_portfolio_optimization(
     use_news_adjustment: bool = True
 ) -> Dict[str, Any]:
     """
-    Execute full Markowitz, HRP, Monte Carlo, Portfolio Growth, and Live Market News & Technical Intelligence.
+    Execute full Markowitz, HRP, Monte Carlo, Walk-Forward Out-of-Sample Portfolio Growth,
+    and Live Market News & Technical Intelligence.
     """
     prices, valid_tickers, missing_tickers = fetch_historical_prices(tickers, start_date, end_date)
 
+    usd_thb = float(fx_rate) if (fx_rate is not None and fx_rate > 0) else get_usd_thb_rate()
+
     if risk_free_rate is None or risk_free_rate <= 0:
-        rf_rate = get_risk_free_rate()
+        rf_rate = get_risk_free_rate(currency=currency)
     else:
         rf_rate = float(risk_free_rate)
 
-    usd_thb = float(fx_rate) if (fx_rate is not None and fx_rate > 0) else get_usd_thb_rate()
+    # Convert historical prices into a consistent base currency (THB or USD) using daily historical FX
+    prices_base = convert_prices_to_base_currency(
+        prices[valid_tickers],
+        base_currency=currency,
+        fallback_fx_rate=usd_thb
+    )
+    effective_freq = _infer_effective_trading_days(prices_base)
 
-    # 1. Expected Returns (CAGR) & Covariance Shrinkage (Ledoit-Wolf)
-    mu = expected_returns.mean_historical_return(prices, frequency=TRADING_DAYS)
-    S = risk_models.CovarianceShrinkage(prices, frequency=TRADING_DAYS).ledoit_wolf()
-    returns_df = prices.pct_change().dropna()
+    # 1. Expected Returns (Exact Calendar CAGR) & Analytical Ledoit-Wolf Covariance Shrinkage
+    mu = expected_returns.mean_historical_return(prices_base, frequency=None)
+    S = risk_models.CovarianceShrinkage(prices_base, frequency=effective_freq).ledoit_wolf()
+    returns_df = prices_base.pct_change().dropna()
 
     # Fetch live market news & compute technical signals for each ticker
     news_map = fetch_portfolio_market_news(valid_tickers)
 
-    vols = np.sqrt(np.diag(S))
+    # Individual asset volatility from un-shrunk sample standard deviation (fixes shrunken diagonal bug)
+    sample_vols_series = returns_df[valid_tickers].std(ddof=1) * np.sqrt(effective_freq)
     asset_stats = []
     latest_prices = get_latest_prices(prices)
     mu_adjusted_dict: Dict[str, float] = {}
@@ -1108,11 +1362,11 @@ def run_portfolio_optimization(
 
     for i, t in enumerate(valid_tickers):
         ret_val = float(mu[t])
-        vol_val = float(vols[i])
+        vol_val = float(sample_vols_series[t])
         sr_val = (ret_val - rf_rate) / vol_val if vol_val > 0 else 0
         asset_wealth = (1 + returns_df[t]).cumprod()
         asset_dd = compute_drawdown_details(asset_wealth, budget)
-        total_cum_return = float((prices[t].iloc[-1] / prices[t].iloc[0]) - 1.0)
+        total_cum_return = float((prices_base[t].iloc[-1] / prices_base[t].iloc[0]) - 1.0)
         raw_p = float(latest_prices[t])
         native_curr = get_ticker_currency(t)
         price_thb = round(raw_p * usd_thb, 2) if native_curr == "USD" else round(raw_p, 2)
@@ -1138,6 +1392,7 @@ def run_portfolio_optimization(
             "price_usd": price_usd,
             "latest_price": price_in_budget_curr,
             "dividend_yield": round(div_yield_val, 4),
+            "dividend_included_in_total_return": True,
             "expected_return": round(ret_val, 4),
             "adjusted_expected_return": decision_info["adjusted_expected_return"],
             "return_tilt": decision_info["return_tilt"],
@@ -1155,11 +1410,14 @@ def run_portfolio_optimization(
 
     mu_adjusted = pd.Series(mu_adjusted_dict).reindex(valid_tickers)
 
-    corr_df = risk_models.cov_to_corr(S)
+    # Sample correlation matrix directly from returns_df (fixes shrunk off-diagonal correlation distortion)
+    corr_df = returns_df[valid_tickers].corr().fillna(0.0)
+    for t in valid_tickers:
+        corr_df.loc[t, t] = 1.0
     correlation_data = {
         "tickers": valid_tickers,
         "names": [get_asset_name(t) for t in valid_tickers],
-        "matrix": [[round(float(corr_df.loc[r, c]), 3) for c in valid_tickers] for r in valid_tickers]
+        "matrix": [[round(float(corr_df.loc[r, c]), 4) for c in valid_tickers] for r in valid_tickers]
     }
 
     # 2. Optimization Models (Compute BOTH Pure Historical AND News/Trend-Adjusted)
@@ -1189,7 +1447,7 @@ def run_portfolio_optimization(
     ret_eq, vol_eq, sr_eq = active_solutions["equal_weight"]["ret"], active_solutions["equal_weight"]["vol"], active_solutions["equal_weight"]["sr"]
     da_eq = compute_discrete_allocation(w_eq, latest_prices, budget, currency, usd_thb)
 
-    # 3. Historical Portfolio Wealth Simulation & Drawdown Analytics (Starting with `budget` capital)
+    # 3. Historical Portfolio Wealth Simulation & Drawdown Analytics (Quarterly Rebalance + 15 bps Fee + Walk-Forward)
     strat_weights_map = {
         "max_sharpe": pd.Series(w_max),
         "min_volatility": pd.Series(w_min),
@@ -1197,7 +1455,19 @@ def run_portfolio_optimization(
         "equal_weight": pd.Series(w_eq)
     }
 
+    wf_curves = compute_walk_forward_backtest(
+        prices_base=prices_base,
+        valid_tickers=valid_tickers,
+        weight_bounds=weight_bounds,
+        rf_rate=rf_rate,
+        effective_freq=effective_freq,
+        backtest_split=backtest_split,
+        rebalance_every=63,
+        fee_bps=15.0
+    )
+
     strat_wealth_df = pd.DataFrame(index=returns_df.index)
+    strat_wf_wealth_df = pd.DataFrame(index=returns_df.index)
     strat_dd_amount_df = pd.DataFrame(index=returns_df.index)
     strat_drawdowns = {}
     strat_dd_details = {}
@@ -1206,14 +1476,20 @@ def run_portfolio_optimization(
 
     for key, w_s in strat_weights_map.items():
         w_aligned = w_s.reindex(valid_tickers).fillna(0.0)
-        port_daily_ret = returns_df[valid_tickers] @ w_aligned
-        cum_growth = (1.0 + port_daily_ret).cumprod()
+        cum_growth = simulate_drifting_backtest_with_fees(
+            returns_df[valid_tickers],
+            w_aligned,
+            rebalance_every=63,
+            fee_bps=15.0
+        )
+        wf_cum_growth = wf_curves.get(key, cum_growth)
         strat_wealth_df[key] = (cum_growth * budget).round(2)
+        strat_wf_wealth_df[key] = (wf_cum_growth * budget).round(2)
 
         running_max = cum_growth.cummax().clip(lower=1.0)
         dd_pct_series = (cum_growth - running_max) / running_max
-        # Monetary drawdown series relative to initial budget
-        strat_dd_amount_df[key] = (dd_pct_series * budget).round(2)
+        # Actual peak-to-trough monetary drawdown series from running peak wealth
+        strat_dd_amount_df[key] = ((cum_growth - running_max) * budget).round(2)
 
         dd_info = compute_drawdown_details(cum_growth, budget)
         strat_drawdowns[key] = dd_info["max_drawdown_pct"]
@@ -1223,15 +1499,21 @@ def run_portfolio_optimization(
 
     step = max(1, len(strat_wealth_df) // 160)
     sampled_wealth = strat_wealth_df.iloc[::step]
+    sampled_wf_wealth = strat_wf_wealth_df.iloc[::step]
     sampled_dd_amount = strat_dd_amount_df.iloc[::step]
     if strat_wealth_df.index[-1] not in sampled_wealth.index:
         sampled_wealth = pd.concat([sampled_wealth, strat_wealth_df.iloc[[-1]]])
+        sampled_wf_wealth = pd.concat([sampled_wf_wealth, strat_wf_wealth_df.iloc[[-1]]])
         sampled_dd_amount = pd.concat([sampled_dd_amount, strat_dd_amount_df.iloc[[-1]]])
 
     portfolio_growth_chart = {
         "dates": [d.strftime('%Y-%m-%d') for d in sampled_wealth.index],
+        "rebalance_assumption": "ปรับสมดุลพอร์ตรายไตรมาส (ทุก 63 วันทำการ) หักค่าธรรมเนียมซื้อขาย 0.15%",
         "series": {
             k: sampled_wealth[k].tolist() for k in strat_weights_map.keys()
+        },
+        "walk_forward_series": {
+            k: sampled_wf_wealth[k].tolist() for k in strat_weights_map.keys()
         },
         "drawdown_amount_series": {
             k: sampled_dd_amount[k].tolist() for k in strat_weights_map.keys()
@@ -1316,12 +1598,18 @@ def run_portfolio_optimization(
             "start_date": prices.index[0].strftime('%Y-%m-%d'),
             "end_date": prices.index[-1].strftime('%Y-%m-%d'),
             "trading_days": len(prices),
+            "effective_annual_days": effective_freq,
             "risk_free_rate": round(rf_rate, 4),
             "budget": budget,
             "currency": currency.upper(),
             "usd_thb_rate": usd_thb,
+            "is_fallback_fx": bool(_last_fx_is_fallback),
+            "is_fallback_rf": bool(_last_rf_is_fallback),
             "max_weight": effective_max_weight,
-            "use_news_adjustment": bool(use_news_adjustment)
+            "use_news_adjustment": bool(use_news_adjustment),
+            "rebalance_assumption": "ปรับสมดุลพอร์ตรายไตรมาส (ทุก 63 วันทำการ) หักค่าธรรมเนียมซื้อขาย 0.15%",
+            "walk_forward_out_of_sample": True,
+            "dividend_included_in_total_return": True
         },
         "asset_stats": asset_stats,
         "correlation": correlation_data,

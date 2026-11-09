@@ -7,13 +7,16 @@ import os
 import time
 import json
 import uuid
+import hmac
+import base64
+import secrets
 import hashlib
 import tempfile
 import threading
 import requests
 from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any, Tuple
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
@@ -72,14 +75,18 @@ def health_check():
 
 
 @app.get("/api/rf")
-def fetch_risk_free_rate():
-    """Fetch current 13-week US Treasury Bill rate (^IRX) and USD/THB exchange rate"""
-    rate = get_risk_free_rate()
+def fetch_risk_free_rate(currency: str = Query(default="USD")):
+    """Fetch current risk-free rate (matched to currency) and USD/THB exchange rate"""
+    import optimizer as _opt
+    rate = get_risk_free_rate(currency=currency)
     fx = get_usd_thb_rate()
     return {
         "risk_free_rate": rate,
         "percentage": f"{rate * 100:.2f}%",
-        "usd_thb_rate": fx
+        "currency": currency.upper(),
+        "usd_thb_rate": fx,
+        "is_fallback_fx": bool(getattr(_opt, "_last_fx_is_fallback", False)),
+        "is_fallback_rf": bool(getattr(_opt, "_last_rf_is_fallback", False))
     }
 
 
@@ -277,15 +284,16 @@ def verify_system_integrity():
             "detail": f"ผลรวมน้ำหนักพอร์ต = {w_sum * 100:.2f}% (ครบ 4 กลยุทธ์)"
         })
 
-        mdd_pct = abs(ms["max_drawdown"])
+        dd_det = ms.get("drawdown_details", {})
         mdd_amt = ms["max_drawdown_amount"]
         min_rem = ms["min_capital_remaining"]
-        dd_ok = abs(mdd_amt - round(mdd_pct * 100000.0, 2)) <= 20.0 and abs((mdd_amt + min_rem) - 100000.0) <= 1.0
+        peak_val = dd_det.get("peak_value", 100000.0)
+        dd_ok = abs((peak_val - min_rem) - mdd_amt) <= 1.0 and mdd_amt >= 0.0
         checks.append({
             "id": "drawdown_monetary",
-            "name": "การแปลง Max Drawdown (%) เป็นจำนวนเงินบาทและดอลลาร์",
+            "name": "การแปลง Max Drawdown (%) เป็นจำนวนเงินบาทและดอลลาร์ (Peak-to-Trough)",
             "passed": dd_ok,
-            "detail": f"เงินต้น 100,000 บาท -> เงินหายสูงสุด -{mdd_amt:,.2f} บาท (เหลือต่ำสุด {min_rem:,.2f} บาท)"
+            "detail": f"ยอดสูงสุด {peak_val:,.2f} บาท -> ย่อตัวสูงสุด -{mdd_amt:,.2f} บาท (จุดต่ำสุดรอบย่อตัว {min_rem:,.2f} บาท)"
         })
 
         stat0 = opt_res["asset_stats"][0]
@@ -376,6 +384,56 @@ def _save_db(data: Dict[str, Any]) -> None:
         print(f"Notice: Could not write local DB ({e})")
 
 
+_AUTH_SECRET_KEY = (os.environ.get("QUANTFOLIO_AUTH_SECRET") or secrets.token_hex(32)).encode("utf-8")
+_AUTH_TOKEN_TTL_SECONDS = 86400 * 7  # 7 days
+
+
+def _create_auth_token(user_id: str, email: str) -> str:
+    payload = {
+        "sub": str(user_id),
+        "email": str(email).strip().lower(),
+        "exp": int(time.time()) + _AUTH_TOKEN_TTL_SECONDS,
+    }
+    payload_b64 = base64.urlsafe_b64encode(
+        json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    ).decode("ascii").rstrip("=")
+    sig = hmac.new(_AUTH_SECRET_KEY, payload_b64.encode("ascii"), hashlib.sha256).hexdigest()
+    return f"{payload_b64}.{sig}"
+
+
+def _get_authenticated_user(authorization: Optional[str] = Header(default=None)) -> Dict[str, str]:
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="กรุณาเข้าสู่ระบบก่อนดำเนินการ")
+    raw_token = authorization[7:].strip()
+    if "." not in raw_token:
+        raise HTTPException(status_code=401, detail="เซสชันไม่ถูกต้องหรือหมดอายุ")
+    payload_b64, sig = raw_token.rsplit(".", 1)
+    expected_sig = hmac.new(_AUTH_SECRET_KEY, payload_b64.encode("ascii"), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(sig, expected_sig):
+        raise HTTPException(status_code=401, detail="เซสชันไม่ถูกต้องหรือหมดอายุ")
+    try:
+        padded = payload_b64 + "=" * (-len(payload_b64) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8"))
+    except Exception:
+        raise HTTPException(status_code=401, detail="เซสชันไม่ถูกต้องหรือหมดอายุ")
+
+    if int(payload.get("exp", 0)) < int(time.time()):
+        raise HTTPException(status_code=401, detail="เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่")
+
+    user_id = str(payload.get("sub") or "").strip()
+    email = str(payload.get("email") or "").strip().lower()
+    if not user_id or not email:
+        raise HTTPException(status_code=401, detail="เซสชันไม่ถูกต้อง")
+
+    with _db_lock:
+        db = _load_db()
+        stored_user = db.get("users", {}).get(email)
+        if not stored_user or str(stored_user.get("id")) != user_id:
+            raise HTTPException(status_code=401, detail="ไม่พบบัญชีผู้ใช้งานของเซสชันนี้")
+
+    return {"id": user_id, "email": email}
+
+
 class AuthLoginRequest(BaseModel):
     email: str
     password: str
@@ -385,8 +443,6 @@ class AuthLoginRequest(BaseModel):
 
 class PortfolioSaveRequest(BaseModel):
     id: Optional[str] = None
-    user_id: str
-    email: Optional[str] = None
     portfolio_name: str
     goal_type: str = "retirement"
     goal_label: str = "พอร์ตเกษียณมั่นคง"
@@ -405,11 +461,57 @@ class PortfolioSaveRequest(BaseModel):
     goal_achievement_pct: float = 0.0
 
 
+_login_attempts: Dict[str, List[float]] = {}
+_LOGIN_RATE_LIMIT_MAX = 5
+_LOGIN_RATE_LIMIT_WINDOW = 60.0  # 60 seconds
+
+
+def _hash_password(password: str, salt: Optional[str] = None) -> str:
+    salt_str = salt or secrets.token_hex(16)
+    dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt_str.encode("utf-8"), 200_000).hex()
+    return f"pbkdf2_sha256${salt_str}${dk}"
+
+
+def _verify_password(password: str, stored_hash: str) -> Tuple[bool, bool]:
+    """
+    Verify password against stored_hash.
+    Returns (is_valid, needs_rehash_upgrade).
+    Supports both salted PBKDF2-SHA256 and legacy unsalted SHA-256 hashes.
+    """
+    if not stored_hash:
+        return False, False
+    if stored_hash.startswith("pbkdf2_sha256$"):
+        parts = stored_hash.split("$")
+        if len(parts) != 3:
+            return False, False
+        _, salt_str, expected_dk = parts
+        candidate = _hash_password(password, salt=salt_str)
+        return hmac.compare_digest(candidate, stored_hash), False
+    # Legacy unsalted SHA-256 fallback (auto-upgraded on successful login)
+    legacy_hash = hashlib.sha256(password.encode("utf-8")).hexdigest()
+    is_ok = hmac.compare_digest(legacy_hash, stored_hash)
+    return is_ok, is_ok
+
+
+def _build_local_svg_avatar(name: str) -> str:
+    """Generate a self-contained SVG data URI avatar without leaking user PII to third-party servers."""
+    clean = (name or "QF").strip()
+    initials = (clean[:2] if len(clean) >= 2 else clean).upper()
+    svg = (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">'
+        f'<rect width="64" height="64" rx="32" fill="#1d4ed8"/>'
+        f'<text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" '
+        f'fill="#ffffff" font-family="sans-serif" font-size="24" font-weight="bold">{initials}</text>'
+        f'</svg>'
+    )
+    b64 = base64.b64encode(svg.encode("utf-8")).decode("ascii")
+    return f"data:image/svg+xml;base64,{b64}"
+
+
 @app.post("/api/auth/login")
 def backend_auth_login(req: AuthLoginRequest):
     """
-    ระบบยืนยันตัวตนสำรองระดับเซิร์ฟเวอร์ (ทำงานร่วมกับ Supabase Auth)
-    แก้ปัญหากรณี Supabase ติด Email Rate Limit (429) หรือยังไม่ได้ยืนยันลิงก์ในอีเมล
+    ระบบยืนยันตัวตนสำรองระดับเซิร์ฟเวอร์ (Salted PBKDF2-SHA256 + Rate Limit + Mode Check)
     """
     email = req.email.strip().lower()
     password = req.password.strip()
@@ -418,22 +520,44 @@ def backend_auth_login(req: AuthLoginRequest):
     if len(password) < 6:
         raise HTTPException(status_code=400, detail="รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร")
 
-    pw_hash = hashlib.sha256(password.encode("utf-8")).hexdigest()
-    default_name = (req.full_name or "").strip() or email.split("@")[0]
-
+    now = time.time()
     with _db_lock:
+        recent_attempts = [t for t in _login_attempts.get(email, []) if now - t < _LOGIN_RATE_LIMIT_WINDOW]
+        _login_attempts[email] = recent_attempts
+        if len(recent_attempts) >= _LOGIN_RATE_LIMIT_MAX:
+            raise HTTPException(
+                status_code=429,
+                detail="พยายามเข้าสู่ระบบผิดพลาดเกินจำนวนครั้งที่กำหนด กรุณารอ 1 นาทีแล้วลองใหม่อีกครั้ง"
+            )
+
+        default_name = (req.full_name or "").strip() or email.split("@")[0]
         db = _load_db()
         users = db["users"]
 
         if email in users:
             stored = users[email]
-            if stored.get("password_hash") != pw_hash:
+            is_valid, needs_upgrade = _verify_password(password, stored.get("password_hash", ""))
+            if not is_valid:
+                _login_attempts.setdefault(email, []).append(now)
                 raise HTTPException(status_code=401, detail="รหัสผ่านไม่ถูกต้อง กรุณาตรวจสอบรหัสผ่านของคุณอีกครั้ง")
+
+            _login_attempts.pop(email, None)
+            db_dirty = False
+            if needs_upgrade:
+                stored["password_hash"] = _hash_password(password)
+                db_dirty = True
             if req.full_name and req.full_name.strip():
                 stored["full_name"] = req.full_name.strip()
+                db_dirty = True
+            if not stored.get("avatar_url") or "ui-avatars.com" in str(stored.get("avatar_url", "")):
+                stored["avatar_url"] = _build_local_svg_avatar(stored.get("full_name") or default_name)
+                db_dirty = True
+            if db_dirty:
                 _save_db(db)
+
+            user_id = str(stored["id"])
             user_obj = {
-                "id": stored["id"],
+                "id": user_id,
                 "email": email,
                 "user_metadata": {
                     "full_name": stored.get("full_name") or default_name,
@@ -441,16 +565,23 @@ def backend_auth_login(req: AuthLoginRequest):
                     "avatar_url": stored.get("avatar_url")
                 }
             }
-            return {"status": "ok", "action": "signed_in", "user": user_obj}
+            token = _create_auth_token(user_id, email)
+            return {"status": "ok", "action": "signed_in", "token": token, "user": user_obj}
         else:
+            if (req.mode or "").strip().lower() == "signin":
+                _login_attempts.setdefault(email, []).append(now)
+                raise HTTPException(
+                    status_code=401,
+                    detail="ไม่พบบัญชีผู้ใช้นี้ในระบบ กรุณาตรวจสอบอีเมลหรือสลับไปที่แท็บ 'สมัครสมาชิกใหม่'"
+                )
             user_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"quantfolio:{email}"))
-            avatar_url = f"https://ui-avatars.com/api/?name={requests.utils.quote(default_name)}&background=1d4ed8&color=fff&bold=true"
+            avatar_url = _build_local_svg_avatar(default_name)
             users[email] = {
                 "id": user_id,
                 "email": email,
                 "full_name": default_name,
                 "avatar_url": avatar_url,
-                "password_hash": pw_hash,
+                "password_hash": _hash_password(password),
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
             _save_db(db)
@@ -463,73 +594,150 @@ def backend_auth_login(req: AuthLoginRequest):
                     "avatar_url": avatar_url
                 }
             }
-            return {"status": "ok", "action": "signed_up", "user": user_obj}
+            token = _create_auth_token(user_id, email)
+            return {"status": "ok", "action": "signed_up", "token": token, "user": user_obj}
+
+
+@app.delete("/api/auth/account")
+def delete_backend_account(current_user: Dict[str, str] = Depends(_get_authenticated_user)):
+    """Delete the authenticated user's account and all associated portfolios (PDPA Right to Erasure)."""
+    auth_user_id = current_user["id"]
+    auth_email = current_user["email"]
+    with _db_lock:
+        db = _load_db()
+        users = db.get("users", {})
+        users.pop(auth_email, None)
+        before_count = len(db.get("portfolios", []))
+        db["portfolios"] = [
+            p for p in db.get("portfolios", [])
+            if str(p.get("user_id")) != str(auth_user_id) and str(p.get("email", "")).lower() != auth_email
+        ]
+        removed_portfolios = before_count - len(db["portfolios"])
+        _save_db(db)
+    return {"status": "ok", "deleted_user": auth_email, "deleted_portfolios": removed_portfolios}
 
 
 @app.get("/api/portfolios")
-def get_backend_portfolios(user_id: str = Query(...), email: Optional[str] = Query(default=None)):
-    clean_email = (email or "").strip().lower()
+def get_backend_portfolios(current_user: Dict[str, str] = Depends(_get_authenticated_user)):
+    auth_user_id = current_user["id"]
     with _db_lock:
         db = _load_db()
         items = [
             p for p in db.get("portfolios", [])
-            if str(p.get("user_id")) == str(user_id) or (clean_email and p.get("email") == clean_email)
+            if str(p.get("user_id")) == str(auth_user_id)
         ]
     items.sort(key=lambda x: x.get("created_at", ""), reverse=True)
     return {"portfolios": items}
 
 
-@app.post("/api/portfolios")
-def save_backend_portfolio(req: PortfolioSaveRequest):
+@app.get("/api/portfolios/{portfolio_id}")
+def get_backend_portfolio_by_id(portfolio_id: str, current_user: Dict[str, str] = Depends(_get_authenticated_user)):
+    auth_user_id = current_user["id"]
     with _db_lock:
         db = _load_db()
-        item_id = req.id or str(uuid.uuid4())
-        new_item = {
-            "id": item_id,
-            "user_id": req.user_id,
-            "email": (req.email or "").strip().lower(),
-            "portfolio_name": req.portfolio_name.strip(),
-            "goal_type": req.goal_type,
-            "goal_label": req.goal_label,
-            "target_amount": req.target_amount,
-            "initial_budget": req.initial_budget,
-            "monthly_dca": req.monthly_dca,
-            "investment_period_years": req.investment_period_years,
-            "currency": req.currency,
-            "tickers": req.tickers or list(req.asset_weights.keys()),
-            "asset_weights": req.asset_weights,
-            "strategy_key": req.strategy_key,
-            "expected_return": req.expected_return,
-            "expected_volatility": req.expected_volatility,
-            "dividend_yield": req.dividend_yield,
-            "projected_final_value": req.projected_final_value,
-            "goal_achievement_pct": req.goal_achievement_pct,
-            "created_at": datetime.now(timezone.utc).isoformat()
-        }
-        # If updating an existing portfolio by ID for the same user, replace it; otherwise append
-        existing_idx = next(
-            (idx for idx, p in enumerate(db.get("portfolios", [])) if str(p.get("id")) == str(item_id)),
-            None
+        item = next(
+            (
+                p for p in db.get("portfolios", [])
+                if str(p.get("id")) == str(portfolio_id) and str(p.get("user_id")) == str(auth_user_id)
+            ),
+            None,
         )
-        if existing_idx is not None:
+    if item is None:
+        raise HTTPException(status_code=404, detail="ไม่พบพอร์ตการลงทุนที่ระบุ")
+    return {"portfolio": item}
+
+
+def _build_portfolio_record(req: PortfolioSaveRequest, item_id: str, current_user: Dict[str, str]) -> Dict[str, Any]:
+    return {
+        "id": item_id,
+        "user_id": current_user["id"],
+        "email": current_user["email"],
+        "portfolio_name": req.portfolio_name.strip(),
+        "goal_type": req.goal_type,
+        "goal_label": req.goal_label,
+        "target_amount": req.target_amount,
+        "initial_budget": req.initial_budget,
+        "monthly_dca": req.monthly_dca,
+        "investment_period_years": req.investment_period_years,
+        "currency": req.currency,
+        "tickers": req.tickers or list(req.asset_weights.keys()),
+        "asset_weights": req.asset_weights,
+        "strategy_key": req.strategy_key,
+        "expected_return": req.expected_return,
+        "expected_volatility": req.expected_volatility,
+        "dividend_yield": req.dividend_yield,
+        "projected_final_value": req.projected_final_value,
+        "goal_achievement_pct": req.goal_achievement_pct,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+
+
+@app.post("/api/portfolios")
+def save_backend_portfolio(req: PortfolioSaveRequest, current_user: Dict[str, str] = Depends(_get_authenticated_user)):
+    auth_user_id = current_user["id"]
+    with _db_lock:
+        db = _load_db()
+        if req.id is not None:
+            existing_idx = next(
+                (
+                    idx for idx, p in enumerate(db.get("portfolios", []))
+                    if str(p.get("id")) == str(req.id) and str(p.get("user_id")) == str(auth_user_id)
+                ),
+                None,
+            )
+            if existing_idx is None:
+                raise HTTPException(status_code=404, detail="ไม่พบพอร์ตการลงทุนที่ระบุ")
+            new_item = _build_portfolio_record(req, str(req.id), current_user)
             db["portfolios"][existing_idx] = new_item
         else:
+            item_id = str(uuid.uuid4())
+            new_item = _build_portfolio_record(req, item_id, current_user)
             db["portfolios"].append(new_item)
         _save_db(db)
     return {"status": "ok", "portfolio": new_item}
 
 
-@app.delete("/api/portfolios/{portfolio_id}")
-def delete_backend_portfolio(portfolio_id: str, user_id: Optional[str] = Query(default=None)):
+@app.put("/api/portfolios/{portfolio_id}")
+def update_backend_portfolio(
+    portfolio_id: str,
+    req: PortfolioSaveRequest,
+    current_user: Dict[str, str] = Depends(_get_authenticated_user),
+):
+    auth_user_id = current_user["id"]
     with _db_lock:
         db = _load_db()
-        before = len(db.get("portfolios", []))
-        db["portfolios"] = [
-            p for p in db.get("portfolios", [])
-            if str(p.get("id")) != str(portfolio_id)
-        ]
+        existing_idx = next(
+            (
+                idx for idx, p in enumerate(db.get("portfolios", []))
+                if str(p.get("id")) == str(portfolio_id) and str(p.get("user_id")) == str(auth_user_id)
+            ),
+            None,
+        )
+        if existing_idx is None:
+            raise HTTPException(status_code=404, detail="ไม่พบพอร์ตการลงทุนที่ระบุ")
+        updated_item = _build_portfolio_record(req, str(portfolio_id), current_user)
+        db["portfolios"][existing_idx] = updated_item
         _save_db(db)
-    return {"status": "ok", "deleted": before - len(db["portfolios"])}
+    return {"status": "ok", "portfolio": updated_item}
+
+
+@app.delete("/api/portfolios/{portfolio_id}")
+def delete_backend_portfolio(portfolio_id: str, current_user: Dict[str, str] = Depends(_get_authenticated_user)):
+    auth_user_id = current_user["id"]
+    with _db_lock:
+        db = _load_db()
+        existing_idx = next(
+            (
+                idx for idx, p in enumerate(db.get("portfolios", []))
+                if str(p.get("id")) == str(portfolio_id) and str(p.get("user_id")) == str(auth_user_id)
+            ),
+            None,
+        )
+        if existing_idx is None:
+            raise HTTPException(status_code=404, detail="ไม่พบพอร์ตการลงทุนที่ระบุ")
+        db["portfolios"].pop(existing_idx)
+        _save_db(db)
+    return {"status": "ok", "deleted": 1}
 
 
 

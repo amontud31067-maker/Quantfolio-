@@ -249,11 +249,20 @@ async function loginOrSignUpWithRealGmail() {
         hasSupabaseJwtSession = true;
         localStorage.setItem('qf_verified_session_user', JSON.stringify(currentUser));
         // ซิงค์บัญชีไว้ใน Backend ด้วย
-        fetch('/api/auth/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password, full_name: fullName, mode: authTabMode })
-        }).catch(() => {});
+        try {
+          const syncRes = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password, full_name: fullName, mode: authTabMode })
+          });
+          if (syncRes.ok) {
+            const syncData = await syncRes.json();
+            if (syncData.token) {
+              currentUser.token = syncData.token;
+              localStorage.setItem('qf_verified_session_token', syncData.token);
+            }
+          }
+        } catch (e) {}
         updateAuthUI(currentUser);
         await fetchUserPortfolios();
         showPortfolioToast(`เข้าสู่ระบบสำเร็จในชื่อ ${fullName}`);
@@ -261,7 +270,7 @@ async function loginOrSignUpWithRealGmail() {
       }
 
       // หากยังไม่มีใน Supabase หรือเป็นโหมดสมัครสมาชิก ลองเรียก signUp บน Supabase
-      const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(fullName)}&background=1d4ed8&color=fff&bold=true`;
+      const avatarUrl = buildLocalAvatarSvg(fullName);
       const signUpRes = await supabaseClient.auth.signUp({
         email,
         password,
@@ -301,6 +310,10 @@ async function loginOrSignUpWithRealGmail() {
     }
 
     currentUser = backendData.user;
+    if (backendData.token) {
+      currentUser.token = backendData.token;
+      localStorage.setItem('qf_verified_session_token', backendData.token);
+    }
     hasSupabaseJwtSession = false;
     localStorage.setItem('qf_verified_session_user', JSON.stringify(currentUser));
     updateAuthUI(currentUser);
@@ -316,6 +329,27 @@ async function loginOrSignUpWithRealGmail() {
       submitBtn.innerText = authTabMode === 'signup' ? 'สมัครสมาชิกและเข้าใช้งาน' : 'เข้าสู่ระบบเพื่อใช้งาน';
     }
   }
+}
+
+function escapeHtml(raw) {
+  return String(raw ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function buildLocalAvatarSvg(name) {
+  const clean = String(name || 'QF').trim();
+  const initials = escapeHtml((clean.slice(0, 2) || 'QF').toUpperCase());
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" rx="32" fill="#1d4ed8"/><text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" fill="#ffffff" font-family="sans-serif" font-size="24" font-weight="bold">${initials}</text></svg>`;
+  return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+}
+
+function getBackendAuthHeaders() {
+  const token = (currentUser && currentUser.token) || localStorage.getItem('qf_verified_session_token') || '';
+  return token ? { 'Authorization': `Bearer ${token}` } : {};
 }
 
 /**
@@ -334,7 +368,7 @@ function continueAsGuest() {
 }
 
 /**
- * ออกจากระบบ (Logout) และสลับเป็นโหมดทดลองใช้งานหรือเลือกเข้าสู่ระบบใหม่
+ * ออกจากระบบ (Logout) และล้างข้อมูลพอร์ตที่แคชไว้ในเบราว์เซอร์เพื่อความปลอดภัย
  */
 async function logoutUser() {
   try {
@@ -343,13 +377,44 @@ async function logoutUser() {
     }
   } catch (e) {}
   localStorage.removeItem('qf_verified_session_user');
+  localStorage.removeItem('qf_verified_session_token');
+  try {
+    Object.keys(localStorage).forEach(k => {
+      if (k.startsWith('quantfolio_portfolios_')) {
+        localStorage.removeItem(k);
+      }
+    });
+  } catch (e) {}
   sessionStorage.removeItem('qf_guest_mode');
   currentUser = null;
   hasSupabaseJwtSession = false;
   savedPortfoliosList = [];
   updateAuthUI(null);
   renderSavedPortfoliosList([]);
-  showPortfolioToast('ออกจากระบบเรียบร้อยแล้ว — คุณสามารถทดลองใช้งานต่อในโหมด Guest หรือเข้าสู่ระบบใหม่ได้');
+  showPortfolioToast('ออกจากระบบและล้างข้อมูลแคชพอร์ตในเบราว์เซอร์เรียบร้อยแล้ว');
+}
+
+/**
+ * ลบบัญชีผู้ใช้งานและข้อมูลพอร์ตทั้งหมดออกจากระบบ (PDPA Right to Erasure)
+ */
+async function deleteUserAccount() {
+  if (!currentUser) return;
+  if (!confirm(`ยืนยันการลบบัญชี "${currentUser.email}" และพอร์ตที่บันทึกไว้ทั้งหมดอย่างถาวรหรือไม่?`)) {
+    return;
+  }
+  try {
+    const res = await fetch('/api/auth/account', {
+      method: 'DELETE',
+      headers: getBackendAuthHeaders()
+    });
+    if (!res.ok) {
+      throw new Error('ไม่สามารถลบบัญชีได้ในขณะนี้');
+    }
+    await logoutUser();
+    showPortfolioToast('ลบบัญชีผู้ใช้งานและข้อมูลพอร์ตทั้งหมดเรียบร้อยแล้ว');
+  } catch (err) {
+    alert('เกิดข้อผิดพลาดในการลบบัญชี: ' + err.message);
+  }
 }
 
 /**
@@ -392,7 +457,8 @@ function updateAuthUI(user) {
   const meta = user.user_metadata || {};
   const displayName = meta.full_name || meta.name || (user.email ? user.email.split('@')[0] : 'ผู้ใช้งาน QuantFolio');
   const email = user.email || '';
-  const avatarUrl = meta.avatar_url || meta.picture || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=1d4ed8&color=fff&bold=true`;
+  const rawAvatar = meta.avatar_url || meta.picture || '';
+  const avatarUrl = (rawAvatar && !String(rawAvatar).includes('ui-avatars.com')) ? rawAvatar : buildLocalAvatarSvg(displayName);
 
   if (userNameEl) userNameEl.innerText = displayName;
   if (userEmailEl) userEmailEl.innerText = email;
@@ -495,8 +561,6 @@ async function saveUserPortfolio() {
     : { projectedFinalWealth: targetAmount, achievementPct: 100 };
 
   const payload = {
-    user_id: currentUser.id,
-    email: currentUser.email || '',
     portfolio_name: portfolioName,
     goal_type: goalType,
     goal_label: goalLabel,
@@ -529,7 +593,7 @@ async function saveUserPortfolio() {
       const { error } = await supabaseClient
         .from('user_portfolios')
         .insert([{
-          user_id: payload.user_id,
+          user_id: currentUser.id,
           portfolio_name: payload.portfolio_name,
           target_amount: payload.target_amount,
           investment_period_years: payload.investment_period_years,
@@ -544,7 +608,7 @@ async function saveUserPortfolio() {
     // 2. บันทึกลง Server API เสมอเพื่อให้ข้อมูลไม่สูญหาย
     const res = await fetch('/api/portfolios', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getBackendAuthHeaders() },
       body: JSON.stringify(payload)
     });
     if (res.ok) {
@@ -612,7 +676,9 @@ async function fetchUserPortfolios() {
 
     // 1. ดึงจาก Server API ก่อนเพราะมีฟิลด์ Goal & DCA ครบถ้วนที่สุด
     try {
-      const res = await fetch(`/api/portfolios?user_id=${encodeURIComponent(currentUser.id)}&email=${encodeURIComponent(currentUser.email || '')}`);
+      const res = await fetch('/api/portfolios', {
+        headers: getBackendAuthHeaders()
+      });
       if (res.ok) {
         const serverData = await res.json();
         if (Array.isArray(serverData.portfolios)) {
@@ -672,8 +738,9 @@ async function deleteUserPortfolio(portfolioId) {
         .eq('user_id', currentUser.id);
     }
 
-    await fetch(`/api/portfolios/${encodeURIComponent(portfolioId)}?user_id=${encodeURIComponent(currentUser.id)}`, {
-      method: 'DELETE'
+    await fetch(`/api/portfolios/${encodeURIComponent(portfolioId)}`, {
+      method: 'DELETE',
+      headers: getBackendAuthHeaders()
     });
 
     try {
@@ -807,7 +874,7 @@ function renderSavedPortfoliosList(portfolios) {
     const weightEntries = Object.entries(weights).sort((a, b) => b[1] - a[1]);
     const weightBadges = weightEntries.length > 0
       ? weightEntries
-          .map(([ticker, pct]) => `<span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-50 text-blue-800 border border-blue-200">${ticker}: ${pct}%</span>`)
+          .map(([ticker, pct]) => `<span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-50 text-blue-800 border border-blue-200">${escapeHtml(ticker)}: ${escapeHtml(pct)}%</span>`)
           .join(' ')
       : `<span class="text-[11px] text-slate-500">กดปุ่ม "ดึงพอร์ตมาใช้งาน" เพื่อคำนวณสัดส่วนล่าสุด</span>`;
 
@@ -819,8 +886,10 @@ function renderSavedPortfoliosList(portfolios) {
     const achievePct = Number(p.goal_achievement_pct || Math.min(150, Math.round((projValNum / Math.max(1, targetNum)) * 1000) / 10));
     const barW = Math.max(5, Math.min(100, achievePct));
 
-    const goalLabel = p.goal_label || 'พอร์ตตามเป้าหมาย';
-    const stratName = stratLabels[p.strategy_key] || 'Max Sharpe Ratio';
+    const goalLabel = escapeHtml(p.goal_label || 'พอร์ตตามเป้าหมาย');
+    const safePortfolioName = escapeHtml(p.portfolio_name);
+    const safeId = escapeHtml(p.id);
+    const stratName = escapeHtml(stratLabels[p.strategy_key] || 'Max Sharpe Ratio');
     const dateStr = p.created_at ? new Date(p.created_at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
 
     return `
@@ -828,21 +897,21 @@ function renderSavedPortfoliosList(portfolios) {
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2">
           <div class="flex items-center gap-2 flex-wrap">
             <span class="px-2 py-0.5 rounded bg-indigo-600 text-white text-[10px] font-bold">${goalLabel}</span>
-            <span class="font-bold text-xs text-slate-900">${p.portfolio_name}</span>
+            <span class="font-bold text-xs text-slate-900">${safePortfolioName}</span>
             <span class="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-mono text-[10px] font-semibold">กลยุทธ์: ${stratName}</span>
-            <span class="text-[10px] text-slate-400">บันทึกเมื่อ ${dateStr}</span>
+            <span class="text-[10px] text-slate-400">บันทึกเมื่อ ${escapeHtml(dateStr)}</span>
           </div>
           <div class="flex items-center gap-1.5 shrink-0">
             <button
               type="button"
-              onclick="loadSavedPortfolioToDashboard('${p.id}')"
+              onclick="loadSavedPortfolioToDashboard('${safeId}')"
               class="px-3 py-1.5 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition"
             >
               ดึงพอร์ตมาใช้งาน / ปรับสัดส่วน
             </button>
             <button
               type="button"
-              onclick="deleteUserPortfolio('${p.id}')"
+              onclick="deleteUserPortfolio('${safeId}')"
               title="ลบพอร์ตนี้"
               class="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition"
             >
