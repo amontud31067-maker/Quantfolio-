@@ -33,13 +33,13 @@ function switchAuthTab(mode) {
   if (msgBox) msgBox.classList.add('hidden');
 
   if (authTabMode === 'signup') {
-    if (signUpTab) signUpTab.className = 'py-2 text-xs font-bold rounded-lg bg-white text-slate-900 shadow-xs transition';
-    if (signInTab) signInTab.className = 'py-2 text-xs font-semibold rounded-lg text-slate-600 hover:text-slate-900 transition';
+    if (signUpTab) signUpTab.className = 'py-2 text-xs font-bold rounded-md bg-white text-slate-900 shadow-xs transition cursor-pointer';
+    if (signInTab) signInTab.className = 'py-2 text-xs font-semibold rounded-md text-slate-600 hover:text-slate-900 transition cursor-pointer';
     if (nameWrap) nameWrap.classList.remove('hidden');
     if (submitBtn) submitBtn.innerText = 'สมัครสมาชิกและเข้าใช้งาน';
   } else {
-    if (signInTab) signInTab.className = 'py-2 text-xs font-bold rounded-lg bg-white text-slate-900 shadow-xs transition';
-    if (signUpTab) signUpTab.className = 'py-2 text-xs font-semibold rounded-lg text-slate-600 hover:text-slate-900 transition';
+    if (signInTab) signInTab.className = 'py-2 text-xs font-bold rounded-md bg-white text-slate-900 shadow-xs transition cursor-pointer';
+    if (signUpTab) signUpTab.className = 'py-2 text-xs font-semibold rounded-md text-slate-600 hover:text-slate-900 transition cursor-pointer';
     if (nameWrap) nameWrap.classList.add('hidden');
     if (submitBtn) submitBtn.innerText = 'เข้าสู่ระบบเพื่อใช้งาน';
   }
@@ -229,8 +229,8 @@ async function loginOrSignUpWithRealGmail() {
     emailInput?.focus();
     return;
   }
-  if (!password || password.length < 6) {
-    showAuthAlert('กรุณากรอกรหัสผ่านอย่างน้อย 6 ตัวอักษร', 'error');
+  if (!password || password.length < 8) {
+    showAuthAlert('กรุณากรอกรหัสผ่านอย่างน้อย 8 ตัวอักษร', 'error');
     passwordInput?.focus();
     return;
   }
@@ -269,25 +269,41 @@ async function loginOrSignUpWithRealGmail() {
         return;
       }
 
-      // หากยังไม่มีใน Supabase หรือเป็นโหมดสมัครสมาชิก ลองเรียก signUp บน Supabase
-      const avatarUrl = buildLocalAvatarSvg(fullName);
-      const signUpRes = await supabaseClient.auth.signUp({
-        email,
-        password,
-        options: {
-          emailRedirectTo: window.location.origin + window.location.pathname,
-          data: { full_name: fullName, name: fullName, avatar_url: avatarUrl }
-        }
-      });
+      // หากเป็นโหมดสมัครสมาชิก (signup) ลองเรียก signUp บน Supabase
+      if (authTabMode === 'signup') {
+        const avatarUrl = buildLocalAvatarSvg(fullName);
+        const signUpRes = await supabaseClient.auth.signUp({
+          email,
+          password,
+          options: {
+            emailRedirectTo: window.location.origin + window.location.pathname,
+            data: { full_name: fullName, name: fullName, avatar_url: avatarUrl }
+          }
+        });
 
-      if (!signUpRes.error && signUpRes.data?.session) {
-        currentUser = signUpRes.data.session.user;
-        hasSupabaseJwtSession = true;
-        localStorage.setItem('qf_verified_session_user', JSON.stringify(currentUser));
-        updateAuthUI(currentUser);
-        await fetchUserPortfolios();
-        showPortfolioToast(`สมัครสมาชิกและเข้าสู่ระบบสำเร็จในชื่อ ${fullName}`);
-        return;
+        if (!signUpRes.error && signUpRes.data?.session) {
+          currentUser = signUpRes.data.session.user;
+          hasSupabaseJwtSession = true;
+          localStorage.setItem('qf_verified_session_user', JSON.stringify(currentUser));
+          try {
+            const syncRes = await fetch('/api/auth/login', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email, password, full_name: fullName, mode: authTabMode })
+            });
+            if (syncRes.ok) {
+              const syncData = await syncRes.json();
+              if (syncData.token) {
+                currentUser.token = syncData.token;
+                localStorage.setItem('qf_verified_session_token', syncData.token);
+              }
+            }
+          } catch (e) {}
+          updateAuthUI(currentUser);
+          await fetchUserPortfolios();
+          showPortfolioToast(`สมัครสมาชิกและเข้าสู่ระบบสำเร็จในชื่อ ${fullName}`);
+          return;
+        }
       }
     }
 
@@ -403,12 +419,22 @@ async function deleteUserAccount() {
     return;
   }
   try {
-    const res = await fetch('/api/auth/account', {
-      method: 'DELETE',
-      headers: getBackendAuthHeaders()
-    });
-    if (!res.ok) {
-      throw new Error('ไม่สามารถลบบัญชีได้ในขณะนี้');
+    if (hasSupabaseJwtSession && supabaseClient) {
+      await supabaseClient
+        .from('user_portfolios')
+        .delete()
+        .eq('user_id', currentUser.id);
+    }
+
+    const backendHeaders = getBackendAuthHeaders();
+    if (backendHeaders.Authorization) {
+      const res = await fetch('/api/auth/account', {
+        method: 'DELETE',
+        headers: backendHeaders
+      });
+      if (!res.ok && res.status !== 401) {
+        throw new Error('ไม่สามารถลบบัญชีได้ในขณะนี้');
+      }
     }
     await logoutUser();
     showPortfolioToast('ลบบัญชีผู้ใช้งานและข้อมูลพอร์ตทั้งหมดเรียบร้อยแล้ว');
@@ -421,6 +447,7 @@ async function deleteUserAccount() {
  * อัปเดตสถานะการล็อกหน้าจอและข้อมูลโปรไฟล์บนแถบด้านบน
  */
 function updateAuthUI(user) {
+  window.currentUser = user || null;
   const modal = document.getElementById('supabase-config-modal');
   const mainWorkspace = document.getElementById('main-app-workspace');
   const loggedOutBox = document.getElementById('auth-logged-out-box');
@@ -429,6 +456,12 @@ function updateAuthUI(user) {
   const userEmailEl = document.getElementById('user-profile-email');
   const userAvatarEl = document.getElementById('user-profile-avatar');
   const savePanelBadge = document.getElementById('portfolio-storage-auth-badge');
+  const v2UserNameEl = document.getElementById('v2-user-name');
+  const v2UserAvatarEl = document.getElementById('v2-user-avatar');
+  const settingsNameEl = document.getElementById('settings-user-name');
+  const settingsEmailEl = document.getElementById('settings-user-email');
+  const settingsAvatarEl = document.getElementById('settings-user-avatar');
+  const settingsLogoutBtn = document.getElementById('btn-settings-logout');
 
   if (!user) {
     // เปิดหน้าเว็บให้ทดลองใช้งานฟอร์มได้ทันทีโดยไม่บังคับแสดงป๊อปอัป (เปิดเมื่อผู้ใช้กดปุ่มเข้าสู่ระบบหรือกดบันทึกพอร์ต)
@@ -442,8 +475,16 @@ function updateAuthUI(user) {
     if (loggedInBox) loggedInBox.classList.add('hidden');
     if (savePanelBadge) {
       savePanelBadge.innerText = 'โหมดทดลองใช้ฟรี (เข้าสู่ระบบเมื่อต้องการบันทึกพอร์ต)';
-      savePanelBadge.className = 'text-xs font-semibold px-2.5 py-1 rounded bg-amber-50 text-amber-800 border border-amber-200';
+      savePanelBadge.className = 'text-xs font-semibold px-2.5 py-1 rounded bg-amber-50 text-amber-800 border border-amber-200 self-start sm:self-center shrink-0';
     }
+    const defaultAvatar = buildLocalAvatarSvg('QF');
+    if (v2UserNameEl) v2UserNameEl.innerText = 'Guest Investor';
+    if (v2UserAvatarEl) v2UserAvatarEl.src = defaultAvatar;
+    if (settingsNameEl) settingsNameEl.innerText = 'Guest Investor';
+    if (settingsEmailEl) settingsEmailEl.innerText = 'โหมดทดลองใช้งาน (ยังไม่ได้เข้าสู่ระบบ)';
+    if (settingsAvatarEl) settingsAvatarEl.src = defaultAvatar;
+    if (settingsLogoutBtn) settingsLogoutBtn.classList.add('hidden');
+    if (typeof renderDashboardV2 === 'function') renderDashboardV2();
     return;
   }
 
@@ -466,14 +507,27 @@ function updateAuthUI(user) {
     userAvatarEl.src = avatarUrl;
     userAvatarEl.alt = displayName;
   }
+  if (v2UserNameEl) v2UserNameEl.innerText = displayName;
+  if (v2UserAvatarEl) {
+    v2UserAvatarEl.src = avatarUrl;
+    v2UserAvatarEl.alt = displayName;
+  }
+  if (settingsNameEl) settingsNameEl.innerText = displayName;
+  if (settingsEmailEl) settingsEmailEl.innerText = email;
+  if (settingsAvatarEl) {
+    settingsAvatarEl.src = avatarUrl;
+    settingsAvatarEl.alt = displayName;
+  }
+  if (settingsLogoutBtn) settingsLogoutBtn.classList.remove('hidden');
 
   if (loggedOutBox) loggedOutBox.classList.add('hidden');
   if (loggedInBox) loggedInBox.classList.remove('hidden');
 
   if (savePanelBadge) {
     savePanelBadge.innerText = `บัญชีที่ใช้งาน: ${email}`;
-    savePanelBadge.className = 'text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200';
+    savePanelBadge.className = 'text-[10px] font-semibold px-2.5 py-1 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 self-start sm:self-center shrink-0';
   }
+  if (typeof renderDashboardV2 === 'function') renderDashboardV2();
 }
 
 /**
@@ -904,16 +958,18 @@ function renderSavedPortfoliosList(portfolios) {
           <div class="flex items-center gap-1.5 shrink-0">
             <button
               type="button"
-              onclick="loadSavedPortfolioToDashboard('${safeId}')"
-              class="px-3 py-1.5 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition"
+              data-portfolio-id="${safeId}"
+              onclick="loadSavedPortfolioToDashboard(this.dataset.portfolioId)"
+              class="px-3 py-1.5 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition cursor-pointer"
             >
               ดึงพอร์ตมาใช้งาน / ปรับสัดส่วน
             </button>
             <button
               type="button"
-              onclick="deleteUserPortfolio('${safeId}')"
+              data-portfolio-id="${safeId}"
+              onclick="deleteUserPortfolio(this.dataset.portfolioId)"
               title="ลบพอร์ตนี้"
-              class="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition"
+              class="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition cursor-pointer"
             >
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
             </button>
@@ -986,11 +1042,21 @@ function closeSupabaseConfigModal() {
 }
 
 function showPortfolioToast(msg) {
+  if (typeof window.__appShowPortfolioToast === 'function') {
+    window.__appShowPortfolioToast(msg);
+    return;
+  }
   const toast = document.getElementById('portfolio-toast');
   if (!toast) return;
-  toast.innerText = msg;
+  const toastText = document.getElementById('portfolio-toast-text');
+  if (toastText) {
+    toastText.innerText = msg;
+  } else {
+    toast.innerText = msg;
+  }
   toast.classList.remove('hidden');
-  setTimeout(() => {
+  clearTimeout(window.__portfolioToastTimeout);
+  window.__portfolioToastTimeout = setTimeout(() => {
     toast.classList.add('hidden');
   }, 4000);
 }
