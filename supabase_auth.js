@@ -916,10 +916,10 @@ function renderSavedPortfoliosList(portfolios) {
   }
 
   const stratLabels = {
-    max_sharpe: 'เน้นกำไรคุ้มความเสี่ยงที่สุด',
-    min_volatility: 'เน้นปลอดภัย เงินต้นแกว่งน้อย',
-    hrp: 'เน้นกระจายความเสี่ยงสมดุล',
-    equal_weight: 'แบ่งเงินเท่ากันทุกตัว'
+    max_sharpe: 'คุ้มความเสี่ยงสูงสุด',
+    min_volatility: 'ผันผวนต่ำ',
+    hrp: 'กระจายเสี่ยงสมดุล (HRP)',
+    equal_weight: 'แบ่งเงินเท่ากันทุกตัว (1/N)'
   };
 
   container.innerHTML = portfolios.map(p => {

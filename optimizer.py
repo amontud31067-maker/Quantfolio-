@@ -29,6 +29,20 @@ try:
         }
     from pypfopt import expected_returns, risk_models, EfficientFrontier, HRPOpt
     from pypfopt import DiscreteAllocation, get_latest_prices
+    
+    # Patch pypfopt mean_historical_return to safely handle frequency=None (Exact Calendar CAGR)
+    _pypfopt_mhr = expected_returns.mean_historical_return
+    def _safe_mhr(prices: pd.DataFrame, frequency: Optional[int] = None, **kwargs) -> pd.Series:
+        if frequency is None:
+            if isinstance(prices.index, pd.DatetimeIndex) and len(prices.index) >= 2:
+                cal_days = max(1.0, float((prices.index[-1] - prices.index[0]).days))
+                years = cal_days / 365.25
+                first_prices = prices.bfill().iloc[0]
+                last_prices = prices.ffill().iloc[-1]
+                return (last_prices / first_prices) ** (1.0 / years) - 1.0
+            frequency = 252
+        return _pypfopt_mhr(prices, frequency=frequency, **kwargs)
+    expected_returns.mean_historical_return = _safe_mhr
 except ImportError:
     def get_latest_prices(prices: pd.DataFrame) -> pd.Series:
         return prices.ffill().iloc[-1]
@@ -112,7 +126,8 @@ except ImportError:
         def min_volatility(self):
             n = len(self.tickers)
             w = _project_capped_simplex(np.ones(n) / n, self.low, self.high)
-            step = 1.0 / (float(np.linalg.norm(self.S, ord=2)) + 1e-6)
+            # Gradient of w'Sw is 2Sw -> Lipschitz constant 2*||S||, so a safe projected-GD step is 1/(2*||S||)
+            step = 0.5 / (float(np.linalg.norm(self.S, ord=2)) + 1e-6)
             for _ in range(350):
                 grad = 2.0 * (self.S @ w)
                 w = _project_capped_simplex(w - step * grad, self.low, self.high)
@@ -147,7 +162,8 @@ except ImportError:
             w = _project_capped_simplex(np.ones(n) / n, self.low, self.high)
             norm_s = float(np.linalg.norm(self.S, ord=2)) + 1e-6
             penalty = 25.0 * norm_s
-            step = 1.0 / (norm_s + penalty * float(np.dot(self.mu, self.mu)) + 1e-6)
+            # Lipschitz constant of the gradient is 2*(||S|| + penalty*||mu||^2) -> step = 1/L
+            step = 0.5 / (norm_s + penalty * float(np.dot(self.mu, self.mu)) + 1e-6)
             for _ in range(350):
                 diff = float(w @ self.mu) - target_return
                 grad = 2.0 * (self.S @ w) + 2.0 * penalty * diff * self.mu
@@ -264,6 +280,8 @@ _price_cache: Dict[Tuple, Tuple[float, pd.DataFrame, List[str], List[str]]] = {}
 _rf_cache: Dict[str, Tuple[float, float]] = {}
 _fx_cache: Dict[str, Tuple[float, float]] = {}
 _news_cache: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+_fx_meta: Dict[str, Dict[str, Any]] = {}
+_rf_meta: Dict[str, Dict[str, Any]] = {}
 
 PRICE_CACHE_TTL = 900   # 15 minutes
 RF_CACHE_TTL = 3600     # 1 hour
@@ -411,6 +429,15 @@ _last_rf_is_fallback: bool = False
 THB_RISK_FREE_RATE_DEFAULT: float = 0.0225  # Thai Government Bond / BOT reference rate (2.25%)
 
 
+def get_asset_market_type(ticker: str) -> str:
+    t = str(ticker or "").strip().upper()
+    if t.endswith(".BK"):
+        return "equity_th"
+    if t.endswith("-USD"):
+        return "crypto"
+    return "equity_us"
+
+
 def get_usd_thb_rate(default_rate: float = 34.50) -> float:
     """Fetch current USD/THB exchange rate (THB=X) from Yahoo Finance with 30-minute cache."""
     global _last_fx_is_fallback
@@ -431,7 +458,14 @@ def get_usd_thb_rate(default_rate: float = 34.50) -> float:
                 latest = float(val.values[0]) if hasattr(val, 'values') else float(val)
                 if 20.0 <= latest <= 60.0:
                     rate = round(latest, 2)
+                    last_dt = clean.index[-1]
+                    fx_date = last_dt.strftime('%Y-%m-%d') if hasattr(last_dt, 'strftime') else str(last_dt)
                     _fx_cache['usd_thb'] = (now, rate)
+                    _fx_meta['usd_thb'] = {
+                        "fx_date": fx_date,
+                        "fx_updated_at": datetime.now(timezone.utc).isoformat(),
+                        "is_fallback_fx": False,
+                    }
                     _last_fx_is_fallback = False
                     return rate
     except Exception as e:
@@ -439,6 +473,11 @@ def get_usd_thb_rate(default_rate: float = 34.50) -> float:
 
     # Do NOT cache fallback rate so next request retries live data
     _last_fx_is_fallback = True
+    _fx_meta['usd_thb'] = {
+        "fx_date": None,
+        "fx_updated_at": datetime.now(timezone.utc).isoformat(),
+        "is_fallback_fx": True,
+    }
     return default_rate
 
 
@@ -452,6 +491,13 @@ def get_risk_free_rate(default_rate: float = 0.04, currency: str = "USD") -> flo
     curr = (currency or "USD").strip().upper()
     if curr == "THB":
         _last_rf_is_fallback = False
+        _rf_meta["THB"] = {
+            "risk_free_source": "BOT / พันธบัตรรัฐบาลไทย (ค่าอ้างอิงในระบบ)",
+            "risk_free_tenor": "อ้างอิงคงที่ในระบบ",
+            "risk_free_date": None,
+            "rf_updated_at": datetime.now(timezone.utc).isoformat(),
+            "is_fallback_rf": False,
+        }
         return THB_RISK_FREE_RATE_DEFAULT
 
     now = time.time()
@@ -470,7 +516,16 @@ def get_risk_free_rate(default_rate: float = 0.04, currency: str = "USD") -> flo
                 val = clean.iloc[-1]
                 latest = float(val.values[0]) if hasattr(val, 'values') else float(val)
                 rate = round(latest / 100.0, 4)
+                last_dt = clean.index[-1]
+                rf_date = last_dt.strftime('%Y-%m-%d') if hasattr(last_dt, 'strftime') else str(last_dt)
                 _rf_cache['rf_usd'] = (now, rate)
+                _rf_meta["USD"] = {
+                    "risk_free_source": "US 13W Treasury Bill (^IRX)",
+                    "risk_free_tenor": "13 สัปดาห์",
+                    "risk_free_date": rf_date,
+                    "rf_updated_at": datetime.now(timezone.utc).isoformat(),
+                    "is_fallback_rf": False,
+                }
                 _last_rf_is_fallback = False
                 return rate
     except Exception as e:
@@ -478,7 +533,36 @@ def get_risk_free_rate(default_rate: float = 0.04, currency: str = "USD") -> flo
 
     # Do NOT cache fallback rate so next request retries live data
     _last_rf_is_fallback = True
+    _rf_meta["USD"] = {
+        "risk_free_source": "US Treasury (ค่าสำรองในระบบ)",
+        "risk_free_tenor": "13 สัปดาห์ (สำรอง)",
+        "risk_free_date": None,
+        "rf_updated_at": datetime.now(timezone.utc).isoformat(),
+        "is_fallback_rf": True,
+    }
     return default_rate
+
+
+def get_market_rates_metadata(currency: str = "USD") -> Dict[str, Any]:
+    """Return latest FX & Risk-Free rate values along with source, tenor, date, and fetch timestamp."""
+    curr = (currency or "USD").strip().upper()
+    fx = get_usd_thb_rate()
+    rf = get_risk_free_rate(currency=curr)
+    fx_info = _fx_meta.get("usd_thb", {})
+    rf_key = "THB" if curr == "THB" else "USD"
+    rf_info = _rf_meta.get(rf_key, {})
+    return {
+        "usd_thb_rate": fx,
+        "fx_date": fx_info.get("fx_date"),
+        "fx_updated_at": fx_info.get("fx_updated_at") or datetime.now(timezone.utc).isoformat(),
+        "is_fallback_fx": bool(_last_fx_is_fallback or fx_info.get("is_fallback_fx", False)),
+        "risk_free_rate": rf,
+        "risk_free_source": rf_info.get("risk_free_source", "BOT / พันธบัตรรัฐบาลไทย" if curr == "THB" else "US 13W Treasury Bill (^IRX)"),
+        "risk_free_tenor": rf_info.get("risk_free_tenor", "อ้างอิงในระบบ" if curr == "THB" else "13 สัปดาห์"),
+        "risk_free_date": rf_info.get("risk_free_date"),
+        "rf_updated_at": rf_info.get("rf_updated_at") or datetime.now(timezone.utc).isoformat(),
+        "is_fallback_rf": bool(_last_rf_is_fallback or rf_info.get("is_fallback_rf", False)),
+    }
 
 
 def _infer_effective_trading_days(prices: pd.DataFrame) -> int:
@@ -533,10 +617,12 @@ def convert_prices_to_base_currency(
             except Exception:
                 fx_series = None
 
+    fx_history_fallback = False
     if fx_series is not None and not fx_series.empty:
         aligned_fx = fx_series.reindex(prices.index).ffill().bfill()
         aligned_fx = aligned_fx.fillna(fallback_fx_rate)
     else:
+        fx_history_fallback = True
         aligned_fx = pd.Series(float(fallback_fx_rate), index=prices.index)
 
     converted = prices.copy().astype(float)
@@ -546,6 +632,7 @@ def convert_prices_to_base_currency(
             converted[t] = converted[t] * aligned_fx
         elif native_curr == "THB" and target_curr == "USD":
             converted[t] = converted[t] / aligned_fx.replace(0.0, np.nan).ffill().fillna(fallback_fx_rate)
+    converted.attrs["fx_history_fallback"] = fx_history_fallback
     return converted
 
 
@@ -621,6 +708,12 @@ def fetch_historical_prices(
     # Align calendars across markets (e.g. SET .BK holidays vs US holidays vs 24/7 Crypto):
     # Trim leading NaNs before all assets started trading, then forward-fill holiday gaps up to 5 days
     sub_df = close_df[valid_tickers].copy()
+    raw_last_dates: Dict[str, str] = {}
+    for t in valid_tickers:
+        last_idx = sub_df[t].last_valid_index()
+        if last_idx is not None:
+            raw_last_dates[t] = last_idx.strftime('%Y-%m-%d') if hasattr(last_idx, 'strftime') else str(last_idx)
+
     first_valid_dates = [sub_df[t].first_valid_index() for t in valid_tickers if sub_df[t].first_valid_index() is not None]
     if first_valid_dates:
         common_start = max(first_valid_dates)
@@ -630,6 +723,7 @@ def fetch_historical_prices(
     if len(prices) < 20:
         raise ValueError(f"จำนวนวันทำการที่ข้อมูลทับซ้อนกันน้อยเกินไป ({len(prices)} วัน) กรุณาขยายช่วงเวลาให้กว้างขึ้น")
 
+    prices.attrs["raw_last_dates"] = raw_last_dates
     # Save to cache (limit cache size to 100 entries)
     if len(_price_cache) > 100:
         _price_cache.clear()
@@ -691,7 +785,7 @@ def compute_drawdown_details(cum_growth: pd.Series, budget: float) -> Dict[str, 
 
     after_trough = cum_growth.loc[trough_idx:]
     recovered = after_trough[after_trough >= peak_level]
-    if not recovered.empty and len(recovered) > 1:
+    if not recovered.empty and trough_level < peak_level:
         rec_idx = recovered.index[0]
         recovery_date = rec_idx.strftime('%Y-%m-%d') if hasattr(rec_idx, 'strftime') else str(rec_idx)
         recovery_days = int((rec_idx - peak_idx).days) if hasattr(rec_idx - peak_idx, 'days') else None
@@ -1261,25 +1355,17 @@ def compute_walk_forward_backtest(
     step = max(21, int(rebalance_every)) if rebalance_every > 0 else (n_total - split_idx)
     strat_keys = ("max_sharpe", "min_volatility", "hrp", "equal_weight")
 
-    # Initialize using equal weight during initial warm-up training window, or start OOS tracking from split_idx
-    w_init_train_prices = prices_base[valid_tickers].iloc[: split_idx + 1]
-    mu_init = expected_returns.mean_historical_return(w_init_train_prices, frequency=None)
-    S_init = risk_models.CovarianceShrinkage(w_init_train_prices, frequency=effective_freq).ledoit_wolf()
-    init_sol = _solve_all_strategies(
-        mu_init, S_init, returns_df.iloc[:split_idx], valid_tickers, weight_bounds, rf_rate, None
-    )
-
+    # Initialize with equal weights during the initial warm-up window (zero look-ahead)
     ret_mat = returns_df[valid_tickers].values
+    n_assets = len(valid_tickers)
+    w_equal_warmup = np.ones(n_assets, dtype=float) / max(1, n_assets)
     curr_w_dict = {}
     wealth_dict = {}
     cum_arr_dict = {}
 
     for k in strat_keys:
-        w_vec = pd.Series(init_sol[k]["weights"]).reindex(valid_tickers).fillna(0.0).values.astype(float)
-        if w_vec.sum() > 0:
-            w_vec = w_vec / w_vec.sum()
-        curr_w_dict[k] = w_vec
-        wealth_dict[k] = 1.0 * (1.0 - fee_rate * w_vec.sum())
+        curr_w_dict[k] = w_equal_warmup.copy()
+        wealth_dict[k] = 1.0 * (1.0 - fee_rate)
         cum_arr_dict[k] = np.ones(n_total, dtype=float)
 
     # Solve all 4 strategies together once per rebalance date (avoids redundant 4x re-solving)
@@ -1328,13 +1414,17 @@ def run_portfolio_optimization(
     and Live Market News & Technical Intelligence.
     """
     prices, valid_tickers, missing_tickers = fetch_historical_prices(tickers, start_date, end_date)
+    rates_meta = get_market_rates_metadata(currency=currency)
 
-    usd_thb = float(fx_rate) if (fx_rate is not None and fx_rate > 0) else get_usd_thb_rate()
+    usd_thb = float(fx_rate) if (fx_rate is not None and fx_rate > 0) else float(rates_meta["usd_thb_rate"])
 
     if risk_free_rate is None or risk_free_rate <= 0:
-        rf_rate = get_risk_free_rate(currency=currency)
+        rf_rate = float(rates_meta["risk_free_rate"])
     else:
         rf_rate = float(risk_free_rate)
+
+    raw_last_dates = getattr(prices, "attrs", {}).get("raw_last_dates", {}) or {}
+    default_last_date = prices.index[-1].strftime('%Y-%m-%d') if hasattr(prices.index[-1], 'strftime') else str(prices.index[-1])
 
     # Convert historical prices into a consistent base currency (THB or USD) using daily historical FX
     prices_base = convert_prices_to_base_currency(
@@ -1342,6 +1432,7 @@ def run_portfolio_optimization(
         base_currency=currency,
         fallback_fx_rate=usd_thb
     )
+    fx_history_fallback = bool(getattr(prices_base, "attrs", {}).get("fx_history_fallback", False))
     effective_freq = _infer_effective_trading_days(prices_base)
 
     # 1. Expected Returns (Exact Calendar CAGR) & Analytical Ledoit-Wolf Covariance Shrinkage
@@ -1386,11 +1477,13 @@ def run_portfolio_optimization(
         asset_stats.append({
             "ticker": t,
             "name": get_asset_name(t),
+            "market_type": get_asset_market_type(t),
             "native_currency": native_curr,
             "native_price": round(raw_p, 2),
             "price_thb": price_thb,
             "price_usd": price_usd,
             "latest_price": price_in_budget_curr,
+            "latest_price_date": raw_last_dates.get(t, default_last_date),
             "dividend_yield": round(div_yield_val, 4),
             "dividend_included_in_total_return": True,
             "expected_return": round(ret_val, 4),
@@ -1421,9 +1514,25 @@ def run_portfolio_optimization(
     }
 
     # 2. Optimization Models (Compute BOTH Pure Historical AND News/Trend-Adjusted)
-    min_feasible_max_weight = round(1.0 / len(valid_tickers) + 0.01, 2)
-    effective_max_weight = max(max_weight, min_feasible_max_weight)
-    weight_bounds = (min_weight, min(1.0, effective_max_weight))
+    # Strictly validate weight constraints; impossible bounds must raise an error
+    n_assets = len(valid_tickers)
+    if float(max_weight) * n_assets < 1.0 - 1e-6:
+        min_req = round(1.0 / n_assets, 4)
+        raise ValueError(
+            f"เพดานสัดส่วนสูงสุด (Max Weight = {max_weight:.0%}) รวมกันทุกสินทรัพย์ ({n_assets} ตัว = {max_weight * n_assets:.0%}) "
+            f"ไม่เพียงพอให้ผลรวมครบ 100% จึงเป็นไปไม่ได้ทางคณิตศาสตร์ (ต้องการอย่างน้อย {min_req:.1%})"
+        )
+    if float(min_weight) * n_assets > 1.0 + 1e-6:
+        raise ValueError(
+            f"สัดส่วนขั้นต่ำ (Min Weight = {min_weight:.0%}) รวมกันทุกสินทรัพย์ ({n_assets} ตัว = {min_weight * n_assets:.0%}) "
+            f"เกิน 100% จึงเป็นไปไม่ได้ทางคณิตศาสตร์"
+        )
+    if float(min_weight) > float(max_weight):
+        raise ValueError(
+            f"สัดส่วนขั้นต่ำ (Min Weight = {min_weight:.0%}) ต้องไม่มากกว่าเพดานสัดส่วนสูงสุด (Max Weight = {max_weight:.0%})"
+        )
+    effective_max_weight = float(max_weight)
+    weight_bounds = (float(min_weight), effective_max_weight)
 
     hist_solutions = _solve_all_strategies(mu, S, returns_df, valid_tickers, weight_bounds, rf_rate, None)
     adj_solutions = _solve_all_strategies(mu_adjusted, S, returns_df, valid_tickers, weight_bounds, rf_rate, signal_scores_map)
@@ -1508,7 +1617,7 @@ def run_portfolio_optimization(
 
     portfolio_growth_chart = {
         "dates": [d.strftime('%Y-%m-%d') for d in sampled_wealth.index],
-        "rebalance_assumption": "ปรับสมดุลพอร์ตรายไตรมาส (ทุก 63 วันทำการ) หักค่าธรรมเนียมซื้อขาย 0.15%",
+        "rebalance_assumption": f"ปรับสมดุลพอร์ตทุก 63 วันข้อมูล (ปฏิทิน {effective_freq} วัน/ปี) หักค่าธรรมเนียมซื้อขาย 0.15%",
         "series": {
             k: sampled_wealth[k].tolist() for k in strat_weights_map.keys()
         },
@@ -1523,7 +1632,10 @@ def run_portfolio_optimization(
     # 4. Monte Carlo Random Portfolios for Efficient Frontier
     rng = np.random.default_rng(42)
     W_rand = rng.dirichlet(np.ones(len(valid_tickers)), num_simulations)
-    valid_mask = (W_rand <= (effective_max_weight + 1e-6)).all(axis=1)
+    valid_mask = (
+        (W_rand >= (float(min_weight) - 1e-6)).all(axis=1)
+        & (W_rand <= (effective_max_weight + 1e-6)).all(axis=1)
+    )
     if valid_mask.sum() > 200:
         W_rand = W_rand[valid_mask]
 
@@ -1598,16 +1710,28 @@ def run_portfolio_optimization(
             "start_date": prices.index[0].strftime('%Y-%m-%d'),
             "end_date": prices.index[-1].strftime('%Y-%m-%d'),
             "trading_days": len(prices),
+            "aligned_row_count": len(prices),
+            "alignment_method": "union_ffill_limit5",
             "effective_annual_days": effective_freq,
             "risk_free_rate": round(rf_rate, 4),
+            "risk_free_source": rates_meta.get("risk_free_source"),
+            "risk_free_tenor": rates_meta.get("risk_free_tenor"),
+            "risk_free_date": rates_meta.get("risk_free_date"),
+            "rf_updated_at": rates_meta.get("rf_updated_at"),
             "budget": budget,
             "currency": currency.upper(),
             "usd_thb_rate": usd_thb,
-            "is_fallback_fx": bool(_last_fx_is_fallback),
-            "is_fallback_rf": bool(_last_rf_is_fallback),
+            "fx_date": rates_meta.get("fx_date"),
+            "fx_updated_at": rates_meta.get("fx_updated_at"),
+            "fx_is_daily_history_fallback": fx_history_fallback,
+            "is_fallback_fx": bool(_last_fx_is_fallback or (fx_rate is None and rates_meta.get("is_fallback_fx"))),
+            "is_fallback_rf": bool(_last_rf_is_fallback or (risk_free_rate is None and rates_meta.get("is_fallback_rf"))),
+            "data_as_of": default_last_date,
+            "fetched_at": datetime.now(timezone.utc).isoformat(),
+            "model_version": "QuantFolio-v2.4.0",
             "max_weight": effective_max_weight,
             "use_news_adjustment": bool(use_news_adjustment),
-            "rebalance_assumption": "ปรับสมดุลพอร์ตรายไตรมาส (ทุก 63 วันทำการ) หักค่าธรรมเนียมซื้อขาย 0.15%",
+            "rebalance_assumption": "ปรับสมดุลพอร์ตทุก 63 วันข้อมูล หักค่าธรรมเนียมซื้อขาย 0.15%",
             "walk_forward_out_of_sample": True,
             "dividend_included_in_total_return": True
         },

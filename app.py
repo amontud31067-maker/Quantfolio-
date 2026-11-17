@@ -6,6 +6,7 @@ Supports Multi-User Concurrency, Caching, Cloud Hosting (Hugging Face Spaces / R
 import os
 import time
 import json
+import html
 import uuid
 import hmac
 import base64
@@ -16,7 +17,7 @@ import threading
 import requests
 from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any, Tuple
-from fastapi import FastAPI, HTTPException, Query, Depends, Header
+from fastapi import FastAPI, HTTPException, Query, Depends, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
@@ -28,6 +29,8 @@ from optimizer import (
     fetch_portfolio_market_news,
     get_risk_free_rate,
     get_usd_thb_rate,
+    get_market_rates_metadata,
+    get_asset_market_type,
     get_ticker_currency,
     get_asset_name,
     _yf_lock
@@ -39,11 +42,27 @@ app = FastAPI(
     version="2.3.0"
 )
 
+ALLOWED_ORIGINS = [
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:5500",
+    "http://127.0.0.1:5500",
+    "https://quantfolio-project.vercel.app",
+    "https://quantfolio.vercel.app",
+]
+env_origins = os.environ.get("QUANTFOLIO_ALLOWED_ORIGINS", "")
+if env_origins:
+    ALLOWED_ORIGINS.extend([o.strip() for o in env_origins.split(",") if o.strip()])
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -76,17 +95,25 @@ def health_check():
 
 @app.get("/api/rf")
 def fetch_risk_free_rate(currency: str = Query(default="USD")):
-    """Fetch current risk-free rate (matched to currency) and USD/THB exchange rate"""
+    """Fetch current risk-free rate (matched to currency) and USD/THB exchange rate with source & timestamps"""
     import optimizer as _opt
-    rate = get_risk_free_rate(currency=currency)
+    curr = (currency or "USD").strip().upper()
+    rate = get_risk_free_rate(currency=curr)
     fx = get_usd_thb_rate()
+    meta = _opt.get_market_rates_metadata(currency=curr) if hasattr(_opt, "get_market_rates_metadata") else {}
     return {
         "risk_free_rate": rate,
         "percentage": f"{rate * 100:.2f}%",
-        "currency": currency.upper(),
+        "currency": curr,
         "usd_thb_rate": fx,
-        "is_fallback_fx": bool(getattr(_opt, "_last_fx_is_fallback", False)),
-        "is_fallback_rf": bool(getattr(_opt, "_last_rf_is_fallback", False))
+        "is_fallback_fx": bool(getattr(_opt, "_last_fx_is_fallback", meta.get("is_fallback_fx", False))),
+        "is_fallback_rf": bool(getattr(_opt, "_last_rf_is_fallback", meta.get("is_fallback_rf", False))),
+        "rf_source": meta.get("risk_free_source", "BOT / พันธบัตรรัฐบาลไทย" if curr == "THB" else "US 13W Treasury Bill (^IRX)"),
+        "rf_tenor": meta.get("risk_free_tenor", "อ้างอิงในระบบ" if curr == "THB" else "13 สัปดาห์"),
+        "rf_date": meta.get("risk_free_date"),
+        "rf_updated_at": meta.get("rf_updated_at") or datetime.now(timezone.utc).isoformat(),
+        "fx_date": meta.get("fx_date"),
+        "fx_updated_at": meta.get("fx_updated_at") or datetime.now(timezone.utc).isoformat()
     }
 
 
@@ -132,15 +159,22 @@ def search_tickers(q: str = Query(..., min_length=1)):
 
 @app.get("/api/quote")
 def get_realtime_quotes(tickers: str = Query(..., description="Comma-separated tickers")):
-    """Get real-time quotes, latest price, and day change for selected tickers"""
+    """Get quotes, latest close/bar dates, and day change for selected tickers"""
     ticker_list = []
     for t in tickers.split(","):
         s = t.strip().upper()
         if s and s not in ticker_list:
             ticker_list.append(s)
 
+    rates_meta = get_market_rates_metadata(currency="USD")
     if not ticker_list:
-        return {"quotes": {}}
+        return {
+            "quotes": {},
+            "usd_thb_rate": rates_meta["usd_thb_rate"],
+            "fx_date": rates_meta.get("fx_date"),
+            "fx_updated_at": rates_meta.get("fx_updated_at"),
+            "is_fallback_fx": rates_meta.get("is_fallback_fx", False),
+        }
 
     now = time.time()
     quotes = {}
@@ -150,12 +184,17 @@ def get_realtime_quotes(tickers: str = Query(..., description="Comma-separated t
         if symbol in _quote_cache:
             ts, cached_q = _quote_cache[symbol]
             if now - ts < QUOTE_CACHE_TTL:
-                quotes[symbol] = cached_q
+                q_copy = dict(cached_q)
+                q_copy["is_cached"] = True
+                q_copy["cache_age_sec"] = round(now - ts, 1)
+                quotes[symbol] = q_copy
                 continue
         to_fetch.append(symbol)
 
+    fx = float(rates_meta["usd_thb_rate"])
     if to_fetch:
-        fx = get_usd_thb_rate()
+        fetched_at_iso = datetime.now(timezone.utc).isoformat()
+        today_utc = datetime.now(timezone.utc).date()
         try:
             with _yf_lock:
                 t_objs = yf.Tickers(" ".join(to_fetch))
@@ -167,7 +206,31 @@ def get_realtime_quotes(tickers: str = Query(..., description="Comma-separated t
                         info = t.fast_info
                         last_price = getattr(info, 'last_price', None)
                         prev_close = getattr(info, 'previous_close', None)
-                        currency = getattr(info, 'currency', get_ticker_currency(symbol))
+
+                        as_of_date = None
+                        is_stale = False
+                        try:
+                            if hasattr(t, "history"):
+                                hist = t.history(period="5d", auto_adjust=True, progress=False)
+                                if hist is not None and not hist.empty:
+                                    last_idx = hist.index[-1]
+                                    as_of_date = last_idx.strftime('%Y-%m-%d') if hasattr(last_idx, 'strftime') else str(last_idx)[:10]
+                                    if last_price is None and "Close" in hist.columns:
+                                        last_price = float(hist["Close"].dropna().iloc[-1])
+                                    if prev_close is None and "Close" in hist.columns and len(hist["Close"].dropna()) >= 2:
+                                        prev_close = float(hist["Close"].dropna().iloc[-2])
+                        except Exception:
+                            as_of_date = None
+
+                        market_type = get_asset_market_type(symbol)
+                        if as_of_date:
+                            try:
+                                dt_obs = datetime.strptime(as_of_date[:10], "%Y-%m-%d").date()
+                                cal_age = (today_utc - dt_obs).days
+                                # Warn if equity data is older than 5 calendar days (>~3 business days) or crypto > 1 day
+                                is_stale = cal_age > (1 if market_type == "crypto" else 5)
+                            except Exception:
+                                is_stale = False
 
                         if last_price is not None:
                             chg = 0.0
@@ -183,22 +246,41 @@ def get_realtime_quotes(tickers: str = Query(..., description="Comma-separated t
                             q_data = {
                                 "symbol": symbol,
                                 "name": get_asset_name(symbol),
+                                "market_type": market_type,
                                 "price": round(float(last_price), 2),
                                 "price_thb": price_thb,
                                 "price_usd": price_usd,
                                 "prev_close": round(float(prev_close), 2) if prev_close else None,
                                 "change": round(float(chg), 2),
                                 "change_pct": round(float(chg_pct), 2),
-                                "currency": native_curr
+                                "currency": native_curr,
+                                "as_of_date": as_of_date,
+                                "fetched_at": fetched_at_iso,
+                                "is_cached": False,
+                                "cache_age_sec": 0.0,
+                                "is_stale": is_stale
                             }
                             quotes[symbol] = q_data
                             _quote_cache[symbol] = (now, q_data)
                     except Exception as item_err:
                         quotes[symbol] = {"symbol": symbol, "name": get_asset_name(symbol), "error": str(item_err)}
         except Exception as e:
-            return {"quotes": quotes, "error": str(e)}
+            return {
+                "quotes": quotes,
+                "error": str(e),
+                "usd_thb_rate": fx,
+                "fx_date": rates_meta.get("fx_date"),
+                "fx_updated_at": rates_meta.get("fx_updated_at"),
+                "is_fallback_fx": rates_meta.get("is_fallback_fx", False),
+            }
 
-    return {"quotes": quotes, "usd_thb_rate": get_usd_thb_rate()}
+    return {
+        "quotes": quotes,
+        "usd_thb_rate": fx,
+        "fx_date": rates_meta.get("fx_date"),
+        "fx_updated_at": rates_meta.get("fx_updated_at"),
+        "is_fallback_fx": rates_meta.get("is_fallback_fx", False),
+    }
 
 
 @app.post("/api/optimize")
@@ -384,7 +466,25 @@ def _save_db(data: Dict[str, Any]) -> None:
         print(f"Notice: Could not write local DB ({e})")
 
 
-_AUTH_SECRET_KEY = (os.environ.get("QUANTFOLIO_AUTH_SECRET") or secrets.token_hex(32)).encode("utf-8")
+def _init_auth_secret() -> bytes:
+    env_sec = os.environ.get("QUANTFOLIO_AUTH_SECRET")
+    if env_sec:
+        return env_sec.encode("utf-8")
+    secret_path = os.path.join(tempfile.gettempdir(), ".quantfolio_secret_key")
+    try:
+        if os.path.exists(secret_path):
+            with open(secret_path, "r", encoding="utf-8") as f:
+                val = f.read().strip()
+                if len(val) >= 32:
+                    return val.encode("utf-8")
+        val = secrets.token_hex(32)
+        with open(secret_path, "w", encoding="utf-8") as f:
+            f.write(val)
+        return val.encode("utf-8")
+    except Exception:
+        return secrets.token_hex(32).encode("utf-8")
+
+_AUTH_SECRET_KEY = _init_auth_secret()
 _AUTH_TOKEN_TTL_SECONDS = 86400 * 7  # 7 days
 
 
@@ -464,6 +564,58 @@ class PortfolioSaveRequest(BaseModel):
 _login_attempts: Dict[str, List[float]] = {}
 _LOGIN_RATE_LIMIT_MAX = 5
 _LOGIN_RATE_LIMIT_WINDOW = 60.0  # 60 seconds
+_IP_RATE_LIMIT_MAX = 30  # Max total failed attempts per IP across accounts per minute
+
+
+def _get_client_ip(request: Request) -> str:
+    """Extract client IP, inspecting X-Forwarded-For if behind a reverse proxy."""
+    forwarded = request.headers.get("x-forwarded-for") or request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    if request.client and request.client.host:
+        return request.client.host
+    return "127.0.0.1"
+
+
+def _is_rate_limited(client_ip: str, email: str, now: float) -> bool:
+    """
+    Check rate limiting scoped to client IP and (client IP, email) pair.
+    Prevents an attacker from locking out a legitimate user's account.
+    """
+    if len(_login_attempts) > 2000:
+        expired_keys = [
+            k for k, ts_list in _login_attempts.items()
+            if not any(now - t < _LOGIN_RATE_LIMIT_WINDOW for t in ts_list)
+        ]
+        for k in expired_keys:
+            _login_attempts.pop(k, None)
+
+    ip_key = f"ip:{client_ip}"
+    combo_key = f"combo:{client_ip}:{email}"
+    
+    recent_ip = [t for t in _login_attempts.get(ip_key, []) if now - t < _LOGIN_RATE_LIMIT_WINDOW]
+    _login_attempts[ip_key] = recent_ip
+    if len(recent_ip) >= _IP_RATE_LIMIT_MAX:
+        return True
+
+    recent_combo = [t for t in _login_attempts.get(combo_key, []) if now - t < _LOGIN_RATE_LIMIT_WINDOW]
+    _login_attempts[combo_key] = recent_combo
+    if len(recent_combo) >= _LOGIN_RATE_LIMIT_MAX:
+        return True
+
+    return False
+
+
+def _record_failed_attempt(client_ip: str, email: str, now: float):
+    ip_key = f"ip:{client_ip}"
+    combo_key = f"combo:{client_ip}:{email}"
+    _login_attempts.setdefault(ip_key, []).append(now)
+    _login_attempts.setdefault(combo_key, []).append(now)
+
+
+def _record_successful_attempt(client_ip: str, email: str):
+    combo_key = f"combo:{client_ip}:{email}"
+    _login_attempts.pop(combo_key, None)
 
 
 def _hash_password(password: str, salt: Optional[str] = None) -> str:
@@ -476,7 +628,7 @@ def _verify_password(password: str, stored_hash: str) -> Tuple[bool, bool]:
     """
     Verify password against stored_hash.
     Returns (is_valid, needs_rehash_upgrade).
-    Supports both salted PBKDF2-SHA256 and legacy unsalted SHA-256 hashes.
+    Only salted PBKDF2-SHA256 hashes are accepted. Legacy unsalted hashes are rejected.
     """
     if not stored_hash:
         return False, False
@@ -487,16 +639,14 @@ def _verify_password(password: str, stored_hash: str) -> Tuple[bool, bool]:
         _, salt_str, expected_dk = parts
         candidate = _hash_password(password, salt=salt_str)
         return hmac.compare_digest(candidate, stored_hash), False
-    # Legacy unsalted SHA-256 fallback (auto-upgraded on successful login)
-    legacy_hash = hashlib.sha256(password.encode("utf-8")).hexdigest()
-    is_ok = hmac.compare_digest(legacy_hash, stored_hash)
-    return is_ok, is_ok
+    # Legacy unsalted SHA-256 fallback removed for security
+    return False, False
 
 
 def _build_local_svg_avatar(name: str) -> str:
     """Generate a self-contained SVG data URI avatar without leaking user PII to third-party servers."""
     clean = (name or "QF").strip()
-    initials = (clean[:2] if len(clean) >= 2 else clean).upper()
+    initials = html.escape((clean[:2] if len(clean) >= 2 else clean).upper())
     svg = (
         f'<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">'
         f'<rect width="64" height="64" rx="32" fill="#1d4ed8"/>'
@@ -509,7 +659,7 @@ def _build_local_svg_avatar(name: str) -> str:
 
 
 @app.post("/api/auth/login")
-def backend_auth_login(req: AuthLoginRequest):
+def backend_auth_login(req: AuthLoginRequest, request: Request):
     """
     ระบบยืนยันตัวตนสำรองระดับเซิร์ฟเวอร์ (Salted PBKDF2-SHA256 + Rate Limit + Mode Check)
     """
@@ -517,14 +667,13 @@ def backend_auth_login(req: AuthLoginRequest):
     password = req.password.strip()
     if not email or "@" not in email:
         raise HTTPException(status_code=400, detail="กรุณากรอกอีเมลให้ถูกต้อง")
-    if len(password) < 6:
-        raise HTTPException(status_code=400, detail="รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร")
+    if len(password) < 8:
+        raise HTTPException(status_code=400, detail="รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร")
 
+    client_ip = _get_client_ip(request)
     now = time.time()
     with _db_lock:
-        recent_attempts = [t for t in _login_attempts.get(email, []) if now - t < _LOGIN_RATE_LIMIT_WINDOW]
-        _login_attempts[email] = recent_attempts
-        if len(recent_attempts) >= _LOGIN_RATE_LIMIT_MAX:
+        if _is_rate_limited(client_ip, email, now):
             raise HTTPException(
                 status_code=429,
                 detail="พยายามเข้าสู่ระบบผิดพลาดเกินจำนวนครั้งที่กำหนด กรุณารอ 1 นาทีแล้วลองใหม่อีกครั้ง"
@@ -538,10 +687,10 @@ def backend_auth_login(req: AuthLoginRequest):
             stored = users[email]
             is_valid, needs_upgrade = _verify_password(password, stored.get("password_hash", ""))
             if not is_valid:
-                _login_attempts.setdefault(email, []).append(now)
+                _record_failed_attempt(client_ip, email, now)
                 raise HTTPException(status_code=401, detail="รหัสผ่านไม่ถูกต้อง กรุณาตรวจสอบรหัสผ่านของคุณอีกครั้ง")
 
-            _login_attempts.pop(email, None)
+            _record_successful_attempt(client_ip, email)
             db_dirty = False
             if needs_upgrade:
                 stored["password_hash"] = _hash_password(password)
@@ -569,7 +718,7 @@ def backend_auth_login(req: AuthLoginRequest):
             return {"status": "ok", "action": "signed_in", "token": token, "user": user_obj}
         else:
             if (req.mode or "").strip().lower() == "signin":
-                _login_attempts.setdefault(email, []).append(now)
+                _record_failed_attempt(client_ip, email, now)
                 raise HTTPException(
                     status_code=401,
                     detail="ไม่พบบัญชีผู้ใช้นี้ในระบบ กรุณาตรวจสอบอีเมลหรือสลับไปที่แท็บ 'สมัครสมาชิกใหม่'"
@@ -742,13 +891,19 @@ def delete_backend_portfolio(portfolio_id: str, current_user: Dict[str, str] = D
 
 
 def _find_asset(filename: str) -> Optional[str]:
-    """Find static asset whether uploaded inside static/ folder or flat in root folder."""
-    p1 = os.path.join(STATIC_DIR, filename)
-    if os.path.exists(p1):
-        return p1
-    p2 = os.path.join(BASE_DIR, filename)
-    if os.path.exists(p2):
-        return p2
+    """Find a public asset. ONLY files inside static/ are ever served.
+
+    Never fall back to the project root: it holds the user database, source
+    code and config. Paths are resolved first so ../ and encoded traversal
+    cannot escape static/.
+    """
+    try:
+        base = os.path.realpath(STATIC_DIR)
+        candidate = os.path.realpath(os.path.join(base, filename))
+    except (ValueError, OSError):
+        return None
+    if candidate.startswith(base + os.sep) and os.path.isfile(candidate):
+        return candidate
     return None
 
 
