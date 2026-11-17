@@ -890,20 +890,37 @@ def delete_backend_portfolio(portfolio_id: str, current_user: Dict[str, str] = D
 
 
 
-def _find_asset(filename: str) -> Optional[str]:
-    """Find a public asset. ONLY files inside static/ are ever served.
+PUBLIC_ROOT_ALLOWLIST = frozenset({
+    "index.html",
+    "app.js",
+    "styles.css",
+    "supabase_auth.js",
+    "v2_preview.html",
+})
 
-    Never fall back to the project root: it holds the user database, source
-    code and config. Paths are resolved first so ../ and encoded traversal
-    cannot escape static/.
+
+def _find_asset(filename: str) -> Optional[str]:
+    """Find a public asset. Checks static/ first, and falls back to project root
+    ONLY for exact matches in PUBLIC_ROOT_ALLOWLIST.
+
+    Source code, config, and quantfolio_users_db.json in root are never exposed
+    and traversal paths cannot pass exact-string allowlist checks or escape bounds.
     """
     try:
         base = os.path.realpath(STATIC_DIR)
         candidate = os.path.realpath(os.path.join(base, filename))
+        if candidate.startswith(base + os.sep) and os.path.isfile(candidate):
+            return candidate
     except (ValueError, OSError):
         return None
-    if candidate.startswith(base + os.sep) and os.path.isfile(candidate):
-        return candidate
+    if filename in PUBLIC_ROOT_ALLOWLIST:
+        try:
+            root_base = os.path.realpath(BASE_DIR)
+            root_candidate = os.path.realpath(os.path.join(root_base, filename))
+            if root_candidate.startswith(root_base + os.sep) and os.path.isfile(root_candidate):
+                return root_candidate
+        except (ValueError, OSError):
+            return None
     return None
 
 
@@ -952,7 +969,7 @@ def serve_index():
     if path:
         return FileResponse(path, media_type="text/html", headers=NO_CACHE_HEADERS)
     return HTMLResponse(
-        "<h2>QuantFolio Server is running, but index.html was not found. Please upload index.html, app.js, and styles.css.</h2>"
+        "<h2>QuantFolio Server is running, but index.html was not found in static/ or app root. Please upload index.html, app.js, styles.css, and supabase_auth.js (and/or static/).</h2>"
     )
 
 
