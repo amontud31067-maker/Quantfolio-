@@ -3,7 +3,16 @@
   "builds": [
     {
       "src": "app.py",
-      "use": "@vercel/python"
+      "use": "@vercel/python",
+      "config": {
+        "includeFiles": [
+          "static/**",
+          "index.html",
+          "app.js",
+          "styles.css",
+          "supabase_auth.js"
+        ]
+      }
     }
   ],
   "routes": [
