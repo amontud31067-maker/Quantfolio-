@@ -320,9 +320,12 @@ def get_market_news_endpoint(tickers: str = Query(..., description="Comma-separa
         return {"news": {}, "articles": []}
     news_map = fetch_portfolio_market_news(ticker_list)
     all_articles = []
-    for t in ticker_list:
-        for art in news_map.get(t, {}).get("articles", []):
-            all_articles.append(art)
+    max_len = max((len(news_map.get(t, {}).get("articles", [])) for t in ticker_list), default=0)
+    for idx in range(max_len):
+        for t in ticker_list:
+            arts = news_map.get(t, {}).get("articles", [])
+            if idx < len(arts):
+                all_articles.append(arts[idx])
     return {"news": news_map, "articles": all_articles}
 
 

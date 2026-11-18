@@ -33,7 +33,7 @@
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   <!-- Supabase JS SDK v2 -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <link rel="stylesheet" href="/static/styles.css?v=6.7">
+  <link rel="stylesheet" href="/static/styles.css?v=6.12">
 </head>
 <body class="min-h-screen flex flex-col text-[#1E293B] leading-[1.65]">
 
@@ -49,31 +49,39 @@
   <!-- 3-ZONE PROFESSIONAL FINTECH TOP HEADER -->
   <header class="bg-white/95 backdrop-blur-md border-b border-slate-200/90 sticky top-0 z-40">
     <div class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-14 sm:h-16 flex items-center justify-between gap-2 sm:gap-3">
-      <!-- ZONE 1 (Left): Brand & Honest Market Data Status Pill -->
+      <!-- ZONE 1 (Left): Clean Brand Logo + Workspace-Only Market Telemetry -->
       <div class="flex items-center gap-2 sm:gap-3 min-w-0">
-        <a href="javascript:void(0)" onclick="switchAppTab('setup')" class="flex items-center gap-2 sm:gap-2.5 shrink-0">
+        <a href="javascript:void(0)" onclick="showLandingShowcase()" title="กลับหน้าหลักแนะนำระบบ QuantFolio" class="flex items-center gap-2 sm:gap-2.5 shrink-0">
           <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-[#00D084] flex items-center justify-center text-[#0A0D12] shadow-xs">
             <i data-lucide="bar-chart-2" class="w-4 h-4 sm:w-5 sm:h-5"></i>
           </div>
-          <div class="flex items-center gap-2">
-            <span class="font-bold text-base sm:text-xl tracking-tight text-slate-900">QuantFolio</span>
-            <span id="market-data-status-pill" class="hidden sm:inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 max-w-[300px] truncate" title="แหล่งข้อมูลราคาตลาด: Yahoo Finance">
-              รอคำนวณ • ยังไม่ดึงชุดวิเคราะห์
-            </span>
-            <span id="stale-market-warning" class="hidden items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 shrink-0" title="ข้อมูลราคา/อัตราแลกเปลี่ยนบางรายการอาจเก่าหรือเป็นค่าสำรอง">
-              <i data-lucide="alert-triangle" class="w-3 h-3"></i>
-              <span>ข้อมูลเก่า/สำรอง</span>
-            </span>
-          </div>
+          <span class="font-bold text-base sm:text-xl tracking-tight text-slate-900">QuantFolio</span>
         </a>
 
-        <!-- Compact FX, Rf & Aligned Rows Pill -->
-        <div class="hidden xl:inline-flex items-center gap-2.5 px-3 py-1 rounded-full bg-slate-100/90 border border-slate-200/80 text-[11px] text-slate-600 ml-1">
-          <span>FX: <strong id="top-fx-rate" class="font-mono text-slate-900">--</strong></span>
-          <span class="text-slate-300">|</span>
-          <span>Rf: <strong id="top-rf-rate" class="font-mono text-slate-900">--</strong></span>
-          <span class="text-slate-300">|</span>
-          <span><strong id="top-trading-days" class="font-mono text-slate-900">--</strong> <span class="underline decoration-dotted cursor-help" title="จำนวนวันข้อมูลหลังเทียบแนวปฏิทินระหว่างตลาด (หุ้น ~252 วัน/ปี หรือ 365 วัน/ปีเมื่อมีสินทรัพย์ 24/7 เช่น BTC)">วันข้อมูล</span></span>
+        <!-- Landing-Only Navigation Links -->
+        <nav id="header-landing-nav" class="hidden lg:flex items-center gap-4 xl:gap-5 ml-2 xl:ml-3 shrink-0" aria-label="เมนูหน้าแรก QuantFolio">
+          <a href="#methodology" onclick="scrollToSectionById('methodology')" class="text-xs font-semibold text-slate-600 hover:text-slate-900 whitespace-nowrap transition">หลักการคำนวณ <span class="hidden 2xl:inline">(Methodology)</span></a>
+          <a href="#features" onclick="scrollToSectionById('features')" class="text-xs font-semibold text-slate-600 hover:text-slate-900 whitespace-nowrap transition">ฟีเจอร์ <span class="hidden 2xl:inline">(Features)</span></a>
+          <a href="#market-data" onclick="scrollToSectionById('market-data')" class="text-xs font-semibold text-slate-600 hover:text-slate-900 whitespace-nowrap transition">ข้อมูลตลาด <span class="hidden 2xl:inline">(Market Data)</span></a>
+        </nav>
+
+        <div id="header-workspace-telemetry" class="hidden items-center gap-2 min-w-0">
+          <span id="market-data-status-pill" class="hidden sm:inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 max-w-[300px] truncate" title="แหล่งข้อมูลราคาตลาด: Yahoo Finance">
+            พร้อมดึงราคาตลาด • Yahoo Finance
+          </span>
+          <span id="stale-market-warning" class="hidden items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 shrink-0" title="ข้อมูลราคา/อัตราแลกเปลี่ยนบางรายการอาจเก่าหรือเป็นค่าสำรอง">
+            <i data-lucide="alert-triangle" class="w-3 h-3"></i>
+            <span>ข้อมูลเก่า/สำรอง</span>
+          </span>
+
+          <!-- Compact FX, Rf & Aligned Rows Pill -->
+          <div class="hidden xl:inline-flex items-center gap-2.5 px-3 py-1 rounded-full bg-slate-100/90 border border-slate-200/80 text-[11px] text-slate-600 ml-1">
+            <span>FX: <strong id="top-fx-rate" class="font-mono text-slate-900">--</strong></span>
+            <span class="text-slate-300">|</span>
+            <span>Rf: <strong id="top-rf-rate" class="font-mono text-slate-900">--</strong></span>
+            <span class="text-slate-300">|</span>
+            <span><strong id="top-trading-days" class="font-mono text-slate-900">--</strong> <span class="underline decoration-dotted cursor-help" title="จำนวนวันข้อมูลหลังเทียบแนวปฏิทินระหว่างตลาด (หุ้น ~252 วัน/ปี หรือ 365 วัน/ปีเมื่อมีสินทรัพย์ 24/7 เช่น BTC)">วันข้อมูล</span></span>
+          </div>
         </div>
       </div>
 
@@ -188,8 +196,8 @@
           </div>
         </div>
 
-        <!-- Login Button -->
-        <div id="auth-logged-out-box" class="flex items-center">
+        <!-- Login Button & Primary Start CTA -->
+        <div id="auth-logged-out-box" class="flex items-center gap-1.5">
           <button
             type="button"
             onclick="openSupabaseConfigModal()"
@@ -197,6 +205,15 @@
           >
             <i data-lucide="user" class="w-3.5 h-3.5 text-slate-600"></i>
             <span class="hidden xs:inline sm:inline">เข้าสู่ระบบ</span>
+          </button>
+          <button
+            type="button"
+            id="header-landing-cta-btn"
+            onclick="enterWorkspaceWithRiskProfile(state.landingRiskProfile || 'balanced')"
+            class="inline-flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-xl bg-[#00D084] hover:bg-[#00B873] text-[#0A0D12] font-bold text-xs shadow-2xs transition cursor-pointer"
+          >
+            <span>เริ่มจำลองพอร์ต</span>
+            <i data-lucide="arrow-up-right" class="w-3.5 h-3.5"></i>
           </button>
         </div>
 
@@ -233,12 +250,654 @@
     </div>
   </header>
 
-  <!-- MAIN WORKSPACE -->
-  <main id="main-app-workspace" class="relative z-10 flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-3.5 sm:py-4 space-y-4">
+  <!-- ======================================================================= -->
+  <!-- LANDING SHOWCASE VIEW (Institutional QuantFolio Landing + Preview)      -->
+  <!-- ======================================================================= -->
+  <section id="landing-showcase-view" class="relative z-10 flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10 space-y-12" aria-label="หน้าแนะนำระบบและเริ่มต้นใช้งาน">
+
+    <!-- HERO SECTION (Above the Fold) -->
+    <div class="text-center max-w-4xl mx-auto space-y-5 pt-2 sm:pt-4">
+      <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#E6FBF3] border border-[#00D084]/40 text-[#008A57] text-xs sm:text-sm font-semibold shadow-2xs">
+        <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+        <span>Data-Driven Portfolio Engine</span>
+      </div>
+
+      <h1 class="text-3xl sm:text-5xl lg:text-[50px] font-extrabold tracking-tight text-slate-900 leading-[1.18]">
+        จัดพอร์ตลงทุนอย่างเป็นระบบ จากข้อมูลตลาดจริง ในคลิกเดียว
+      </h1>
+
+      <p class="text-sm sm:text-lg text-slate-600 leading-relaxed max-w-3xl mx-auto">
+        ยกระดับการตัดสินใจของนักลงทุน DIY ด้วยโมเดลคณิตศาสตร์การเงิน ผสานการวิเคราะห์กระแสข่าวและข้อมูลตลาดแบบเรียลไทม์ เพื่อสัดส่วนการลงทุนที่สมดุลและแม่นยำ
+      </p>
+
+      <div class="pt-1 flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-3">
+        <button
+          type="button"
+          onclick="enterWorkspaceWithRiskProfile(state.landingRiskProfile || 'balanced')"
+          class="min-h-[50px] px-7 py-3 rounded-2xl bg-[#00D084] hover:bg-[#00B873] text-[#0A0D12] font-bold text-sm sm:text-base shadow-md shadow-[#00D084]/20 transition cursor-pointer inline-flex items-center justify-center gap-2"
+        >
+          <span>เริ่มจำลองพอร์ตของคุณ</span>
+          <i data-lucide="arrow-right" class="w-4 h-4"></i>
+        </button>
+
+        <button
+          type="button"
+          onclick="scrollToSectionById('preview-widget')"
+          class="min-h-[50px] px-6 py-3 rounded-2xl bg-white hover:bg-slate-50 text-slate-800 border border-slate-200/90 font-semibold text-sm sm:text-base shadow-2xs transition cursor-pointer inline-flex items-center justify-center gap-2"
+        >
+          <i data-lucide="eye" class="w-4 h-4 text-slate-500"></i>
+          <span>ดูตัวอย่างพอร์ตจริง</span>
+        </button>
+      </div>
+
+      <div class="pt-1 flex items-center justify-center gap-2 text-xs sm:text-sm text-slate-500">
+        <i data-lucide="shield-check" class="w-4 h-4 text-[#00A86B] shrink-0"></i>
+        <span>อ้างอิงข้อมูลตลาดย้อนหลังและโมเดล Modern Portfolio Theory (MPT) • ไม่ต้องสมัครสมาชิกเพื่อทดลองคำนวณ</span>
+      </div>
+    </div>
+
+    <!-- INTERACTIVE MINI-PREVIEW WIDGET (High Trust Section — Conservative / Balanced / Growth) -->
+    <div id="preview-widget" class="rounded-3xl bg-white border border-slate-200/90 shadow-xl shadow-slate-900/5 overflow-hidden">
+      <div class="px-5 sm:px-7 py-4 bg-slate-50/90 border-b border-slate-200/80 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div class="space-y-1">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="w-2.5 h-2.5 rounded-full bg-[#00D084]"></span>
+            <h2 class="text-base sm:text-lg font-bold text-slate-900">Interactive Portfolio Preview</h2>
+            <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200 text-[11px] font-semibold">
+              <i data-lucide="info" class="w-3 h-3"></i>
+              <span>ข้อมูลจำลองเพื่อสาธิตการทำงาน (Illustrative Preview)</span>
+            </span>
+          </div>
+          <p class="text-xs sm:text-sm text-slate-600">
+            ทดลองปรับระดับความเสี่ยงเพื่อดูการเปลี่ยนแปลงของสัดส่วนพอร์ต ค่าสถิติสำคัญ และผลกระทบจากข่าวตลาด แล้วกดส่งค่าไปคำนวณพอร์ตจริงได้ทันที
+          </p>
+        </div>
+
+        <div class="flex flex-col sm:flex-row sm:items-center gap-3 shrink-0">
+          <div class="inline-flex bg-slate-200/75 p-1 rounded-2xl border border-slate-200" role="tablist" aria-label="Risk Tolerance Profiles">
+            <button type="button" id="landing-risk-tab-conservative" role="tab" aria-selected="false" onclick="selectLandingRiskProfile('conservative')" class="px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-bold text-slate-600 hover:text-slate-900 transition cursor-pointer">Conservative</button>
+            <button type="button" id="landing-risk-tab-balanced" role="tab" aria-selected="true" onclick="selectLandingRiskProfile('balanced')" class="px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-bold bg-[#0F172A] text-[#00D084] shadow-2xs transition cursor-pointer">Balanced</button>
+            <button type="button" id="landing-risk-tab-growth" role="tab" aria-selected="false" onclick="selectLandingRiskProfile('growth')" class="px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-bold text-slate-600 hover:text-slate-900 transition cursor-pointer">Growth</button>
+          </div>
+
+          <div class="flex items-center gap-2.5 bg-white px-3.5 py-2 rounded-2xl border border-slate-200">
+            <i data-lucide="sliders" class="w-3.5 h-3.5 text-slate-500 shrink-0"></i>
+            <label for="landing-risk-slider" class="text-xs font-semibold text-slate-600 whitespace-nowrap">Risk Level:</label>
+            <input id="landing-risk-slider" type="range" min="1" max="3" step="1" value="2" oninput="selectLandingRiskProfileByStep(this.value)" aria-label="Risk Tolerance Slider" class="w-24 accent-[#00A86B] cursor-pointer" />
+            <span id="landing-risk-step-label" class="text-xs font-mono font-bold text-[#008A57] w-6 text-center">2/3</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="p-5 sm:p-7 grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
+        <!-- Left 7 Cols: Profile Summary + Donut/Bars + 3 Key Metrics -->
+        <div class="lg:col-span-7 space-y-5">
+          <div class="pb-3 border-b border-slate-100">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span id="landing-risk-badge" class="px-2.5 py-0.5 rounded-md bg-[#E6FBF3] text-[#008A57] text-xs font-bold">Balanced Profile</span>
+              <h3 id="landing-risk-title" class="text-base sm:text-lg font-bold text-slate-900">พอร์ตสมดุลระหว่างการเติบโตและเกราะป้องกันความเสี่ยง</h3>
+            </div>
+            <p id="landing-risk-subtitle" class="text-xs sm:text-sm text-slate-600 mt-1">
+              กระจายน้ำหนักระหว่างหุ้นสหรัฐฯ หุ้นไทย ตราสารหนี้ และทองคำ เพื่อผลตอบแทนคุ้มค่าความเสี่ยง (Max Sharpe / HRP)
+            </p>
+          </div>
+
+          <div class="flex flex-col sm:flex-row items-center gap-6">
+            <div class="relative w-40 h-40 shrink-0 flex items-center justify-center">
+              <svg id="landing-risk-donut-svg" viewBox="0 0 140 140" class="w-full h-full -rotate-90 overflow-visible" role="img" aria-label="Asset Allocation Donut Chart"></svg>
+              <div class="absolute inset-0 flex flex-col items-center justify-center text-center px-3 pointer-events-none">
+                <span id="landing-risk-donut-label" class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">US Equities</span>
+                <span id="landing-risk-donut-pct" class="text-2xl font-extrabold font-mono text-slate-900 tabular-nums mt-0.5">35%</span>
+                <span id="landing-risk-donut-tickers" class="text-[10px] text-slate-500 truncate max-w-[96px]">SPY • MSFT • AAPL</span>
+              </div>
+            </div>
+
+            <div id="landing-risk-bars-list" class="w-full flex-1 space-y-2.5"></div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3.5 pt-1">
+            <div class="p-4 rounded-2xl bg-[#E6FBF3]/45 border border-[#00D084]/35">
+              <div class="flex items-center justify-between text-xs font-semibold text-slate-600">
+                <span>Expected Return</span>
+                <i data-lucide="trending-up" class="w-4 h-4 text-[#00A86B]"></i>
+              </div>
+              <div id="landing-metric-return" class="text-2xl font-extrabold font-mono text-[#008A57] mt-1 tabular-nums">8.9%</div>
+              <div class="text-[11px] text-slate-500 mt-0.5">ผลตอบแทนคาดหวังต่อปี (จำลอง)</div>
+            </div>
+
+            <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200/90">
+              <div class="flex items-center justify-between text-xs font-semibold text-slate-600">
+                <span>Volatility</span>
+                <i data-lucide="activity" class="w-4 h-4 text-amber-500"></i>
+              </div>
+              <div id="landing-metric-vol" class="text-2xl font-extrabold font-mono text-slate-900 mt-1 tabular-nums">10.8%</div>
+              <div class="text-[11px] text-slate-500 mt-0.5">ความผันผวนของพอร์ตต่อปี</div>
+            </div>
+
+            <div class="p-4 rounded-2xl bg-blue-50/40 border border-blue-200/80">
+              <div class="flex items-center justify-between text-xs font-semibold text-slate-600">
+                <span>Sharpe Ratio</span>
+                <i data-lucide="award" class="w-4 h-4 text-blue-600"></i>
+              </div>
+              <div id="landing-metric-sharpe" class="text-2xl font-extrabold font-mono text-blue-700 mt-1 tabular-nums">0.78</div>
+              <div class="text-[11px] text-slate-500 mt-0.5">ความคุ้มค่าผลตอบแทนต่อความเสี่ยง</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right 5 Cols: Live-Style Market News Impact Feed Box -->
+        <div class="lg:col-span-5 rounded-2xl bg-slate-50/90 border border-slate-200/90 p-4 sm:p-5 space-y-4">
+          <div class="flex items-center justify-between gap-2 pb-2.5 border-b border-slate-200/80">
+            <div class="flex items-center gap-2">
+              <div class="w-8 h-8 rounded-xl bg-[#0F172A] text-[#00D084] flex items-center justify-center">
+                <i data-lucide="newspaper" class="w-4 h-4"></i>
+              </div>
+              <div>
+                <h4 class="text-sm font-bold text-slate-900">Market News Impact</h4>
+                <p class="text-[11px] text-slate-500">สัญญาณข่าวสารและผลกระทบต่อสัดส่วนสินทรัพย์</p>
+              </div>
+            </div>
+            <span class="px-2 py-0.5 rounded-full bg-white text-slate-600 border border-slate-200 text-[11px] font-semibold">Sentiment Feed</span>
+          </div>
+
+          <div id="landing-risk-news-list" class="space-y-2.5"></div>
+
+          <div class="pt-2 flex items-center justify-between gap-3">
+            <span id="landing-risk-note" class="text-xs text-slate-500">สมดุลความเสี่ยงปานกลาง เหมาะกับการสะสมความมั่งคั่งระยะกลาง-ยาว</span>
+            <button
+              type="button"
+              onclick="enterWorkspaceWithRiskProfile(state.landingRiskProfile || 'balanced')"
+              class="text-xs font-bold text-[#008A57] hover:text-[#006B43] inline-flex items-center gap-1 shrink-0 cursor-pointer"
+            >
+              <span>คำนวณพอร์ตจริง</span>
+              <i data-lucide="arrow-up-right" class="w-3.5 h-3.5"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- QUICK-START BUDGET & 5-MODULE APP PREVIEW -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-center">
+
+      <!-- Left Column: Quick-Start Budget & Preset Builder -->
+      <div class="lg:col-span-6 space-y-4">
+        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#E6FBF3] text-[#008A57] text-xs font-semibold">
+          <span class="w-2 h-2 rounded-full bg-[#00D084]"></span>
+          <span>จัดพอร์ตหุ้นไทย (.BK) • หุ้นสหรัฐฯ • คริปโต</span>
+        </div>
+
+        <h2 class="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
+          กำหนดงบลงทุนและชุดสินทรัพย์เริ่มต้นได้ทันที
+        </h2>
+
+        <p class="text-xs sm:text-sm text-slate-600 leading-relaxed max-w-xl">
+          ใส่งบลงทุนกับกลุ่มสินทรัพย์ที่สนใจ ระบบจะเทียบกลยุทธ์ 4 แบบ สร้างใบสั่งซื้อ-ขายรายตัว และจำลองผลย้อนหลังให้ดูทันที
+        </p>
+
+        <!-- Interactive Quick-Start Card (Zero clutter, 10-second start) -->
+        <div class="rounded-3xl bg-white border border-slate-200/80 shadow-xl shadow-slate-900/5 p-4 sm:p-5 space-y-4">
+          <!-- Step A: Starting Budget -->
+          <div class="space-y-2">
+            <div class="flex items-center justify-between gap-2 flex-wrap">
+              <label for="landing-budget-input" class="text-xs font-bold text-slate-700">1. เงินลงทุนเริ่มต้น</label>
+              <div class="flex items-center gap-1 flex-wrap" id="landing-quick-budget-chips">
+                <button type="button" onclick="setLandingQuickBudget(50000)" class="qf-landing-chip px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-slate-200/80 text-[11px] font-semibold text-slate-700 transition cursor-pointer">50K</button>
+                <button type="button" onclick="setLandingQuickBudget(100000)" class="qf-landing-chip px-2 py-0.5 rounded-lg bg-[#E6FBF3] text-[#008A57] text-[11px] font-bold transition cursor-pointer">100K</button>
+                <button type="button" onclick="setLandingQuickBudget(500000)" class="qf-landing-chip px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-slate-200/80 text-[11px] font-semibold text-slate-700 transition cursor-pointer">500K</button>
+                <button type="button" onclick="setLandingQuickBudget(1000000)" class="qf-landing-chip px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-slate-200/80 text-[11px] font-semibold text-slate-700 transition cursor-pointer">1M</button>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-slate-50 border border-slate-200 focus-within:border-[#00D084] focus-within:bg-white transition">
+              <span id="landing-budget-curr-symbol" class="text-xl font-bold font-mono text-[#00A86B]">฿</span>
+              <input
+                type="text"
+                inputmode="decimal"
+                id="landing-budget-input"
+                value="100,000"
+                oninput="formatLiveCommaInput(this, false); syncLandingBudgetToWorkspace(this.value)"
+                class="w-full bg-transparent text-xl sm:text-2xl font-bold font-mono text-slate-900 focus:outline-none tabular-nums"
+                aria-label="เงินลงทุนเริ่มต้น"
+              />
+              <span class="curr-unit-inline text-xs font-semibold text-slate-400 shrink-0">บาท</span>
+            </div>
+          </div>
+
+          <!-- Step B: 4 Quick-Start Portfolio Presets -->
+          <div class="space-y-2">
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-xs font-bold text-slate-700">2. เลือกชุดพอร์ตตัวอย่าง (หรือปรับแก้เองทีหลัง)</span>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                id="landing-preset-card-colab_original"
+                onclick="selectLandingPreset('colab_original')"
+                class="qf-landing-preset-btn active text-left px-3.5 py-2.5 rounded-2xl bg-[#E6FBF3]/80 border-2 border-[#00D084] transition cursor-pointer"
+              >
+                <div class="text-xs sm:text-sm font-bold text-slate-900">US Tech + BTC</div>
+                <div class="text-[11px] text-slate-600 truncate">เทคสหรัฐฯ + คริปโต (5 ตัว)</div>
+              </button>
+
+              <button
+                type="button"
+                id="landing-preset-card-tech_titans"
+                onclick="selectLandingPreset('tech_titans')"
+                class="qf-landing-preset-btn text-left px-3.5 py-2.5 rounded-2xl bg-slate-50 hover:bg-slate-100 border border-slate-200 transition cursor-pointer"
+              >
+                <div class="text-xs sm:text-sm font-bold text-slate-900">Big Tech 7</div>
+                <div class="text-[11px] text-slate-600 truncate">7 บริษัทเทคสหรัฐฯ ขนาดใหญ่</div>
+              </button>
+
+              <button
+                type="button"
+                id="landing-preset-card-all_weather"
+                onclick="selectLandingPreset('all_weather')"
+                class="qf-landing-preset-btn text-left px-3.5 py-2.5 rounded-2xl bg-slate-50 hover:bg-slate-100 border border-slate-200 transition cursor-pointer"
+              >
+                <div class="text-xs sm:text-sm font-bold text-slate-900">All-Weather</div>
+                <div class="text-[11px] text-slate-600 truncate">หุ้น ทอง พันธบัตร โภคภัณฑ์</div>
+              </button>
+
+              <button
+                type="button"
+                id="landing-preset-card-thai_set50"
+                onclick="selectLandingPreset('thai_set50')"
+                class="qf-landing-preset-btn text-left px-3.5 py-2.5 rounded-2xl bg-slate-50 hover:bg-slate-100 border border-slate-200 transition cursor-pointer"
+              >
+                <div class="text-xs sm:text-sm font-bold text-slate-900">หุ้นไทย SET50</div>
+                <div class="text-[11px] text-slate-600 truncate">5 หุ้นใหญ่ในไทย (.BK)</div>
+              </button>
+            </div>
+          </div>
+
+          <!-- Step C: One-Click Calculate vs Customize -->
+          <div class="flex flex-wrap items-center gap-2.5 pt-1">
+            <button
+              type="button"
+              id="landing-start-btn"
+              onclick="enterWorkspaceAndCalculate()"
+              class="flex-1 min-w-[210px] min-h-[50px] px-5 py-3 rounded-2xl bg-[#00D084] hover:bg-[#00B873] text-[#0A0D12] font-bold text-sm sm:text-base shadow-md shadow-[#00D084]/25 transition cursor-pointer inline-flex items-center justify-center gap-2"
+            >
+              <span>คำนวณพอร์ตทันทีเลย</span>
+              <i data-lucide="arrow-right" class="w-4 h-4"></i>
+            </button>
+
+            <button
+              type="button"
+              id="landing-customize-btn"
+              onclick="enterWorkspaceFromLanding('setup')"
+              class="min-h-[50px] px-4 py-3 rounded-2xl bg-slate-100 hover:bg-slate-200/80 text-slate-800 font-semibold text-sm transition cursor-pointer inline-flex items-center justify-center gap-1.5"
+            >
+              <i data-lucide="sliders-horizontal" class="w-4 h-4 text-slate-600"></i>
+              <span>ปรับแต่งหุ้นเองก่อน</span>
+            </button>
+          </div>
+
+          <!-- Resume calculated results if already run in this session -->
+          <button
+            type="button"
+            id="landing-resume-results-btn"
+            onclick="enterWorkspaceFromLanding('trade-plan')"
+            class="hidden w-full min-h-[42px] px-4 py-2 rounded-xl bg-[#E6FBF3] hover:bg-[#D1F7E8] text-[#008A57] border border-[#00D084]/45 font-semibold text-xs transition cursor-pointer flex items-center justify-center gap-2"
+          >
+            <i data-lucide="bar-chart-3" class="w-4 h-4"></i>
+            <span>ดูผลที่คำนวณไว้ล่าสุดในรอบนี้</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Right Column: Floating Obsidian Consumer App Mockup (#landing-preview-card) -->
+      <div class="lg:col-span-6">
+        <div id="landing-preview-card" class="rounded-3xl bg-[#0B111E] text-slate-100 border border-slate-800/90 shadow-2xl shadow-slate-900/20 overflow-hidden">
+          <!-- Mockup Top Status Header -->
+          <div class="px-4 sm:px-5 py-3.5 bg-[#101829] border-b border-slate-800/90 flex flex-wrap items-center justify-between gap-2">
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="w-2.5 h-2.5 rounded-full bg-[#00D084] shrink-0"></span>
+              <span id="landing-preview-preset-title" class="text-xs sm:text-sm font-bold text-white truncate">US Tech + BTC • ตัวอย่างหน้าจอผลลัพธ์</span>
+            </div>
+            <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-400/15 text-amber-300 border border-amber-400/30 text-[11px] font-semibold shrink-0">
+              <i data-lucide="eye" class="w-3 h-3"></i>
+              <span>ภาพตัวอย่างประกอบ • ไม่ใช่ผลคำนวณจริง</span>
+            </span>
+          </div>
+
+          <!-- 5 Interactive Module Tabs Inside App Mockup -->
+          <div class="px-3 sm:px-4 pt-3 pb-2.5 border-b border-slate-800/80 flex flex-wrap items-center gap-1.5" role="tablist" aria-label="ตัวอย่างฟีเจอร์ 5 ส่วน">
+            <button
+              type="button"
+              id="landing-preview-tab-allocation"
+              onclick="selectLandingPreviewTab('allocation')"
+              class="qf-landing-preview-tab active px-3 py-1.5 rounded-xl text-xs font-bold bg-[#00D084] text-[#0A0D12] whitespace-nowrap transition cursor-pointer"
+            >
+              สัดส่วน 4 กลยุทธ์
+            </button>
+            <button
+              type="button"
+              id="landing-preview-tab-orders"
+              onclick="selectLandingPreviewTab('orders')"
+              class="qf-landing-preview-tab px-3 py-1.5 rounded-xl text-xs font-medium bg-white/5 text-slate-300 hover:text-white whitespace-nowrap transition cursor-pointer"
+            >
+              ใบสั่งซื้อ-ขาย
+            </button>
+            <button
+              type="button"
+              id="landing-preview-tab-insights"
+              onclick="selectLandingPreviewTab('insights')"
+              class="qf-landing-preview-tab px-3 py-1.5 rounded-xl text-xs font-medium bg-white/5 text-slate-300 hover:text-white whitespace-nowrap transition cursor-pointer"
+            >
+              ข่าว &amp; แนวโน้ม
+            </button>
+            <button
+              type="button"
+              id="landing-preview-tab-backtest"
+              onclick="selectLandingPreviewTab('backtest')"
+              class="qf-landing-preview-tab px-3 py-1.5 rounded-xl text-xs font-medium bg-white/5 text-slate-300 hover:text-white whitespace-nowrap transition cursor-pointer"
+            >
+              ย้อนหลัง &amp; ขาดทุนสูงสุด
+            </button>
+            <button
+              type="button"
+              id="landing-preview-tab-goals"
+              onclick="selectLandingPreviewTab('goals')"
+              class="qf-landing-preview-tab px-3 py-1.5 rounded-xl text-xs font-medium bg-white/5 text-slate-300 hover:text-white whitespace-nowrap transition cursor-pointer"
+            >
+              ออมสู่เป้าหมาย
+            </button>
+          </div>
+
+          <!-- 5 High-Contrast Visual Preview Panels -->
+          <div class="p-4 sm:p-6 min-h-[325px] flex flex-col justify-between gap-4">
+
+            <!-- Panel 1: Allocation Ring & Live-Matched Tickers -->
+            <div id="landing-preview-panel-allocation" class="qf-landing-preview-panel space-y-4">
+              <div class="grid grid-cols-1 sm:grid-cols-12 gap-4 items-center">
+                <!-- Sleek SVG Donut Chart Graphic -->
+                <div class="sm:col-span-5 flex items-center justify-center">
+                  <div class="relative w-36 h-36 flex items-center justify-center">
+                    <svg viewBox="0 0 120 120" class="w-full h-full -rotate-90" role="img" aria-label="แผนภาพวงแหวนตัวอย่างการจัดสัดส่วนพอร์ต">
+                      <circle cx="60" cy="60" r="46" fill="none" stroke="#1E293B" stroke-width="14"></circle>
+                      <circle cx="60" cy="60" r="46" fill="none" stroke="#00D084" stroke-width="14" stroke-dasharray="104 289" stroke-dashoffset="0" stroke-linecap="butt"></circle>
+                      <circle cx="60" cy="60" r="46" fill="none" stroke="#38BDF8" stroke-width="14" stroke-dasharray="78 289" stroke-dashoffset="-106"></circle>
+                      <circle cx="60" cy="60" r="46" fill="none" stroke="#818CF8" stroke-width="14" stroke-dasharray="60 289" stroke-dashoffset="-186"></circle>
+                      <circle cx="60" cy="60" r="46" fill="none" stroke="#FBBF24" stroke-width="14" stroke-dasharray="43 289" stroke-dashoffset="-248"></circle>
+                    </svg>
+                    <div class="absolute inset-0 flex flex-col items-center justify-center text-center">
+                      <span class="text-[10px] text-slate-400">สัดส่วนพอร์ต</span>
+                      <span class="text-sm font-bold text-white">4 โมเดล</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Dynamic Preset Ticker Chips + Equal Strategy List -->
+                <div class="sm:col-span-7 space-y-3">
+                  <div>
+                    <div class="text-[11px] text-slate-400 mb-1.5">สินทรัพย์ในชุดพอร์ตที่เลือก:</div>
+                    <div id="landing-preview-tickers" class="flex flex-wrap gap-1.5">
+                      <span class="px-2.5 py-1 rounded-lg bg-[#00D084]/15 text-[#00E593] border border-[#00D084]/30 text-xs font-mono font-bold">NVDA</span>
+                      <span class="px-2.5 py-1 rounded-lg bg-sky-500/15 text-sky-300 border border-sky-400/30 text-xs font-mono font-bold">TSLA</span>
+                      <span class="px-2.5 py-1 rounded-lg bg-indigo-500/15 text-indigo-300 border border-indigo-400/30 text-xs font-mono font-bold">AMZN</span>
+                      <span class="px-2.5 py-1 rounded-lg bg-amber-500/15 text-amber-300 border border-amber-400/30 text-xs font-mono font-bold">BTC-USD</span>
+                      <span class="px-2.5 py-1 rounded-lg bg-slate-700/70 text-slate-200 border border-slate-600 text-xs font-mono font-bold">AAPL</span>
+                    </div>
+                  </div>
+
+                  <div class="grid grid-cols-2 gap-1.5 text-[11px]">
+                    <div class="px-2.5 py-2 rounded-xl bg-white/5 border border-white/10" title="Max Sharpe Ratio">
+                      <span class="font-bold text-white block">คุ้มความเสี่ยง</span>
+                      <span class="text-slate-400">เน้นกำไรเทียบเสี่ยง</span>
+                    </div>
+                    <div class="px-2.5 py-2 rounded-xl bg-white/5 border border-white/10" title="Minimum Volatility">
+                      <span class="font-bold text-white block">ผันผวนต่ำ</span>
+                      <span class="text-slate-400">เน้นนิ่ง ลดแรงเหวี่ยง</span>
+                    </div>
+                    <div class="px-2.5 py-2 rounded-xl bg-white/5 border border-white/10" title="Hierarchical Risk Parity (HRP)">
+                      <span class="font-bold text-white block">กระจายสมดุล</span>
+                      <span class="text-slate-400">เฉลี่ยเสี่ยงรอบด้าน</span>
+                    </div>
+                    <div class="px-2.5 py-2 rounded-xl bg-white/5 border border-white/10" title="Equal Weight (1/N)">
+                      <span class="font-bold text-white block">แบ่งเท่ากัน</span>
+                      <span class="text-slate-400">เท่ากันทุกสินทรัพย์</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Panel 2: Consumer Order Execution Mockup -->
+            <div id="landing-preview-panel-orders" class="qf-landing-preview-panel hidden space-y-3">
+              <div class="text-xs text-slate-300">แปลงสัดส่วนเป็นคำสั่งซื้อ-ขายจริง เลือกซื้อเศษหุ้นหรือปัดเต็มหุ้นพร้อมหักค่าธรรมเนียมได้</div>
+              <div class="rounded-2xl bg-[#11192B] border border-slate-800 divide-y divide-slate-800/90 text-xs">
+                <div class="px-3.5 py-2.5 flex items-center justify-between gap-2">
+                  <div class="flex items-center gap-2.5">
+                    <span class="px-2 py-0.5 rounded-md bg-emerald-500/20 text-[#00E593] font-bold text-[10px]">ซื้อเพิ่ม</span>
+                    <span class="font-mono font-bold text-white">หุ้นเด่นในพอร์ต</span>
+                  </div>
+                  <span class="text-slate-400 font-mono">หน่วยเต็ม / เศษหุ้น</span>
+                </div>
+                <div class="px-3.5 py-2.5 flex items-center justify-between gap-2">
+                  <div class="flex items-center gap-2.5">
+                    <span class="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 font-bold text-[10px]">ถือต่อ</span>
+                    <span class="font-mono font-bold text-white">หุ้นไทย (.BK)</span>
+                  </div>
+                  <span class="text-slate-400 font-mono">ใกล้สัดส่วนเป้าหมาย</span>
+                </div>
+                <div class="px-3.5 py-2.5 flex items-center justify-between gap-2">
+                  <div class="flex items-center gap-2.5">
+                    <span class="px-2 py-0.5 rounded-md bg-rose-500/20 text-rose-300 font-bold text-[10px]">ขายลด</span>
+                    <span class="font-mono font-bold text-white">ตัวที่เกินสัดส่วน</span>
+                  </div>
+                  <span class="text-slate-400 font-mono">โยกเงินไปตัวที่ขาด</span>
+                </div>
+              </div>
+              <div class="px-3.5 py-2 rounded-xl bg-white/5 text-[11px] text-slate-300 flex items-center justify-between gap-2">
+                <span>แสดงเงินสดคงเหลือหลังปัดเศษ</span>
+                <span class="font-semibold text-[#00E593]">ปรับค่านายหน้า (%) ได้</span>
+              </div>
+            </div>
+
+            <!-- Panel 3: Technical Signals & News Insights Mockup -->
+            <div id="landing-preview-panel-insights" class="qf-landing-preview-panel hidden space-y-3.5">
+              <div class="text-xs text-slate-300">ช่วยดูจังหวะราคาถูก-แพง แนวโน้ม และมุมมองข่าวล่าสุดก่อนตัดสินใจ</div>
+              <div class="p-3.5 rounded-2xl bg-[#11192B] border border-slate-800 space-y-2.5">
+                <div class="flex items-center justify-between text-xs flex-wrap gap-1" title="RSI-14: ตัวชี้วัดภาวะ Oversold / Neutral / Overbought">
+                  <span class="font-semibold text-white">แถบวัดจังหวะราคาเทียบอดีต</span>
+                  <span class="text-sky-300 font-mono text-[11px]">ราคาลงลึก ⇄ ปกติ ⇄ ราคาขึ้นสูง</span>
+                </div>
+                <div class="h-2.5 w-full rounded-full bg-gradient-to-r from-emerald-400 via-slate-400 to-rose-400 relative">
+                  <span class="w-3.5 h-3.5 rounded-full bg-white border-2 border-[#0B111E] absolute -top-0.5 left-[48%]"></span>
+                </div>
+              </div>
+              <div class="grid grid-cols-2 gap-2.5 text-xs">
+                <div class="p-3 rounded-2xl bg-white/5 border border-white/10" title="Momentum 1M/3M และเส้นค่าเฉลี่ยเคลื่อนที่ SMA-50/200">
+                  <div class="font-bold text-white">แนวโน้มระยะสั้น–ยาว</div>
+                  <div class="text-slate-400 mt-0.5 text-[11px]">เทียบแรงส่งราคา 1–3 เดือนและค่าเฉลี่ยย้อนหลัง</div>
+                </div>
+                <div class="p-3 rounded-2xl bg-white/5 border border-white/10">
+                  <div class="font-bold text-white">เปิด/ปิดผลข่าวได้</div>
+                  <div class="text-slate-400 mt-0.5 text-[11px]">เลือกดูโมเดลจากข้อมูลราคาเพียวๆ ได้ตลอด</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Panel 4: Walk-Forward Backtest & Drawdown Mockup -->
+            <div id="landing-preview-panel-backtest" class="qf-landing-preview-panel hidden space-y-3">
+              <div class="flex items-center justify-between text-xs gap-2" title="Walk-Forward Out-of-Sample เทียบ Equal Weight 1/N Benchmark">
+                <span class="text-slate-300 font-semibold">ทดสอบเสมือนจริงย้อนหลัง เทียบแบ่งเท่ากัน</span>
+                <span class="text-[#00E593] font-semibold text-[11px]">จำลองแบบไม่รู้อนาคต</span>
+              </div>
+              <div class="p-3 rounded-2xl bg-[#11192B] border border-slate-800">
+                <svg viewBox="0 0 360 120" class="w-full h-32" role="img" aria-label="แผนภาพจำลองกราฟทดสอบย้อนหลังเทียบการแบ่งเงินเท่ากัน">
+                  <defs>
+                    <linearGradient id="qfMockAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stop-color="#00D084" stop-opacity="0.32"></stop>
+                      <stop offset="100%" stop-color="#00D084" stop-opacity="0.0"></stop>
+                    </linearGradient>
+                  </defs>
+                  <line x1="16" y1="100" x2="344" y2="100" stroke="#334155" stroke-width="1"></line>
+                  <line x1="185" y1="14" x2="185" y2="100" stroke="#64748B" stroke-dasharray="4 4" stroke-width="1.2"></line>
+                  <path d="M16 88 Q95 78 185 58 T344 22 L344 100 L16 100 Z" fill="url(#qfMockAreaGrad)"></path>
+                  <path d="M16 88 Q95 78 185 58 T344 22" fill="none" stroke="#00D084" stroke-width="2.6"></path>
+                  <path d="M16 88 Q95 82 185 70 T344 50" fill="none" stroke="#94A3B8" stroke-dasharray="3 3" stroke-width="1.8"></path>
+                  <text x="192" y="24" font-size="10" fill="#CBD5E1">ช่วงทดสอบจริง</text>
+                  <text x="22" y="24" font-size="10" fill="#94A3B8">ช่วงข้อมูลอดีต</text>
+                </svg>
+              </div>
+              <div class="text-[11px] text-slate-400 flex items-center justify-between gap-2 flex-wrap" title="Peak-to-Trough Max Drawdown & Equal Weight 1/N Benchmark">
+                <span>• แสดงยอดขาดทุนหนักสุดในอดีตเป็นบาท</span>
+                <span>• เทียบการแบ่งเงินเท่ากันเสมอ</span>
+              </div>
+            </div>
+
+            <!-- Panel 5: DCA Goal Projection Mockup -->
+            <div id="landing-preview-panel-goals" class="qf-landing-preview-panel hidden space-y-3">
+              <div class="text-xs text-slate-300" title="Dollar-Cost Averaging (DCA)">จำลองแผนออมเพิ่มทุกเดือนสู่เป้าหมายเกษียณหรือสร้างความมั่งคั่ง</div>
+              <div class="p-3 rounded-2xl bg-[#11192B] border border-slate-800">
+                <svg viewBox="0 0 360 110" class="w-full h-28" role="img" aria-label="แผนภาพจำลองการออมรายเดือน DCA">
+                  <path d="M20 92 L95 80 L175 65 L255 46 L340 22" fill="none" stroke="#00D084" stroke-width="2.6"></path>
+                  <path d="M20 92 L95 85 L175 78 L255 71 L340 64" fill="none" stroke="#64748B" stroke-dasharray="4 3" stroke-width="1.8"></path>
+                  <text x="205" y="22" font-size="10" fill="#00E593">มูลค่าพอร์ตจำลอง</text>
+                  <text x="215" y="82" font-size="10" fill="#94A3B8">เงินต้นสะสม</text>
+                </svg>
+              </div>
+              <div class="grid grid-cols-4 gap-1.5 text-[11px] text-center">
+                <span class="py-1.5 rounded-lg bg-white/5 text-slate-200">เกษียณ</span>
+                <span class="py-1.5 rounded-lg bg-white/5 text-slate-200">ปันผล</span>
+                <span class="py-1.5 rounded-lg bg-white/5 text-slate-200">เติบโต</span>
+                <span class="py-1.5 rounded-lg bg-white/5 text-slate-200">รักษาเงินต้น</span>
+              </div>
+            </div>
+
+            <!-- Floating Card Footer Action -->
+            <div class="pt-3 border-t border-slate-800/80 flex items-center justify-between gap-2 text-[11px]">
+              <span class="text-slate-400">ราคาจริงดึงตามตลาด ณ เวลาที่คุณกดคำนวณ</span>
+              <button
+                type="button"
+                onclick="enterWorkspaceAndCalculate()"
+                class="font-bold text-[#00E593] hover:text-[#00D084] inline-flex items-center gap-1 cursor-pointer shrink-0"
+              >
+                <span>คำนวณด้วยชุดนี้เลย</span>
+                <i data-lucide="chevron-right" class="w-3.5 h-3.5"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SECTION 2: 3 CORE VALUE PILLARS -->
+    <div id="features" class="pt-4 border-t border-slate-200/80 space-y-6">
+      <div id="landing-workflow-section" class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="p-6 rounded-3xl bg-white border border-slate-200/90 shadow-2xs space-y-3">
+          <div class="w-11 h-11 rounded-2xl bg-[#E6FBF3] text-[#008A57] flex items-center justify-center shrink-0">
+            <i data-lucide="calculator" class="w-5 h-5"></i>
+          </div>
+          <div class="text-xs font-mono font-bold uppercase tracking-wider text-[#008A57]">Quantitative Allocation</div>
+          <p class="text-sm sm:text-base font-bold text-slate-900 leading-relaxed">
+            คำนวณสัดส่วนสินทรัพย์และบริหารความเสี่ยงด้วยโมเดลทางการเงินที่เป็นมาตรฐานสากล
+          </p>
+        </div>
+
+        <div class="p-6 rounded-3xl bg-white border border-slate-200/90 shadow-2xs space-y-3">
+          <div class="w-11 h-11 rounded-2xl bg-blue-50 text-blue-700 flex items-center justify-center shrink-0">
+            <i data-lucide="radio" class="w-5 h-5"></i>
+          </div>
+          <div class="text-xs font-mono font-bold uppercase tracking-wider text-blue-700">Real-Time Market &amp; News</div>
+          <p class="text-sm sm:text-base font-bold text-slate-900 leading-relaxed">
+            อัปเดตข้อมูลราคาและคัดกรองข่าวสำคัญที่มีนัยยะต่อพอร์ตการลงทุนแบบทันท่วงที
+          </p>
+        </div>
+
+        <div class="p-6 rounded-3xl bg-white border border-slate-200/90 shadow-2xs space-y-3">
+          <div class="w-11 h-11 rounded-2xl bg-indigo-50 text-indigo-700 flex items-center justify-center shrink-0">
+            <i data-lucide="sliders" class="w-5 h-5"></i>
+          </div>
+          <div class="text-xs font-mono font-bold uppercase tracking-wider text-indigo-700">Full Control for DIY</div>
+          <p class="text-sm sm:text-base font-bold text-slate-900 leading-relaxed">
+            ปรับแต่งน้ำหนักสินทรัพย์และทำ Backtest ได้อย่างอิสระ เพื่อให้พอร์ตสะท้อนกลยุทธ์ของคุณอย่างแท้จริง
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- SECTION 3: DATA TRANSPARENCY & METHODOLOGY (3 Simple Steps) -->
+    <div id="methodology" class="rounded-3xl bg-slate-900 text-white p-6 sm:p-8 space-y-6 border border-slate-800">
+      <div class="flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div class="space-y-1.5">
+          <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/15 border border-blue-400/25 text-blue-300 text-xs font-mono font-semibold uppercase tracking-wider">Data Transparency &amp; Methodology</span>
+          <h2 class="text-xl sm:text-2xl font-extrabold text-white">กระบวนการคำนวณอย่างเป็นระบบใน 3 ขั้นตอน</h2>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="p-5 rounded-2xl bg-slate-800/80 border border-slate-700/80 space-y-2">
+          <div class="text-xs font-mono font-bold text-[#00D084]">STEP 01</div>
+          <h3 class="text-base font-bold text-white">1. ดึงข้อมูลราคาและสถิติตลาดจริง</h3>
+          <p class="text-xs text-slate-300 leading-relaxed">รวบรวมข้อมูลราคาย้อนหลังรายวัน อัตราผลตอบแทน ความผันผวน และความสัมพันธ์ระหว่างสินทรัพย์ (Covariance Matrix)</p>
+        </div>
+
+        <div class="p-5 rounded-2xl bg-slate-800/80 border border-slate-700/80 space-y-2">
+          <div class="text-xs font-mono font-bold text-sky-400">STEP 02</div>
+          <h3 class="text-base font-bold text-white">2. วิเคราะห์ปัจจัยข่าวสารปัจจุบัน</h3>
+          <p class="text-xs text-slate-300 leading-relaxed">คัดกรองกระแสข่าวเศรษฐกิจและจัดกลุ่มสัญญาณบวก-กลาง-ลบ (Sentiment) เพื่อประเมินผลกระทบต่อแต่ละสินทรัพย์</p>
+        </div>
+
+        <div class="p-5 rounded-2xl bg-slate-800/80 border border-slate-700/80 space-y-2">
+          <div class="text-xs font-mono font-bold text-indigo-400">STEP 03</div>
+          <h3 class="text-base font-bold text-white">3. คำนวณสัดส่วนที่เหมาะสมที่สุดตามระดับความเสี่ยง</h3>
+          <p class="text-xs text-slate-300 leading-relaxed">ผสานโมเดล Modern Portfolio Theory (MPT) เพื่อหาสัดส่วนพอร์ตที่สมดุลตามระดับความเสี่ยงของนักลงทุน DIY</p>
+        </div>
+      </div>
+
+      <div id="market-data" class="pt-4 border-t border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div class="flex items-center gap-2.5 text-xs sm:text-sm font-mono font-semibold text-emerald-300">
+          <i data-lucide="database" class="w-4 h-4 shrink-0"></i>
+          <span>Market Data sourced via Yahoo Finance / SET Historical Database</span>
+        </div>
+        <button
+          type="button"
+          onclick="enterWorkspaceFromLanding('setup')"
+          class="min-h-[42px] px-5 py-2 rounded-xl bg-[#00D084] hover:bg-[#00B873] text-[#0A0D12] font-bold text-xs sm:text-sm transition cursor-pointer inline-flex items-center justify-center gap-1.5 shrink-0"
+        >
+          <span>เข้าสู่หน้าตั้งค่าพอร์ตเต็มรูปแบบ</span>
+          <i data-lucide="arrow-right" class="w-4 h-4"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- SECTION 4: PROMINENT FINANCIAL DISCLAIMER & FOOTER LINKS -->
+    <div class="space-y-4">
+      <div role="note" aria-label="คำเตือนทางการเงิน" class="rounded-2xl bg-amber-50 border border-amber-200 p-4 sm:p-5 flex items-start gap-3.5">
+        <div class="w-9 h-9 rounded-xl bg-amber-100 border border-amber-300 text-amber-800 flex items-center justify-center shrink-0">
+          <i data-lucide="alert-triangle" class="w-5 h-5"></i>
+        </div>
+        <div class="space-y-1 text-xs sm:text-sm text-amber-950 leading-relaxed">
+          <p class="font-medium">
+            คำเตือน: ข้อมูลและการคำนวณบนแพลตฟอร์มนี้มีวัตถุประสงค์เพื่อใช้เป็นเครื่องมือประกอบการตัดสินใจสำหรับนักลงทุนเท่านั้น มิใช่คำแนะนำในการซื้อขายหลักทรัพย์ ผลการดำเนินงานในอดีตมิได้เป็นสิ่งยืนยันถึงผลการดำเนินงานในอนาคต
+          </p>
+          <p class="text-[11px] text-amber-800">
+            ราคาปิดตลาดและอัตราแลกเปลี่ยนจาก Yahoo Finance / BOT / US 13W T-Bill • <b>ผลในอดีตไม่รับประกันผลตอบแทนในอนาคต ผลลัพธ์นี้ไม่ใช่คำแนะนำการลงทุนเฉพาะบุคคล</b>
+          </p>
+        </div>
+      </div>
+
+      <div class="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
+        <div class="font-semibold text-slate-700">QuantFolio — Institutional-Grade DIY Portfolio Engine</div>
+        <div class="flex items-center gap-4">
+          <button type="button" onclick="openHelpGuideModal()" class="hover:text-slate-900 underline underline-offset-4 cursor-pointer">Privacy Policy</button>
+          <button type="button" onclick="openHelpGuideModal()" class="hover:text-slate-900 underline underline-offset-4 cursor-pointer">Terms of Use</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- MAIN WORKSPACE (Revealed when user starts or selects a preset/saved portfolio) -->
+  <main id="main-app-workspace" class="hidden relative z-10 flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-3.5 sm:py-4 space-y-4">
 
     <!-- STICKY TOP NAV (Desktop >=768px) / DIME! BOTTOM BAR (Mobile <768px) -->
-    <nav id="main-nav-tabs" class="md:sticky md:top-[68px] z-30 fin-card p-1.5 bg-white/95 backdrop-blur-md flex items-center justify-between gap-2 shadow-sm" aria-label="Workspace Tabs">
-      <div class="qf-nav-tabs-list flex items-center gap-1.5 w-full md:w-auto">
+    <nav id="main-nav-tabs" class="md:sticky md:top-[68px] z-30 fin-card p-1.5 bg-white/95 backdrop-blur-md flex flex-wrap items-center justify-between gap-2 shadow-sm" aria-label="Workspace Tabs">
+      <div class="qf-nav-tabs-list flex items-center gap-1.5 w-full md:w-auto overflow-x-auto">
         <button type="button" id="main-tab-setup" onclick="switchAppTab('setup')" class="qf-tab-btn active">
           <span class="qf-tab-step">1</span>
           <span class="hidden md:inline">ตั้งค่าพอร์ต</span>
@@ -268,7 +927,7 @@
       </div>
 
       <!-- Global Simple vs Detailed View Switcher (Desktop) -->
-      <div class="qf-view-depth-wrap hidden md:flex items-center gap-1 bg-slate-100/90 p-1 rounded-xl border border-slate-200/80 shrink-0 ml-auto" title="สลับระหว่างโหมดสรุปอ่านง่าย กับโหมดแสดงกราฟและตารางสถิติเพิ่ม">
+      <div class="qf-view-depth-wrap hidden md:flex items-center gap-1 bg-slate-100/90 p-1 rounded-xl border border-slate-200/80 shrink-0 ml-auto" title="สลับระหว่างโหมดสรุปอ่านง่าย กับโหมดละเอียดสำหรับดูกราฟและตารางสถิติเพิ่ม">
         <button
           type="button"
           id="view-depth-btn-simple"
@@ -276,7 +935,7 @@
           class="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-[#00D084] text-[#0A0D12] shadow-2xs transition cursor-pointer inline-flex items-center gap-1 whitespace-nowrap"
         >
           <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
-          <span>สรุปอ่านง่าย</span>
+          <span>อ่านง่าย</span>
         </button>
         <button
           type="button"
@@ -285,7 +944,7 @@
           class="px-2.5 py-1.5 rounded-lg text-[11px] font-medium text-slate-600 hover:text-slate-900 transition cursor-pointer inline-flex items-center gap-1 whitespace-nowrap"
         >
           <i data-lucide="layers" class="w-3.5 h-3.5"></i>
-          <span>โหมดละเอียด (กราฟ &amp; ตารางเพิ่ม)</span>
+          <span>ละเอียด + กราฟ</span>
         </button>
       </div>
     </nav>
@@ -353,46 +1012,49 @@
         <div class="p-3 sm:p-5 bg-[#E6FBF3]/35 min-w-0">
           <div class="dime-label-12 flex items-center justify-between gap-1">
             <span class="truncate">ผลตอบแทนคาดหวัง/ปี</span>
-            <i data-lucide="trending-up" class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#00A86B] shrink-0"></i>
+            <i data-lucide="trending-up" class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#00A86B] hidden sm:block shrink-0"></i>
           </div>
-          <div id="kpi-return" class="text-xl sm:text-3xl font-bold font-mono text-[#00A86B] mt-1 tracking-tight tabular-nums whitespace-nowrap">--</div>
-          <div id="kpi-profit-money" class="text-[10px] sm:text-[11px] text-[#008A57] bg-[#E6FBF3] border border-[#00D084]/40 rounded-full px-2 py-0.5 mt-1.5 inline-block font-semibold tabular-nums max-w-full truncate">รอคำนวณ</div>
+          <div id="kpi-return" class="text-xl sm:text-3xl font-bold font-mono text-[#00A86B] mt-1 tracking-tight tabular-nums">--</div>
+          <div id="kpi-profit-money" class="text-[10px] sm:text-[11px] text-[#008A57] bg-[#E6FBF3] border border-[#00D084]/40 rounded-xl px-2 py-0.5 mt-1.5 inline-block font-semibold tabular-nums max-w-full break-words leading-snug">พร้อมคำนวณ</div>
         </div>
 
         <div class="p-3 sm:p-5 bg-white min-w-0">
           <div class="dime-label-12 flex items-center justify-between gap-1">
-            <span class="inline-flex items-center gap-1 truncate">การแกว่งของพอร์ต/ปี
-              <span class="qf-tip" tabindex="0">?<span class="qf-tip-box"><b>ความผันผวน (Volatility)</b> วัดการแกว่งขึ้นลงของราคาต่อปี ยิ่งต่ำหมายถึงราคาสม่ำเสมอ ไม่เหวี่ยงแรง</span></span>
+            <span class="inline-flex items-center gap-1 min-w-0">
+              <span class="truncate">ความผันผวน/ปี</span>
+              <span class="qf-tip shrink-0" tabindex="0">?<span class="qf-tip-box"><b>ความผันผวน (Volatility)</b> วัดการแกว่งขึ้นลงของราคาต่อปี ยิ่งต่ำหมายถึงราคาสม่ำเสมอ ไม่เหวี่ยงแรง</span></span>
             </span>
-            <i data-lucide="activity" class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-500 shrink-0"></i>
+            <i data-lucide="activity" class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-500 hidden sm:block shrink-0"></i>
           </div>
-          <div id="kpi-volatility" class="text-xl sm:text-3xl font-bold font-mono text-[#1A1D1F] mt-1 tracking-tight tabular-nums whitespace-nowrap">--</div>
-          <span id="kpi-risk-badge" class="inline-block text-[10px] sm:text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 mt-1.5 max-w-full truncate">รอคำนวณ</span>
+          <div id="kpi-volatility" class="text-xl sm:text-3xl font-bold font-mono text-[#1A1D1F] mt-1 tracking-tight tabular-nums">--</div>
+          <span id="kpi-risk-badge" class="inline-block text-[10px] sm:text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 mt-1.5 max-w-full truncate">พร้อมคำนวณ</span>
         </div>
 
         <div class="p-3 sm:p-5 bg-[#FFF0F0]/45 min-w-0">
           <div class="dime-label-12 flex items-center justify-between gap-1">
-            <span class="inline-flex items-center gap-1 truncate">ย่อตัวหนักสุดในอดีต
-              <span class="qf-tip" tabindex="0">?<span class="qf-tip-box"><b>Max Drawdown</b> คือมูลค่าที่พอร์ตเคยลดลงหนักที่สุดจากจุดสูงสุดไปต่ำสุดในอดีต แปลงเป็นจำนวนเงินให้เห็นภาพความเสี่ยงจริง</span></span>
+            <span class="inline-flex items-center gap-1 min-w-0">
+              <span class="truncate">ขาดทุนหนักสุดในอดีต</span>
+              <span class="qf-tip shrink-0" tabindex="0">?<span class="qf-tip-box"><b>Max Drawdown</b> คือมูลค่าที่พอร์ตเคยลดลงหนักที่สุดจากจุดสูงสุดไปต่ำสุดในอดีต แปลงเป็นจำนวนเงินให้เห็นภาพความเสี่ยงจริง</span></span>
             </span>
-            <i data-lucide="trending-down" class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#FF5A5F] shrink-0"></i>
+            <i data-lucide="trending-down" class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#FF5A5F] hidden sm:block shrink-0"></i>
           </div>
-          <div id="kpi-mdd-baht" class="text-xl sm:text-3xl font-bold font-mono text-[#D9383E] mt-1 tracking-tight tabular-nums whitespace-nowrap">--</div>
-          <div class="flex items-center justify-between text-[10px] sm:text-[11px] mt-1.5 gap-1">
+          <div id="kpi-mdd-baht" class="text-xl sm:text-3xl font-bold font-mono text-[#D9383E] mt-1 tracking-tight tabular-nums">--</div>
+          <div class="flex flex-wrap items-center justify-between text-[10px] sm:text-[11px] mt-1.5 gap-x-1.5 gap-y-0.5">
             <span id="kpi-mdd" class="font-mono font-bold text-[#D9383E] tabular-nums shrink-0">--</span>
-            <span id="kpi-mdd-remaining" class="text-[#6C757D] font-medium truncate tabular-nums">--</span>
+            <span id="kpi-mdd-remaining" class="text-[#6C757D] font-medium tabular-nums break-words">--</span>
           </div>
         </div>
 
         <div class="p-3 sm:p-5 bg-white min-w-0">
           <div class="dime-label-12 flex items-center justify-between gap-1">
-            <span class="inline-flex items-center gap-1 truncate">ความคุ้มค่า/ความเสี่ยง
-              <span class="qf-tip" tabindex="0">?<span class="qf-tip-box"><b>Sharpe Ratio</b> วัดผลตอบแทนส่วนเพิ่มที่ได้ต่อ 1 หน่วยความเสี่ยง ยิ่งสูงกว่า 1.0 ยิ่งคุ้มค่า</span></span>
+            <span class="inline-flex items-center gap-1 min-w-0">
+              <span class="truncate">ความคุ้มค่า/เสี่ยง</span>
+              <span class="qf-tip shrink-0" tabindex="0">?<span class="qf-tip-box"><b>Sharpe Ratio</b> วัดผลตอบแทนส่วนเพิ่มที่ได้ต่อ 1 หน่วยความเสี่ยง ยิ่งสูงกว่า 1.0 ยิ่งคุ้มค่า</span></span>
             </span>
-            <i data-lucide="award" class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-600 shrink-0"></i>
+            <i data-lucide="award" class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-600 hidden sm:block shrink-0"></i>
           </div>
-          <div id="kpi-sharpe" class="text-xl sm:text-3xl font-bold font-mono text-blue-600 mt-1 tracking-tight tabular-nums whitespace-nowrap">--</div>
-          <span id="kpi-sharpe-badge" class="inline-block text-[10px] sm:text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 mt-1.5 max-w-full truncate">รอคำนวณ</span>
+          <div id="kpi-sharpe" class="text-xl sm:text-3xl font-bold font-mono text-blue-600 mt-1 tracking-tight tabular-nums">--</div>
+          <span id="kpi-sharpe-badge" class="inline-block text-[10px] sm:text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 mt-1.5 max-w-full truncate">พร้อมคำนวณ</span>
         </div>
       </div>
 
@@ -411,6 +1073,16 @@
       <!-- Compact Single-Row Header & Segmented Mode Pill Switcher -->
       <div class="fin-card px-4 sm:px-6 py-3.5 bg-white flex flex-col lg:flex-row lg:items-center justify-between gap-3">
         <div class="flex items-center gap-3 min-w-0">
+          <button
+            type="button"
+            id="back-to-landing-btn"
+            onclick="showLandingShowcase()"
+            title="กลับหน้าหลักแนะนำระบบ"
+            class="min-h-[38px] px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200/80 text-slate-700 border border-slate-200 text-xs font-semibold transition cursor-pointer inline-flex items-center gap-1 shrink-0"
+          >
+            <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
+            <span class="hidden sm:inline">หน้าหลัก</span>
+          </button>
           <div class="w-10 h-10 rounded-xl bg-[#E6FBF3] border border-[#00D084]/40 text-[#008A57] flex items-center justify-center shrink-0">
             <i data-lucide="sliders-horizontal" class="w-5 h-5"></i>
           </div>
@@ -508,6 +1180,22 @@
                 id="search-dropdown"
                 class="hidden absolute left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-64 overflow-y-auto divide-y divide-slate-100"
               ></div>
+            </div>
+
+            <!-- Quick-Add Popular Stock Catalog by Category (One-Click Add/Toggle) -->
+            <div id="quick-stock-catalog-box" class="rounded-2xl bg-slate-50/90 border border-slate-200/80 p-3 space-y-2.5">
+              <div class="flex items-center justify-between gap-2 flex-wrap">
+                <span class="text-xs font-bold text-slate-700">เลือกหุ้นยอดนิยมตามหมวดหมู่ (กดเพื่อเพิ่ม/ถอดจากพอร์ต):</span>
+                <div class="inline-flex flex-wrap gap-1 bg-white p-1 rounded-xl border border-slate-200/90 text-[11px]" role="tablist" aria-label="หมวดหมู่หุ้นยอดนิยม">
+                  <button type="button" id="stock-cat-tab-thai_set50" onclick="selectStockCatalogCategory('thai_set50')" class="px-2.5 py-1 rounded-lg font-bold bg-[#00D084] text-[#0A0D12] transition cursor-pointer">หุ้นไทย SET50</button>
+                  <button type="button" id="stock-cat-tab-us_equities" onclick="selectStockCatalogCategory('us_equities')" class="px-2.5 py-1 rounded-lg font-medium text-slate-600 hover:text-slate-900 transition cursor-pointer">หุ้นสหรัฐฯ</button>
+                  <button type="button" id="stock-cat-tab-etf_gold_bonds" onclick="selectStockCatalogCategory('etf_gold_bonds')" class="px-2.5 py-1 rounded-lg font-medium text-slate-600 hover:text-slate-900 transition cursor-pointer">ETF / ทอง / พันธบัตร</button>
+                  <button type="button" id="stock-cat-tab-crypto" onclick="selectStockCatalogCategory('crypto')" class="px-2.5 py-1 rounded-lg font-medium text-slate-600 hover:text-slate-900 transition cursor-pointer">คริปโต</button>
+                </div>
+              </div>
+              <div id="quick-stock-catalog-chips" class="flex flex-wrap gap-1.5 max-h-[116px] overflow-y-auto pr-0.5">
+                <!-- Populated by renderQuickStockCatalog() in app.js -->
+              </div>
             </div>
 
             <div id="selected-tickers-container" class="flex-1 divide-y divide-slate-100 border border-slate-200/90 rounded-2xl bg-white min-h-[260px] max-h-[360px] overflow-y-auto">
@@ -624,7 +1312,7 @@
                 <div id="setup-advanced-drawer" class="hidden p-4 pt-3 border-t border-slate-200 bg-white space-y-3.5">
                   <!-- FX Rate -->
                   <div class="flex items-center justify-between gap-2">
-                    <span class="text-xs font-semibold text-slate-700">เรท FX (USD ➔ บาท)</span>
+                    <span class="text-xs font-semibold text-slate-700">อัตราแลกเปลี่ยน (ดอลลาร์ ➔ บาท)</span>
                     <div class="flex items-center gap-1.5">
                       <input
                         type="number"
@@ -692,8 +1380,8 @@
                         onchange="toggleNewsSignalAdjustment(this.checked); refreshAdvancedSummaryLabel();"
                         class="mt-0.5 rounded border-blue-300 text-blue-700 focus:ring-blue-500"
                       />
-                      <span class="text-xs text-slate-700 font-medium leading-snug">
-                        ปรับน้ำหนักตามข่าวตลาด &amp; สัญญาณแนวโน้ม (RSI/SMA)
+                      <span class="text-xs text-slate-700 font-medium leading-snug" title="ใช้สัญญาณ RSI และเส้นค่าเฉลี่ย SMA ร่วมกับคะแนนข่าวตลาด">
+                        ปรับน้ำหนักตามข่าวตลาด &amp; แนวโน้มราคา
                       </span>
                     </label>
                   </div>
@@ -878,16 +1566,16 @@
                 />
                 <span class="text-slate-500 font-mono">%</span>
               </div>
-              <span id="order-assumptions-summary" class="text-slate-600">
-                สมมติฐาน: ซื้อเป็นเศษหุ้นได้ (4 ตำแหน่ง) • ค่านายหน้า 0.15% • ยังไม่รวม FX Spread / VAT ค่านายหน้า / ภาษีปันผล
+              <span id="order-assumptions-summary" class="text-slate-600" title="รองรับเศษหุ้น 4 ตำแหน่ง (Fractional) และยังไม่รวม FX Spread / VAT ค่านายหน้า / ภาษีปันผล">
+                สมมติฐาน: ซื้อเป็นเศษหุ้นได้ (ทศนิยม 4 ตำแหน่ง) • ค่านายหน้า 0.15% • ยังไม่รวมส่วนต่างแลกเงิน / VAT / ภาษีปันผล
               </span>
             </div>
             <div id="order-commission-estimate" class="font-mono font-semibold text-emerald-700 shrink-0">กันสำรอง: --</div>
           </div>
 
-          <!-- Checklist Cards Grid (Immediate Clean View) -->
+          <!-- Checklist Cards Grid (2-Col Balanced Cards so large amounts never overlap ticker names) -->
           <div id="orders-checklist-cards-wrapper">
-            <div id="orders-checklist-cards-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <div id="orders-checklist-cards-grid" class="grid grid-cols-1 md:grid-cols-2 gap-4">
               <!-- Populated by JS -->
             </div>
           </div>
@@ -1062,14 +1750,17 @@
       <div id="tab-body-insights" class="space-y-5">
       <div id="section-market-news" class="space-y-5">
 
-        <!-- Card 3.1: Compact Header & Signal Mode Switcher -->
-        <div class="fin-card step-accent-emerald p-5 sm:p-6">
+        <!-- Card 3.1: Compact Header, Signal Mode Switcher & Per-Stock Filter Bar -->
+        <div class="fin-card step-accent-emerald p-5 sm:p-6 space-y-4">
           <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3.5">
             <div>
               <div class="flex items-center gap-2 flex-wrap">
                 <span class="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-[#00D084] text-[#0A0D12]">ข่าว &amp; สัญญาณตลาด</span>
-                <h3 class="text-lg sm:text-[22px] font-semibold text-slate-900 tracking-tight">ข่าวการเงินล่าสุดและแนวโน้มหุ้นในพอร์ต</h3>
+                <h3 class="text-lg sm:text-[22px] font-semibold text-slate-900 tracking-tight">สรุปแนวโน้ม จังหวะราคา และข่าวล่าสุดครบทุกหุ้นในพอร์ต</h3>
               </div>
+              <p class="text-xs sm:text-sm text-slate-600 mt-1">
+                แปลสัญญาณเทคนิคและกระแสข่าวของหุ้นทุกตัวที่คุณเลือกเป็นภาษาเข้าใจง่าย เพื่อดูว่าตัวไหนน่าสะสม ตัวไหนควรแบ่งไม้ซื้อ หรือตัวไหนควรระวัง
+              </p>
             </div>
 
             <div class="flex flex-wrap items-center gap-2 shrink-0">
@@ -1092,13 +1783,40 @@
               </button>
             </div>
           </div>
+
+          <!-- 3-Zone Plain-Thai Quick Summary + Stock Filter Pills -->
+          <div class="pt-3 border-t border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+            <div id="insights-summary-badges" class="flex flex-wrap items-center gap-2 text-xs">
+              <span class="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 font-semibold">🟢 สัญญาณบวกน่าสะสม: <b id="insights-count-positive" class="font-mono">0</b> ตัว</span>
+              <span class="px-2.5 py-1 rounded-full bg-blue-50 text-blue-800 border border-blue-200 font-semibold">🔵 สมดุล/ถือตามแผน: <b id="insights-count-neutral" class="font-mono">0</b> ตัว</span>
+              <span class="px-2.5 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-200 font-semibold">🟡 ร้อนแรง/ควรระวัง: <b id="insights-count-caution" class="font-mono">0</b> ตัว</span>
+            </div>
+
+            <div class="flex items-center gap-1.5 flex-wrap" id="insights-ticker-filter-bar" role="tablist" aria-label="กรองดูข้อมูลรายหุ้น">
+              <!-- Populated by renderNewsAndSignalSection() in app.js -->
+            </div>
+          </div>
         </div>
 
-        <!-- Card 3.2 (Upfront): Live Market News Bento Grid -->
+        <!-- Card 3.2 (Upfront — 100% All Selected Portfolio Stocks): Per-Stock Easy-Read Trend, Price Gauge & News Cards -->
+        <div class="fin-card p-5 sm:p-6 space-y-4">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <div>
+              <h4 class="dime-header-16">เจาะลึกแนวโน้ม จังหวะราคา และข่าวเด่นรายหุ้น (ครบทุกตัวในพอร์ต)</h4>
+              <p class="text-xs text-slate-500 mt-0.5">หลอดสีแสดงโซนราคา: <span class="text-emerald-700 font-semibold">ซ้าย = ราคาอ่อนตัวน่าสะสม</span> • <span class="text-slate-700 font-semibold">กลาง = ราคาสมดุลปกติ</span> • <span class="text-rose-600 font-semibold">ขวา = ราคาร้อนแรงระวังไล่ราคา</span></p>
+            </div>
+            <span id="insights-stocks-coverage-badge" class="px-2.5 py-1 rounded-full bg-[#E6FBF3] text-[#008A57] border border-[#00D084]/40 text-xs font-bold">แสดงครบทุกหุ้นในพอร์ต</span>
+          </div>
+          <div id="insights-stock-cards-grid" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <!-- Populated by renderNewsAndSignalSection() in app.js -->
+          </div>
+        </div>
+
+        <!-- Card 3.3 (Upfront): Live Market News Bento Grid (All Portfolio Stocks Represented) -->
         <div class="fin-card p-5 sm:p-6 space-y-3.5">
           <div class="flex items-center justify-between flex-wrap gap-2">
             <div>
-              <h4 class="dime-header-16">ข่าวสารตลาดล่าสุดรายหุ้น</h4>
+              <h4 class="dime-header-16">รวมพาดหัวข่าวและบทความการเงินล่าสุดของหุ้นในพอร์ต</h4>
             </div>
             <span id="news-count-badge" class="dime-pill-up">กำลังโหลดข่าวตลาด...</span>
           </div>
@@ -1114,7 +1832,7 @@
           >
             <div class="flex items-center gap-2.5 min-w-0">
               <span class="px-2.5 py-0.5 rounded-md bg-[#E6FBF3] text-[#008A57] border border-[#00D084]/40 text-[11px] font-semibold shrink-0">รายละเอียดเพิ่ม</span>
-              <span class="text-sm font-semibold text-slate-900 truncate">ตารางสัญญาณเทคนิครายหุ้น (RSI-14, SMA-50/200) &amp; คำแนะนำจังหวะเข้าซื้อ</span>
+              <span class="text-sm font-semibold text-slate-900 truncate" title="ดัชนีเทคนิค RSI-14, SMA-50/200 และมุมมองข่าวรายหุ้น">ตารางวิเคราะห์จังหวะราคา &amp; แนวโน้มรายหุ้น</span>
             </div>
             <i id="deep-dive-chevron-insights" data-lucide="chevron-down" class="w-4 h-4 text-slate-500 transition-transform shrink-0"></i>
           </button>
@@ -1154,41 +1872,41 @@
         <div class="fin-card step-accent-rose p-5 sm:p-6 space-y-4">
           <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div class="flex items-center gap-2.5 flex-wrap">
-              <span class="dime-pill-down">Stress Test</span>
-              <h3 class="text-lg sm:text-[22px] font-semibold text-slate-900 tracking-tight">จำลองจังหวะย่อตัวหนักสุดในอดีตเทียบเงินต้น</h3>
+              <span class="dime-pill-down" title="Stress Test: ตรวจผลกระทบหากเกิดวิกฤตตลาดซ้ำรอยอดีต">ทดสอบช่วงวิกฤต</span>
+              <h3 class="text-lg sm:text-[22px] font-semibold text-slate-900 tracking-tight">จำลองจังหวะขาดทุนหนักสุดในอดีตเทียบเงินต้น</h3>
             </div>
           </div>
 
           <!-- 4 Hero Stress KPI Tiles (No sub-card numbering) -->
-          <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3.5">
-            <div class="bg-slate-50 p-3.5 sm:p-4 rounded-2xl border border-slate-200">
+          <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+            <div class="bg-slate-50 p-3.5 sm:p-4 rounded-2xl border border-slate-200 min-w-0">
               <div class="dime-label-12">เงินต้นตั้งต้น</div>
               <div id="bt-dd-initial-budget" class="text-slate-900 mt-1 tabular-nums">--</div>
             </div>
 
-            <div class="bg-rose-50/40 p-3.5 sm:p-4 rounded-2xl border border-rose-200">
+            <div class="bg-rose-50/40 p-3.5 sm:p-4 rounded-2xl border border-rose-200 min-w-0">
               <div class="dime-label-12 !text-rose-700">ย่อตัวสูงสุดในอดีต</div>
               <div id="bt-dd-loss-baht" class="text-rose-600 mt-1 tabular-nums">--</div>
-              <div id="bt-dd-loss-pct" class="text-[13px] font-semibold text-rose-600 mt-0.5 tabular-nums">--</div>
+              <div id="bt-dd-loss-pct" class="text-[13px] font-semibold text-rose-600 mt-0.5 tabular-nums break-words">--</div>
             </div>
 
-            <div class="bg-emerald-50/35 p-3.5 sm:p-4 rounded-2xl border border-emerald-200">
+            <div class="bg-emerald-50/35 p-3.5 sm:p-4 rounded-2xl border border-emerald-200 min-w-0">
               <div class="dime-label-12 !text-emerald-800">เงินคงเหลือต่ำสุด</div>
               <div id="bt-dd-remaining-baht" class="text-emerald-700 mt-1 tabular-nums">--</div>
             </div>
 
-            <div class="bg-slate-50 p-3.5 sm:p-4 rounded-2xl border border-slate-200">
+            <div class="bg-slate-50 p-3.5 sm:p-4 rounded-2xl border border-slate-200 min-w-0">
               <div class="dime-label-12">ช่วงเวลาจุดต่ำสุด</div>
-              <div id="bt-dd-period" class="text-base sm:text-xl font-bold font-mono text-slate-900 mt-1 tabular-nums">--</div>
-              <div id="bt-dd-recovery" class="dime-label-12 mt-0.5"></div>
+              <div id="bt-dd-period" class="text-sm sm:text-base font-bold font-mono text-slate-900 mt-1 tabular-nums leading-snug break-words">--</div>
+              <div id="bt-dd-recovery" class="dime-label-12 mt-0.5 break-words"></div>
             </div>
           </div>
 
           <!-- Dime!-Style Stacked Survival Bar -->
           <div class="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-1.5">
             <div class="flex items-center justify-between text-[13px] flex-wrap gap-2">
-              <span class="font-semibold text-emerald-700">มูลค่าพอร์ตจุดต่ำสุด: <span id="bt-bar-keep-label" class="font-mono font-bold tabular-nums">--</span></span>
-              <span class="font-semibold text-rose-600">ย่อตัวสูงสุดจากจุดสูงสุด: <span id="bt-bar-lose-label" class="font-mono font-bold tabular-nums">--</span></span>
+              <span class="font-semibold text-emerald-700 min-w-0 break-words">มูลค่าพอร์ตจุดต่ำสุด: <span id="bt-bar-keep-label" class="font-mono font-bold tabular-nums">--</span></span>
+              <span class="font-semibold text-rose-600 min-w-0 break-words">ย่อตัวสูงสุดจากจุดสูงสุด: <span id="bt-bar-lose-label" class="font-mono font-bold tabular-nums">--</span></span>
             </div>
             <div class="w-full h-3 rounded-full overflow-hidden flex gap-0.5 p-0.5 bg-slate-200/70">
               <div id="bt-bar-keep-fill" class="h-full bg-[#00D084] rounded-l-full transition-all duration-300" style="width: 50%"></div>
@@ -1203,7 +1921,7 @@
             <div>
               <h4 class="dime-header-16 inline-flex items-center gap-2">
                 <span>กราฟจำลองการเติบโตของพอร์ตย้อนหลัง</span>
-                <span class="qf-tip" tabindex="0">?<span class="qf-tip-box"><b>Walk-Forward OOS</b> จำลองการปรับสัดส่วนทุก 63 วันข้อมูลโดยใช้เฉพาะข้อมูลในอดีต ณ เวลานั้นจริง พร้อมหักค่าธรรมเนียม 0.15%</span></span>
+                <span class="qf-tip" tabindex="0">?<span class="qf-tip-box"><b>ทดสอบเสมือนจริงแบบไม่รู้อนาคต (Walk-Forward OOS)</b> จำลองการปรับสัดส่วนทุก 63 วันข้อมูลโดยใช้เฉพาะข้อมูลในอดีต ณ เวลานั้นจริง พร้อมหักค่าธรรมเนียม 0.15%</span></span>
               </h4>
             </div>
             <div class="flex items-center gap-2 flex-wrap self-start sm:self-center">
@@ -1226,7 +1944,7 @@
           </div>
           <div id="portfolio-growth-chart" class="qf-mobile-collapsible-chart w-full h-[320px] sm:h-[350px] border border-slate-200 rounded-2xl p-2 bg-white"></div>
           <div class="px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200/80 text-xs text-slate-600">
-            หมายเหตุ: เส้นสีทึบแสดงผลจำลองด้วยสัดส่วนเป้าหมายจากข้อมูลทั้งช่วง (In-Sample) ส่วนเส้นประ Walk-Forward OOS ปรับสัดส่วนทุก 63 วันข้อมูล • ผลในอดีตไม่รับประกันผลตอบแทนในอนาคต ผลลัพธ์นี้ไม่ใช่คำแนะนำการลงทุนเฉพาะบุคคล
+            หมายเหตุ: เส้นทึบ = จัดพอร์ตจากข้อมูลรวมทั้งช่วง • เส้นประ = ทดสอบเสมือนจริงแบบไม่รู้อนาคต (ปรับสัดส่วนทุก ~3 เดือน) • ผลในอดีตไม่รับประกันผลตอบแทนในอนาคต ผลลัพธ์นี้ไม่ใช่คำแนะนำการลงทุนเฉพาะบุคคล
           </div>
         </div>
 
@@ -1239,7 +1957,7 @@
           >
             <div class="flex items-center gap-2.5 min-w-0">
               <span class="px-2.5 py-0.5 rounded-md bg-[#E6FBF3] text-[#008A57] border border-[#00D084]/40 text-[11px] font-semibold shrink-0">รายละเอียดเพิ่ม</span>
-              <span class="text-sm font-semibold text-slate-900 truncate">ตารางเปรียบเทียบกลยุทธ์ • แผนภาพ Efficient Frontier • สถิติรายหุ้น &amp; Correlation</span>
+              <span class="text-sm font-semibold text-slate-900 truncate" title="Strategy Comparison, Efficient Frontier, Asset Statistics & Correlation Matrix">ตารางเทียบ 4 กลยุทธ์ • แผนภาพกำไรเทียบเสี่ยง • ความสัมพันธ์ราคาหุ้น</span>
             </div>
             <i id="deep-dive-chevron-backtest" data-lucide="chevron-down" class="w-4 h-4 text-slate-500 transition-transform shrink-0"></i>
           </button>
@@ -1248,15 +1966,15 @@
             <!-- Sub-Tabs inside Deep-Dive (no numbers) -->
             <div class="flex flex-wrap items-center justify-between gap-2">
               <span class="dime-label-12">เลือกมุมมองวิเคราะห์:</span>
-              <div class="inline-flex bg-slate-100 p-1 rounded-xl border border-slate-200 overflow-x-auto gap-1">
+              <div class="inline-flex flex-wrap bg-slate-100 p-1 rounded-xl border border-slate-200 gap-1">
                 <button onclick="switchTab('growth')" id="tab-btn-growth" class="tab-btn min-h-[36px] px-3 py-1 rounded-lg text-xs font-semibold bg-[#00D084] text-[#0A0D12] whitespace-nowrap transition cursor-pointer">
-                  ตารางเปรียบเทียบกลยุทธ์
+                  ตารางเทียบ 4 กลยุทธ์
                 </button>
-                <button onclick="switchTab('frontier')" id="tab-btn-frontier" class="tab-btn min-h-[36px] px-3 py-1 rounded-lg text-xs font-medium text-slate-500 hover:text-slate-900 whitespace-nowrap transition cursor-pointer">
-                  Efficient Frontier
+                <button onclick="switchTab('frontier')" id="tab-btn-frontier" class="tab-btn min-h-[36px] px-3 py-1 rounded-lg text-xs font-medium text-slate-500 hover:text-slate-900 whitespace-nowrap transition cursor-pointer" title="Efficient Frontier: แสดงระดับผลตอบแทนต่อความเสี่ยง">
+                  แผนภาพกำไรเทียบเสี่ยง
                 </button>
-                <button onclick="switchTab('assets')" id="tab-btn-assets" class="tab-btn min-h-[36px] px-3 py-1 rounded-lg text-xs font-medium text-slate-500 hover:text-slate-900 whitespace-nowrap transition cursor-pointer">
-                  สถิติรายหุ้น &amp; Correlation
+                <button onclick="switchTab('assets')" id="tab-btn-assets" class="tab-btn min-h-[36px] px-3 py-1 rounded-lg text-xs font-medium text-slate-500 hover:text-slate-900 whitespace-nowrap transition cursor-pointer" title="Asset Statistics & Correlation Matrix">
+                  สถิติรายหุ้น &amp; ความสัมพันธ์
                 </button>
               </div>
             </div>
@@ -1270,8 +1988,8 @@
                       <th class="py-3 px-3.5">กลยุทธ์</th>
                       <th class="py-3 px-3.5 text-right">ผลตอบแทนคาดหวัง/ปี</th>
                       <th class="py-3 px-3.5 text-right">ความผันผวน/ปี</th>
-                      <th class="py-3 px-3.5 text-right bg-rose-50/40 text-rose-700">ย่อตัวสูงสุดในอดีต</th>
-                      <th class="py-3 px-3.5 text-right">Sharpe Ratio</th>
+                      <th class="py-3 px-3.5 text-right bg-rose-50/40 text-rose-700">ขาดทุนหนักสุดในอดีต</th>
+                      <th class="py-3 px-3.5 text-right" title="Sharpe Ratio: ผลตอบแทนเพิ่มต่อ 1 หน่วยความเสี่ยง">ความคุ้มค่า/เสี่ยง</th>
                       <th class="py-3 px-3.5 text-right">มูลค่าปลายงวด</th>
                       <th class="py-3 px-3.5 text-center">สถานะ</th>
                     </tr>
@@ -1284,7 +2002,10 @@
             <!-- SUB-TAB 2: EFFICIENT FRONTIER -->
             <div id="tab-content-frontier" class="tab-pane hidden space-y-3">
               <div>
-                <h4 class="dime-header-16">แผนภาพความเสี่ยงเทียบผลตอบแทน (Efficient Frontier)</h4>
+                <h4 class="dime-header-16 inline-flex items-center gap-1.5">
+                  <span>แผนภาพผลตอบแทนเทียบความเสี่ยง</span>
+                  <span class="qf-tip" tabindex="0">?<span class="qf-tip-box"><b>Efficient Frontier</b> แสดงเส้นพอร์ตที่ได้ผลตอบแทนสูงสุดในแต่ละระดับความผันผวน จุดที่อยู่ซ้ายและสูงกว่าคือคุ้มค่ากว่าการถือหุ้นเดี่ยว</span></span>
+                </h4>
                 <p class="dime-label-12">จุดที่อยู่ด้านซ้ายและสูงกว่า หมายถึงให้ผลตอบแทนคุ้มความเสี่ยงมากกว่าการถือหุ้นเดี่ยวๆ</p>
               </div>
               <div id="frontier-plot-container" class="w-full h-[400px] border border-slate-200 rounded-2xl p-2 bg-white"></div>
@@ -1300,7 +2021,7 @@
                       <th class="py-3 px-3.5 text-right">ราคาล่าสุด</th>
                       <th class="py-3 px-3.5 text-right">ผลตอบแทน/ปี</th>
                       <th class="py-3 px-3.5 text-right">ความผันผวน/ปี</th>
-                      <th class="py-3 px-3.5 text-right bg-rose-50/40 text-rose-700">ย่อตัวสูงสุดในอดีต</th>
+                      <th class="py-3 px-3.5 text-right bg-rose-50/40 text-rose-700">ขาดทุนหนักสุดในอดีต</th>
                       <th class="py-3 px-3.5 text-right">สัดส่วนในพอร์ต</th>
                     </tr>
                   </thead>
@@ -1311,7 +2032,10 @@
               <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
                 <div class="p-4 rounded-2xl border border-slate-200 bg-slate-50/50 space-y-2">
                   <div>
-                    <h4 class="dime-header-16">ความสัมพันธ์ของราคา (Correlation)</h4>
+                    <h4 class="dime-header-16 inline-flex items-center gap-1.5">
+                      <span>ความสัมพันธ์การขึ้นลงของราคา</span>
+                      <span class="qf-tip" tabindex="0">?<span class="qf-tip-box"><b>Correlation</b> วัดว่าหุ้นสองตัววิ่งไปทางเดียวกันแค่ไหน ค่าใกล้ 0 หรือติดลบช่วยลดแรงกระแทกเมื่อตลาดลงได้ดี</span></span>
+                    </h4>
                     <p class="dime-label-12">ค่าใกล้ 0 ช่วยกระจายความเสี่ยงได้ดี</p>
                   </div>
                   <div id="correlation-plot-container" class="w-full h-[300px] border border-slate-200 rounded-2xl p-2 bg-white"></div>
@@ -1319,11 +2043,11 @@
                 <div class="p-4 rounded-2xl border border-slate-200 bg-slate-50/50 space-y-2">
                   <div class="flex items-center justify-between gap-2">
                     <div>
-                      <h4 class="dime-header-16">การเติบโตเปรียบเทียบ (ฐาน 100)</h4>
+                      <h4 class="dime-header-16">การเติบโตเปรียบเทียบ (เริ่มที่ 100 เท่ากัน)</h4>
                       <p class="dime-label-12">เมื่อเริ่มลงทุนวันแรกด้วยเงิน 100 เท่ากัน</p>
                     </div>
                     <div class="inline-flex bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs shrink-0">
-                      <button id="btn-scale-log" onclick="toggleGrowthScale(true)" class="px-2.5 py-1 rounded-lg bg-[#00D084] text-[#0A0D12] font-semibold cursor-pointer">Log</button>
+                      <button id="btn-scale-log" onclick="toggleGrowthScale(true)" title="Log Scale: เทียบอัตราการโตเป็นเปอร์เซ็นต์อย่างเป็นธรรม" class="px-2.5 py-1 rounded-lg bg-[#00D084] text-[#0A0D12] font-semibold cursor-pointer">เทียบ %</button>
                       <button id="btn-scale-linear" onclick="toggleGrowthScale(false)" class="px-2.5 py-1 rounded-lg text-slate-600 font-medium cursor-pointer">ปกติ</button>
                     </div>
                   </div>
@@ -1443,35 +2167,35 @@
           <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
             <div>
               <h4 class="dime-header-16">ผลจำลองโอกาสบรรลุเป้าหมาย</h4>
-              <p id="goal-projection-subtitle" class="dime-label-12">กลยุทธ์ที่เลือก: Max Sharpe Ratio</p>
+              <p id="goal-projection-subtitle" class="dime-label-12">แนวทางที่เลือก: --</p>
             </div>
-            <span id="goal-feasibility-status-badge" class="dime-pill-up self-start sm:self-center">รอจำลองผล</span>
+            <span id="goal-feasibility-status-badge" class="dime-pill-up self-start sm:self-center">พร้อมจำลองผล</span>
           </div>
 
-          <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3.5">
-            <div class="p-3 sm:p-4 rounded-2xl bg-slate-50 border border-slate-200">
+          <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+            <div class="p-3.5 sm:p-4 rounded-2xl bg-slate-50 border border-slate-200 min-w-0">
               <div class="dime-label-12">เงินต้นสะสมรวม</div>
               <div id="goal-proj-total-principal" class="text-slate-900 mt-1 tabular-nums">--</div>
-              <div id="goal-proj-principal-breakdown" class="dime-label-12 mt-0.5 tabular-nums">--</div>
+              <div id="goal-proj-principal-breakdown" class="dime-label-12 mt-0.5 tabular-nums break-words">--</div>
             </div>
 
-            <div class="p-3 sm:p-4 rounded-2xl bg-emerald-50/35 border border-emerald-200">
+            <div class="p-3.5 sm:p-4 rounded-2xl bg-emerald-50/35 border border-emerald-200 min-w-0">
               <div class="dime-label-12 !text-emerald-800">มูลค่าพอร์ตคาดการณ์</div>
               <div id="goal-proj-final-wealth" class="text-emerald-700 mt-1 tabular-nums">--</div>
-              <div id="goal-proj-net-profit" class="text-xs font-semibold text-emerald-700 mt-0.5 tabular-nums">--</div>
+              <div id="goal-proj-net-profit" class="text-xs font-semibold text-emerald-700 mt-0.5 tabular-nums break-words">--</div>
             </div>
 
-            <div class="p-3 sm:p-4 rounded-2xl bg-blue-50/35 border border-blue-200">
+            <div class="p-3.5 sm:p-4 rounded-2xl bg-blue-50/35 border border-blue-200 min-w-0">
               <div class="dime-label-12 !text-blue-800">เงินปันผลคาดการณ์</div>
               <div id="goal-proj-annual-dividend" class="text-blue-700 mt-1 tabular-nums">--</div>
-              <div id="goal-proj-monthly-dividend" class="dime-label-12 mt-0.5 tabular-nums">--</div>
+              <div id="goal-proj-monthly-dividend" class="dime-label-12 mt-0.5 tabular-nums break-words">--</div>
             </div>
 
-            <div class="p-3 sm:p-4 rounded-2xl bg-slate-50 border border-slate-200">
+            <div class="p-3.5 sm:p-4 rounded-2xl bg-slate-50 border border-slate-200 min-w-0">
               <div class="dime-label-12">ความสำเร็จเทียบเป้า</div>
-              <div class="flex items-baseline justify-between mt-1 gap-2">
+              <div class="flex flex-wrap items-baseline justify-between mt-1 gap-x-2 gap-y-0.5">
                 <span id="goal-proj-achievement-pct" class="text-emerald-700 tabular-nums">--</span>
-                <span id="goal-proj-gap-text" class="text-xs font-semibold text-emerald-700 tabular-nums">--</span>
+                <span id="goal-proj-gap-text" class="text-xs font-semibold text-emerald-700 tabular-nums break-words min-w-0">--</span>
               </div>
               <div class="w-full h-2 bg-slate-200 rounded-full overflow-hidden mt-2">
                 <div id="goal-proj-progress-bar" class="h-full bg-[#00D084] rounded-full transition-all duration-300" style="width: 0%"></div>
@@ -1804,7 +2528,7 @@
     })();
   </script>
 
-  <script src="/static/app.js?v=6.7"></script>
-  <script src="/static/supabase_auth.js?v=6.7"></script>
+  <script src="/static/app.js?v=6.12"></script>
+  <script src="/static/supabase_auth.js?v=6.12"></script>
 </body>
 </html>

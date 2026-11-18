@@ -185,13 +185,14 @@ except ImportError:
             return ret, vol, sr
 
     class HRPOpt:
-        def __init__(self, returns_df: pd.DataFrame):
+        def __init__(self, returns_df: pd.DataFrame, frequency: int = 252):
             self.returns_df = returns_df
+            self.frequency = frequency
 
         def optimize(self) -> Dict[str, float]:
             tickers = list(self.returns_df.columns)
             n = len(tickers)
-            cov = self.returns_df.cov().values * 252.0
+            cov = self.returns_df.cov().values * float(self.frequency)
             std = np.sqrt(np.maximum(1e-12, np.diag(cov)))
             corr = np.clip(cov / np.outer(std, std), -1.0, 1.0)
             dist = np.sqrt(np.maximum(0.0, 0.5 * (1.0 - corr)))
@@ -1211,6 +1212,69 @@ def build_asset_decision_intelligence(
     }
 
 
+def _cap_and_normalize_weights(
+    weights_dict: Dict[str, float],
+    valid_tickers: List[str],
+    low: float = 0.0,
+    high: float = 1.0,
+    decimals: int = 4
+) -> Dict[str, float]:
+    """
+    Enforce [low, high] weight bounds via iterative proportional redistribution
+    and round cleanly to `decimals` so weights sum to 1.0000 within [low, high].
+    """
+    n = len(valid_tickers)
+    if n == 0:
+        return {}
+    lo = max(0.0, float(low))
+    hi = min(1.0, max(float(high), 1.0 / n))
+
+    w = np.array([max(0.0, float(weights_dict.get(t, 0.0))) for t in valid_tickers], dtype=float)
+    w_sum = float(w.sum())
+    w = (w / w_sum) if w_sum > 0 else (np.ones(n, dtype=float) / n)
+
+    # Iterative proportional capping & water-filling onto [lo, hi]
+    for _ in range(30):
+        over = w > hi + 1e-9
+        under = w < lo - 1e-9
+        if not over.any() and not under.any() and abs(float(w.sum()) - 1.0) <= 1e-8:
+            break
+        w = np.clip(w, lo, hi)
+        diff = 1.0 - float(w.sum())
+        if abs(diff) <= 1e-9:
+            break
+        if diff > 0:
+            free = w < hi - 1e-9
+        else:
+            free = w > lo + 1e-9
+        if not free.any():
+            break
+        free_sum = float(w[free].sum())
+        if free_sum > 1e-12:
+            w[free] += diff * (w[free] / free_sum)
+        else:
+            w[free] += diff / float(free.sum())
+
+    w = np.clip(w, lo, hi)
+    s_final = float(w.sum())
+    if s_final > 0:
+        w = w / s_final
+        w = np.clip(w, lo, hi)
+
+    rounded = [round(float(x), decimals) for x in w]
+    residual = round(1.0 - sum(rounded), decimals)
+    if abs(residual) > 0:
+        # Adjust the largest eligible weight that stays within [lo, hi]
+        order = sorted(range(n), key=lambda idx: rounded[idx], reverse=True)
+        for idx in order:
+            cand = round(rounded[idx] + residual, decimals)
+            if lo - 1e-9 <= cand <= hi + 1e-9:
+                rounded[idx] = cand
+                break
+
+    return {valid_tickers[i]: rounded[i] for i in range(n)}
+
+
 def _solve_all_strategies(
     mu_vec: pd.Series,
     S_mat: pd.DataFrame,
@@ -1224,39 +1288,47 @@ def _solve_all_strategies(
     Solve Max Sharpe, Min Volatility, HRP, and Equal Weight.
     Note: Min Volatility and HRP depend strictly on the risk/covariance structure
     and are NOT post-multiplied by news/technical signal scores.
+    All 4 strategies strictly respect `weight_bounds = (min_weight, max_weight)`
+    and compute return/volatility/Sharpe from the cleaned, normalized weights.
     """
+    low_b, high_b = float(weight_bounds[0]), float(weight_bounds[1])
+
     # 1. Min Volatility (Pure minimum variance portfolio)
     ef_min = EfficientFrontier(mu_vec, S_mat, weight_bounds=weight_bounds)
     ef_min.min_volatility()
-    w_min = ef_min.clean_weights()
+    w_min = _cap_and_normalize_weights(ef_min.clean_weights(), valid_tickers, low_b, high_b)
     w_min_s = pd.Series(w_min).reindex(valid_tickers).fillna(0.0)
     ret_min = float(w_min_s @ mu_vec)
     vol_min = float(np.sqrt(max(1e-12, w_min_s @ S_mat @ w_min_s)))
     sr_min = (ret_min - rf_rate) / vol_min if vol_min > 0 else 0.0
 
-    # 2. Max Sharpe
+    # 2. Max Sharpe (Performance computed from cleaned & normalized weights)
     max_sharpe_error = None
     try:
         ef_max = EfficientFrontier(mu_vec, S_mat, weight_bounds=weight_bounds)
         ef_max.max_sharpe(risk_free_rate=rf_rate)
-        w_max = ef_max.clean_weights()
-        ret_max, vol_max, sr_max = ef_max.portfolio_performance(risk_free_rate=rf_rate)
+        w_max = _cap_and_normalize_weights(ef_max.clean_weights(), valid_tickers, low_b, high_b)
+        w_max_s = pd.Series(w_max).reindex(valid_tickers).fillna(0.0)
+        ret_max = float(w_max_s @ mu_vec)
+        vol_max = float(np.sqrt(max(1e-12, w_max_s @ S_mat @ w_max_s)))
+        sr_max = (ret_max - rf_rate) / vol_max if vol_max > 0 else 0.0
     except Exception as e:
         max_sharpe_error = str(e)
         w_max = dict(w_min)
         ret_max, vol_max, sr_max = ret_min, vol_min, sr_min
 
     # 3. Equal Weight (1/N)
-    w_eq = {t: 1.0 / len(valid_tickers) for t in valid_tickers}
-    w_eq_s = pd.Series(w_eq)
+    w_eq_raw = {t: 1.0 / len(valid_tickers) for t in valid_tickers}
+    w_eq = _cap_and_normalize_weights(w_eq_raw, valid_tickers, low_b, high_b)
+    w_eq_s = pd.Series(w_eq).reindex(valid_tickers).fillna(0.0)
     ret_eq = float(w_eq_s @ mu_vec)
     vol_eq = float(np.sqrt(max(1e-12, w_eq_s @ S_mat @ w_eq_s)))
     sr_eq = (ret_eq - rf_rate) / vol_eq if vol_eq > 0 else 0.0
 
-    # 4. HRP (Pure Hierarchical Risk Parity without post-hoc news distortion)
+    # 4. HRP (Pure Hierarchical Risk Parity respecting user's weight_bounds ceiling)
     hrp = HRPOpt(returns_df)
     w_hrp_raw = hrp.optimize()
-    w_hrp = {t: float(w_hrp_raw.get(t, 0.0)) for t in valid_tickers}
+    w_hrp = _cap_and_normalize_weights(w_hrp_raw, valid_tickers, low_b, high_b)
     w_hrp_s = pd.Series(w_hrp).reindex(valid_tickers).fillna(0.0)
     ret_hrp = float(w_hrp_s @ mu_vec)
     vol_hrp = float(np.sqrt(max(1e-12, w_hrp_s @ S_mat @ w_hrp_s)))
@@ -1465,13 +1537,49 @@ def run_portfolio_optimization(
         price_in_budget_curr = price_thb if currency.upper() == "THB" else price_usd
 
         tech_info = compute_technical_signals(prices[t])
-        t_news = news_map.get(t, {"news_sentiment_score": 0.0, "positive_count": 0, "negative_count": 0, "neutral_count": 0, "articles": []})
+        raw_t_news = news_map.get(t, {"news_sentiment_score": 0.0, "positive_count": 0, "negative_count": 0, "neutral_count": 0, "articles": []})
+        t_news = {
+            "ticker": t,
+            "name": get_asset_name(t),
+            "news_sentiment_score": float(raw_t_news.get("news_sentiment_score", 0.0)),
+            "positive_count": int(raw_t_news.get("positive_count", 0)),
+            "negative_count": int(raw_t_news.get("negative_count", 0)),
+            "neutral_count": int(raw_t_news.get("neutral_count", 0)),
+            "articles": list(raw_t_news.get("articles", [])),
+        }
         decision_info = build_asset_decision_intelligence(t, ret_val, vol_val, tech_info, t_news)
+
+        # Guarantee every selected ticker has at least 1 actionable Market Pulse summary item if RSS returned 0 headlines
+        if not t_news["articles"]:
+            mom_1m_pct = float(tech_info.get("momentum_1m", 0.0)) * 100.0
+            mom_3m_pct = float(tech_info.get("momentum_3m", 0.0)) * 100.0
+            trend_th = tech_info.get("trend_label_th", "เคลื่อนไหวตามกรอบตลาด")
+            rsi_val = float(tech_info.get("rsi_14", 50.0))
+            pulse_sent = (
+                "positive" if decision_info["signal_level"] == "POSITIVE_BUY"
+                else ("negative" if decision_info["signal_level"] == "CAUTIOUS_SHIELD" else "neutral")
+            )
+            pulse_label_th = (
+                "สัญญาณราคาเชิงบวก" if pulse_sent == "positive"
+                else ("สัญญาณระมัดระวัง" if pulse_sent == "negative" else "สรุปความเคลื่อนไหวราคา")
+            )
+            is_thai_sym = t.endswith(".BK")
+            search_q = f"{t.replace('.BK', '')} หุ้น" if is_thai_sym else f"{t} stock news"
+            fallback_link = f"https://news.google.com/search?q={requests.utils.quote(search_q)}&hl={'th' if is_thai_sym else 'en-US'}"
+            t_news["articles"] = [{
+                "ticker": t,
+                "title": f"สรุปความเคลื่อนไหว {get_asset_name(t)}: {trend_th} (1 เดือน {mom_1m_pct:+.1f}%, 3 เดือน {mom_3m_pct:+.1f}%, RSI {rsi_val:.0f})",
+                "publisher": "QuantFolio Market Pulse (วิเคราะห์จากราคาตลาดจริง)",
+                "link": fallback_link,
+                "published_at": raw_last_dates.get(t, default_last_date),
+                "sentiment": pulse_sent,
+                "sentiment_score": float(decision_info.get("composite_signal_score", 0.0)),
+                "sentiment_label_th": pulse_label_th,
+                "is_market_pulse": True
+            }]
 
         mu_adjusted_dict[t] = decision_info["adjusted_expected_return"]
         signal_scores_map[t] = decision_info["composite_signal_score"]
-        for art in t_news.get("articles", []):
-            all_news_articles.append(art)
 
         div_yield_val = get_estimated_dividend_yield(t)
         asset_stats.append({
@@ -1676,7 +1784,7 @@ def run_portfolio_optimization(
     except Exception:
         pass
 
-    growth_100 = (prices / prices.iloc[0] * 100).round(2)
+    growth_100 = (prices_base / prices_base.iloc[0] * 100).round(2)
     growth_sampled = growth_100.iloc[::step]
     if growth_100.index[-1] not in growth_sampled.index:
         growth_sampled = pd.concat([growth_sampled, growth_100.iloc[[-1]]])
@@ -1691,6 +1799,14 @@ def run_portfolio_optimization(
         "matrix": [[round(float(S.loc[r, c]), 6) for c in valid_tickers] for r in valid_tickers]
     }
 
+    # Interleave articles round-robin across ALL valid_tickers so every selected stock is represented fairly
+    max_art_len = max((len(a["news"].get("articles", [])) for a in asset_stats), default=0)
+    for pass_idx in range(max_art_len):
+        for a in asset_stats:
+            arts = a["news"].get("articles", [])
+            if pass_idx < len(arts):
+                all_news_articles.append(arts[pass_idx])
+
     pos_assets = [a["ticker"] for a in asset_stats if a["decision"]["signal_level"] == "POSITIVE_BUY"]
     caution_assets = [a["ticker"] for a in asset_stats if a["decision"]["signal_level"] in ("CAUTIOUS_SHIELD", "OVERBOUGHT_TRANCHE")]
 
@@ -1699,7 +1815,7 @@ def run_portfolio_optimization(
         "positive_signal_tickers": pos_assets,
         "caution_signal_tickers": caution_assets,
         "total_articles_analyzed": len(all_news_articles),
-        "articles": all_news_articles[:16]
+        "articles": all_news_articles[:max(24, len(valid_tickers) * 4)]
     }
 
     return {

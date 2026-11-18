@@ -41,6 +41,9 @@ const state = {
   customInputDebounceTimer: null,
   loadingStepTimers: [],
   activeTab: 'setup',
+  appView: 'landing', // 'landing' | 'workspace'
+  landingPreviewTab: 'allocation',
+  landingSelectedPreset: 'colab_original',
   viewDepth: 'simple',
   theme: 'light',
   tradePlanViewMode: 'cards',
@@ -375,9 +378,9 @@ function updateMarketDataStatusPill() {
       pill.innerText = 'กำลังดึงราคาตลาดและคำนวณ...';
       pill.className = 'hidden sm:inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-800 border border-blue-200 max-w-[300px] truncate';
     } else {
-      const quoteLabel = latestEqDate ? `ราคาปิดล่าสุด ${latestEqDate} • ยังไม่คำนวณพอร์ต` : 'รอคำนวณ • ยังไม่ดึงชุดวิเคราะห์';
+      const quoteLabel = latestEqDate ? `ราคาปิดล่าสุด ${latestEqDate} • พร้อมคำนวณ` : 'พร้อมดึงราคาตลาด • กดคำนวณเพื่อดูผล';
       pill.innerText = quoteLabel;
-      pill.className = 'hidden sm:inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 max-w-[300px] truncate';
+      pill.className = 'hidden sm:inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 max-w-[300px] truncate';
     }
   }
 
@@ -500,6 +503,10 @@ function setResultStatus(status, reason = '') {
   if (status === 'error') {
     state.lastErrorMessage = reason;
   }
+  const resumeBtn = document.getElementById('landing-resume-results-btn');
+  if (resumeBtn) {
+    resumeBtn.classList.toggle('hidden', status !== 'ready');
+  }
   renderTabStateBanners();
   updateMarketDataStatusPill();
 }
@@ -532,6 +539,15 @@ document.addEventListener('DOMContentLoaded', () => {
   updateMaxWeightLabel(document.getElementById('max-weight-slider')?.value || 100);
   refreshAdvancedSummaryLabel();
   setResultStatus('idle');
+  const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+  const initialRiskParam = urlParams?.get('risk') || 'balanced';
+  selectLandingRiskProfile(initialRiskParam);
+  setAppView(urlParams?.get('view') === 'workspace' ? 'workspace' : 'landing', false);
+  selectLandingPreset(state.landingSelectedPreset);
+  selectLandingPreviewTab('allocation');
+  if (urlParams?.get('view') === 'workspace' && urlParams?.get('risk')) {
+    enterWorkspaceWithRiskProfile(initialRiskParam);
+  }
   renderDimeWealthOverview();
   fetchLiveMarketRates();
   renderTickersList();
@@ -770,9 +786,47 @@ function handleFxRateChange() {
   }
 }
 
+function syncAllBudgetInputs(formattedValue, sourceId = '') {
+  ['budget-input', 'strip-budget-input', 'landing-budget-input'].forEach(id => {
+    if (id === sourceId) return;
+    const el = document.getElementById(id);
+    if (el && document.activeElement !== el) {
+      el.value = formattedValue;
+    }
+  });
+}
+
+function syncLandingBudgetToWorkspace(rawVal) {
+  const numeric = parseNumericInput(rawVal);
+  if (numeric > 0) {
+    state.budget = numeric;
+  }
+  syncAllBudgetInputs(rawVal, 'landing-budget-input');
+}
+
+function setLandingQuickBudget(amount) {
+  const targetAmt = state.currency === 'USD'
+    ? Math.max(100, Math.round(amount / (state.fxRate > 0 ? state.fxRate : 34.5)))
+    : amount;
+  const formatted = formatNumberWithCommas(targetAmt, 0);
+  const landingIn = document.getElementById('landing-budget-input');
+  if (landingIn) landingIn.value = formatted;
+  state.budget = targetAmt;
+  syncAllBudgetInputs(formatted, 'landing-budget-input');
+
+  document.querySelectorAll('.qf-landing-chip').forEach(btn => {
+    const isMatch = btn.getAttribute('onclick')?.includes(`(${amount})`);
+    btn.className = isMatch
+      ? 'qf-landing-chip px-2 py-0.5 rounded-lg bg-[#E6FBF3] text-[#008A57] text-[11px] font-bold transition cursor-pointer'
+      : 'qf-landing-chip px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-slate-200/80 text-[11px] font-semibold text-slate-700 transition cursor-pointer';
+  });
+  handleBudgetQuickUpdate();
+}
+
 function syncStripBudgetToMain(rawVal) {
   const mainInput = document.getElementById('budget-input');
   if (mainInput) mainInput.value = rawVal;
+  syncAllBudgetInputs(rawVal, 'strip-budget-input');
   handleBudgetQuickUpdate();
 }
 
@@ -780,18 +834,16 @@ function setQuickBudget(amount) {
   const input = document.getElementById('budget-input');
   const formatted = formatNumberWithCommas(amount, 0);
   if (input) input.value = formatted;
-  const stripInput = document.getElementById('strip-budget-input');
-  if (stripInput) stripInput.value = formatted;
+  syncAllBudgetInputs(formatted, 'budget-input');
   handleBudgetQuickUpdate();
 }
 
 function handleBudgetQuickUpdate() {
   const mainEl = document.getElementById('budget-input');
-  const stripEl = document.getElementById('strip-budget-input');
   const budget = parseNumericInput(mainEl?.value) || 100000;
   state.budget = budget;
-  if (stripEl && mainEl && document.activeElement !== stripEl) {
-    stripEl.value = mainEl.value;
+  if (mainEl) {
+    syncAllBudgetInputs(mainEl.value, 'budget-input');
   }
   if (!state.optData || budget < 10) {
     renderDimeWealthOverview();
@@ -877,7 +929,7 @@ function handleBudgetQuickUpdate() {
 }
 
 // Preset Selection
-function applyPreset(presetKey) {
+function applyPreset(presetKey, autoRun = true, preserveBudgetAndCurrency = false) {
   const p = PRESETS[presetKey];
   if (!p) return;
 
@@ -885,17 +937,17 @@ function applyPreset(presetKey) {
   if (p.start) document.getElementById('start-date-input').value = p.start;
   if (p.end) document.getElementById('end-date-input').value = p.end;
 
-  if (p.currency) {
-    const sel = document.getElementById('currency-select');
-    if (sel) sel.value = p.currency;
-    updateCurrencySymbol(false);
-  }
-  if (p.budget) {
-    const formattedBudget = formatNumberWithCommas(p.budget, 0);
-    const budgetEl = document.getElementById('budget-input');
-    const stripBudgetEl = document.getElementById('strip-budget-input');
-    if (budgetEl) budgetEl.value = formattedBudget;
-    if (stripBudgetEl) stripBudgetEl.value = formattedBudget;
+  if (!preserveBudgetAndCurrency) {
+    if (p.currency) {
+      const sel = document.getElementById('currency-select');
+      if (sel) sel.value = p.currency;
+      updateCurrencySymbol(false);
+    }
+    if (p.budget) {
+      const formattedBudget = formatNumberWithCommas(p.budget, 0);
+      syncAllBudgetInputs(formattedBudget, '');
+      state.budget = p.budget;
+    }
   }
 
   // Highlight active timeframe (3Y)
@@ -920,7 +972,9 @@ function applyPreset(presetKey) {
   updateMaxWeightLabel(document.getElementById('max-weight-slider')?.value || 100);
   refreshAdvancedSummaryLabel();
   fetchLiveQuotesForTickers();
-  runOptimization(false);
+  if (autoRun) {
+    runOptimization(false);
+  }
 }
 
 // Timeframe buttons
@@ -1000,6 +1054,8 @@ function syncCurrencyToggleButtons() {
 
   const stripSym = document.getElementById('strip-curr-symbol');
   if (stripSym) stripSym.innerText = state.currencySymbol;
+  const landingSym = document.getElementById('landing-budget-curr-symbol');
+  if (landingSym) landingSym.innerText = state.currencySymbol;
 
   document.querySelectorAll('.curr-unit-inline').forEach(el => {
     el.innerText = state.currencyUnitText;
@@ -1036,9 +1092,7 @@ function updateCurrencySymbol(reRun = false) {
         : Math.round(curBudget * convFactor);
       state.budget = newBudget;
       const formattedNew = formatNumberWithCommas(newBudget, nextCurrency === 'USD' ? 2 : 0);
-      budgetEl.value = formattedNew;
-      const stripEl = document.getElementById('strip-budget-input');
-      if (stripEl) stripEl.value = formattedNew;
+      syncAllBudgetInputs(formattedNew, '');
     }
 
     Object.keys(state.customHoldings).forEach(t => {
@@ -1117,17 +1171,20 @@ function selectPrimaryInvestmentMode(modeKey) {
 
 // Goal Selection (Instant reactive update)
 function selectGoal(goalKey) {
-  state.activeGoal = goalKey;
+  const validGoalKeys = ['max_sharpe', 'min_volatility', 'hrp', 'equal_weight'];
+  const normalizedKey = goalKey === 'min_vol' ? 'min_volatility' : goalKey;
+  const resolvedKey = validGoalKeys.includes(normalizedKey) ? normalizedKey : 'max_sharpe';
+  state.activeGoal = resolvedKey;
 
-  ['max_sharpe', 'min_volatility', 'hrp', 'equal_weight'].forEach(k => {
+  validGoalKeys.forEach(k => {
     const card = document.getElementById(`goal-card-${k}`);
     if (card) {
-      if (k === goalKey) card.classList.add('active');
+      if (k === resolvedKey) card.classList.add('active');
       else card.classList.remove('active');
     }
     const pill = document.getElementById(`top-pill-${k}`);
     if (pill) {
-      if (k === goalKey) {
+      if (k === resolvedKey) {
         pill.className = 'top-goal-pill px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-[#00D084] text-[#0A0D12] transition cursor-pointer';
       } else {
         pill.className = 'top-goal-pill px-2.5 py-1.5 rounded-lg text-[11px] font-medium text-slate-600 hover:text-slate-900 transition cursor-pointer';
@@ -1368,10 +1425,128 @@ function updateCustomTotalPortfolioLabel() {
   }
 }
 
+const STOCK_CATALOG_CATEGORIES = {
+  thai_set50: [
+    { symbol: 'PTT.BK', label: 'PTT (ปตท.)' },
+    { symbol: 'ADVANC.BK', label: 'ADVANC (AIS)' },
+    { symbol: 'AOT.BK', label: 'AOT (ทอท.)' },
+    { symbol: 'BDMS.BK', label: 'BDMS (รพ.กรุงเทพ)' },
+    { symbol: 'CPALL.BK', label: 'CPALL (7-Eleven)' },
+    { symbol: 'DELTA.BK', label: 'DELTA (เดลต้า)' },
+    { symbol: 'SCB.BK', label: 'SCB (เอสซีบี เอกซ์)' },
+    { symbol: 'KBANK.BK', label: 'KBANK (กสิกรไทย)' },
+    { symbol: 'BBL.BK', label: 'BBL (กรุงเทพ)' },
+    { symbol: 'PTTEP.BK', label: 'PTTEP (ปตท.สผ.)' },
+    { symbol: 'GULF.BK', label: 'GULF (กัลฟ์)' },
+    { symbol: 'SCC.BK', label: 'SCC (ปูนซิเมนต์ไทย)' },
+    { symbol: 'CPN.BK', label: 'CPN (เซ็นทรัลพัฒนา)' },
+    { symbol: 'BH.BK', label: 'BH (รพ.บำรุงราษฎร์)' },
+    { symbol: 'MINT.BK', label: 'MINT (ไมเนอร์)' },
+    { symbol: 'TISCO.BK', label: 'TISCO (ทิสโก้)' },
+    { symbol: 'INTUCH.BK', label: 'INTUCH (อินทัช)' },
+    { symbol: 'LH.BK', label: 'LH (แลนด์ แอนด์ เฮ้าส์)' }
+  ],
+  us_equities: [
+    { symbol: 'NVDA', label: 'NVDA (NVIDIA)' },
+    { symbol: 'AAPL', label: 'AAPL (Apple)' },
+    { symbol: 'MSFT', label: 'MSFT (Microsoft)' },
+    { symbol: 'AMZN', label: 'AMZN (Amazon)' },
+    { symbol: 'GOOGL', label: 'GOOGL (Alphabet)' },
+    { symbol: 'META', label: 'META (Meta)' },
+    { symbol: 'TSLA', label: 'TSLA (Tesla)' },
+    { symbol: 'BRK-B', label: 'BRK-B (Berkshire)' },
+    { symbol: 'JPM', label: 'JPM (JPMorgan)' },
+    { symbol: 'V', label: 'V (Visa)' },
+    { symbol: 'MA', label: 'MA (Mastercard)' },
+    { symbol: 'COST', label: 'COST (Costco)' },
+    { symbol: 'AVGO', label: 'AVGO (Broadcom)' },
+    { symbol: 'AMD', label: 'AMD' },
+    { symbol: 'NFLX', label: 'NFLX (Netflix)' },
+    { symbol: 'JNJ', label: 'JNJ (Johnson & Johnson)' },
+    { symbol: 'KO', label: 'KO (Coca-Cola)' },
+    { symbol: 'PG', label: 'PG (P&G)' },
+    { symbol: 'WMT', label: 'WMT (Walmart)' }
+  ],
+  etf_gold_bonds: [
+    { symbol: 'SPY', label: 'SPY (S&P 500 ETF)' },
+    { symbol: 'QQQ', label: 'QQQ (Nasdaq 100 ETF)' },
+    { symbol: 'VOO', label: 'VOO (Vanguard S&P 500)' },
+    { symbol: 'VTI', label: 'VTI (US Total Stock)' },
+    { symbol: 'GLD', label: 'GLD (ทองคำโลก ETF)' },
+    { symbol: 'SLV', label: 'SLV (แร่เงิน ETF)' },
+    { symbol: 'TLT', label: 'TLT (พันธบัตรสหรัฐฯ 20 ปี+)' },
+    { symbol: 'BND', label: 'BND (ตราสารหนี้รวมสหรัฐฯ)' },
+    { symbol: 'VNQ', label: 'VNQ (อสังหาฯ สหรัฐฯ REIT)' },
+    { symbol: 'DBC', label: 'DBC (สินค้าโภคภัณฑ์รวม)' }
+  ],
+  crypto: [
+    { symbol: 'BTC-USD', label: 'BTC-USD (Bitcoin)' },
+    { symbol: 'ETH-USD', label: 'ETH-USD (Ethereum)' },
+    { symbol: 'SOL-USD', label: 'SOL-USD (Solana)' },
+    { symbol: 'BNB-USD', label: 'BNB-USD (BNB)' }
+  ]
+};
+
+function selectStockCatalogCategory(catKey = 'thai_set50') {
+  const validCats = Object.keys(STOCK_CATALOG_CATEGORIES);
+  const nextCat = validCats.includes(catKey) ? catKey : 'thai_set50';
+  state.activeCatalogCategory = nextCat;
+
+  validCats.forEach(k => {
+    const tabBtn = document.getElementById(`stock-cat-tab-${k}`);
+    if (tabBtn) {
+      tabBtn.className = k === nextCat
+        ? 'px-2.5 py-1 rounded-lg font-bold bg-[#00D084] text-[#0A0D12] transition cursor-pointer'
+        : 'px-2.5 py-1 rounded-lg font-medium text-slate-600 hover:text-slate-900 transition cursor-pointer';
+    }
+  });
+  renderQuickStockCatalog();
+}
+
+function toggleCatalogTicker(symbol) {
+  const clean = String(symbol || '').trim().toUpperCase();
+  if (!clean) return;
+  if (state.tickers.includes(clean)) {
+    removeTicker(clean);
+  } else {
+    addTicker(clean);
+  }
+}
+
+function renderQuickStockCatalog() {
+  const chipsContainer = document.getElementById('quick-stock-catalog-chips');
+  if (!chipsContainer) return;
+  const activeCat = state.activeCatalogCategory || 'thai_set50';
+  const items = STOCK_CATALOG_CATEGORIES[activeCat] || STOCK_CATALOG_CATEGORIES.thai_set50;
+
+  chipsContainer.innerHTML = items.map(item => {
+    const isSelected = state.tickers.includes(item.symbol);
+    const safeSym = escapeHtmlText(item.symbol);
+    const safeLbl = escapeHtmlText(item.label);
+    return `
+      <button
+        type="button"
+        data-symbol="${safeSym}"
+        onclick="toggleCatalogTicker(this.dataset.symbol)"
+        title="${isSelected ? 'คลิกเพื่อนำออกจากพอร์ต' : 'คลิกเพื่อเพิ่มเข้าพอร์ต'}"
+        class="px-2.5 py-1 rounded-xl text-xs font-medium transition cursor-pointer inline-flex items-center gap-1.5 ${
+          isSelected
+            ? 'bg-[#E6FBF3] text-[#008A57] border border-[#00D084] font-bold shadow-2xs'
+            : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200/90'
+        }"
+      >
+        <span class="font-mono font-bold">${isSelected ? '✓' : '+'}</span>
+        <span>${safeLbl}</span>
+      </button>
+    `;
+  }).join('');
+}
+
 // Selected Tickers List in Left Sidebar (Shows both THB and USD prices clearly)
 function renderTickersList() {
   const container = document.getElementById('selected-tickers-container');
   document.getElementById('asset-count').innerText = state.tickers.length;
+  renderQuickStockCatalog();
 
   if (state.tickers.length === 0) {
     container.innerHTML = `
@@ -1588,6 +1763,9 @@ document.addEventListener('click', (e) => {
 
 // Run Optimization
 async function runOptimization(shouldSwitchTab = false) {
+  if (state.appView !== 'workspace') {
+    setAppView('workspace', false);
+  }
   if (state.tickers.length < 2) {
     showError('กรุณาเลือกหุ้นหรือสินทรัพย์อย่างน้อย 2 รายการขึ้นไปเพื่อคำนวณสัดส่วนพอร์ต');
     return;
@@ -1888,13 +2066,18 @@ function computeRebalancePlan(strat, data) {
   const withdrawalExceedsSells = cashInjection < 0 && netCashPool < 0;
   const rawCashAvailable = Math.max(0, netCashPool);
 
-  // Reserve brokerage commission buffer cleanly
-  const feeReserve = Number((rawCashAvailable * FEE_RATE).toFixed(2));
+  // Reserve brokerage commission buffer cleanly (accounting for both SELL leg and BUY leg when rebalancing)
+  const sellFeeReserve = Number((totalSellGross * FEE_RATE).toFixed(2));
+  const cashAfterSellFee = Math.max(0, totalSellGross - sellFeeReserve + cashInjection);
+  const buyFeeReserve = Number((cashAfterSellFee * FEE_RATE).toFixed(2));
+  const feeReserve = Number((sellFeeReserve + buyFeeReserve).toFixed(2));
   const netSpendableForBuys = Number(Math.max(0, rawCashAvailable - feeReserve).toFixed(2));
 
   const totalRawBuyNeed = buyCandidates.reduce((acc, b) => acc + b.raw_buy_need, 0);
   const buyOrders = [];
 
+  // Pass 1: Initial proportional / integer floor allocation
+  const candidateBuyAmts = new Map();
   buyCandidates.forEach(b => {
     let buyAmt = 0;
     const p = b.price > 0 ? b.price : 0;
@@ -1906,6 +2089,39 @@ function computeRebalancePlan(strat, data) {
         buyAmt = Number((wholeBuy * p).toFixed(2));
       }
     }
+    candidateBuyAmts.set(b.ticker, buyAmt);
+  });
+
+  // Pass 2: Greedy whole-share leftover pass (matches backend DiscreteAllocation.greedy_portfolio)
+  if (executionUnitMode === 'whole' && buyCandidates.length > 0 && netSpendableForBuys > 0) {
+    let spentSoFar = Array.from(candidateBuyAmts.values()).reduce((a, v) => a + v, 0);
+    let remCash = Number((netSpendableForBuys - spentSoFar).toFixed(2));
+    let safetyIter = 0;
+    while (safetyIter < 500) {
+      safetyIter++;
+      const affordable = buyCandidates.filter(b => b.price > 0 && b.price <= remCash + 1e-9);
+      if (affordable.length === 0) break;
+      const denom = Math.max(1.0, totalPortfolioBudget);
+      let bestCand = affordable[0];
+      let bestGap = -Infinity;
+      affordable.forEach(b => {
+        const curAlloc = b.current_value + (candidateBuyAmts.get(b.ticker) || 0);
+        const gap = b.target_weight - (curAlloc / denom);
+        if (gap > bestGap) {
+          bestGap = gap;
+          bestCand = b;
+        }
+      });
+      const prevAmt = candidateBuyAmts.get(bestCand.ticker) || 0;
+      const nextAmt = Number((prevAmt + bestCand.price).toFixed(2));
+      candidateBuyAmts.set(bestCand.ticker, nextAmt);
+      remCash = Number((remCash - bestCand.price).toFixed(2));
+    }
+  }
+
+  buyCandidates.forEach(b => {
+    const buyAmt = candidateBuyAmts.get(b.ticker) || 0;
+    const p = b.price > 0 ? b.price : 0;
     if (buyAmt >= Math.max(1, minThreshold) && (executionUnitMode !== 'whole' || p <= 0 || Math.floor((buyAmt + 1e-9) / p) >= 1)) {
       b.action = 'BUY';
       b.trade_amount = buyAmt;
@@ -2077,7 +2293,7 @@ function renderActiveGoalView() {
   if (navTradeBadge) {
     const tradeCount = (plan.sellOrders?.length || 0) + (plan.buyOrders?.length || 0);
     if (state.resultStatus === 'ready' && tradeCount > 0) {
-      navTradeBadge.innerText = `${tradeCount} รายการ`;
+      navTradeBadge.innerHTML = `${Number(tradeCount)}<span class="hidden md:inline"> รายการ</span>`;
       navTradeBadge.classList.remove('hidden');
     } else {
       navTradeBadge.innerText = '';
@@ -2107,9 +2323,9 @@ function renderActiveGoalView() {
   if (assumpEl) {
     const unitDesc = plan.executionUnitMode === 'whole'
       ? 'ซื้อ-ขายเฉพาะจำนวนเต็มหุ้น (ปัดลง)'
-      : 'ซื้อเป็นเศษหุ้นได้ (Fractional 4 ตำแหน่ง)';
+      : 'ซื้อเป็นเศษหุ้นได้ (ทศนิยม 4 ตำแหน่ง)';
     const feeDesc = plan.feeBufferOn ? `${plan.commissionPct.toFixed(2)}%` : '0.00%';
-    assumpEl.innerText = `สมมติฐาน: ${unitDesc} • ค่านายหน้า ${feeDesc} • เรท FX ${state.fxRate.toFixed(2)} ฿/$ • ยังไม่รวม FX Spread / VAT / ภาษีปันผล`;
+    assumpEl.innerText = `สมมติฐาน: ${unitDesc} • ค่านายหน้า ${feeDesc} • เรท ${state.fxRate.toFixed(2)} ฿/$ • ยังไม่รวมส่วนต่างแลกเงิน / VAT / ภาษีปันผล`;
   }
 
   const prudentNote = document.getElementById('prudent-status-note');
@@ -2485,6 +2701,12 @@ function renderRebalanceOrdersTable(plan, data) {
   updateOrderExecProgressBadge(doneCount, actionableItems.length);
 }
 
+function formatShareUnits(val, maxFrac = 4) {
+  const num = Number(val);
+  if (!Number.isFinite(num)) return '0';
+  return num.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: maxFrac });
+}
+
 function renderOrderChecklistCards(sortedItems, data) {
   const grid = document.getElementById('orders-checklist-cards-grid');
   if (!grid) return;
@@ -2513,23 +2735,26 @@ function renderOrderChecklistCards(sortedItems, data) {
       ? `$${pUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
       : `฿${pThb.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-    let actionPill = '<span class="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 font-semibold text-[13px]">ถือคงเดิม</span>';
-    let amountText = '<div class="font-mono text-[15px] font-semibold text-slate-400">ไม่ต้องซื้อ-ขาย</div>';
+    const fracSharesTxt = formatShareUnits(item.trade_shares_fractional, 4);
+    const wholeSharesTxt = formatShareUnits(item.trade_shares_whole, 0);
+
+    let actionPill = '<span class="px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 font-semibold text-xs whitespace-nowrap shrink-0">ถือคงเดิม</span>';
+    let amountText = '<div class="font-mono text-base font-semibold text-slate-400">ไม่ต้องซื้อ-ขาย</div>';
     let sharesLine = '<span class="text-slate-500 text-[13px]">สัดส่วนใกล้เคียงเป้าหมายแล้ว</span>';
 
     const isWholeMode = state.executionUnitMode === 'whole';
     if (item.action === 'SELL') {
-      actionPill = '<span class="px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-200 font-semibold text-[13px]">สั่งขายออก</span>';
-      amountText = `<div class="font-mono font-bold text-xl sm:text-2xl text-rose-600 tracking-tight">-${formatMoney(item.trade_amount, 2, true)}</div>`;
+      actionPill = '<span class="px-2.5 py-1 rounded-full bg-rose-100 text-rose-800 border border-rose-200 font-semibold text-xs whitespace-nowrap shrink-0">สั่งขายออก</span>';
+      amountText = `<div class="font-mono font-bold text-xl sm:text-2xl text-rose-600 tracking-tight leading-tight tabular-nums">-${formatMoney(item.trade_amount, 2, true)}</div>`;
       sharesLine = isWholeMode
-        ? `<span class="text-slate-600 text-[13px]">จำนวน:</span> <b class="text-rose-700 font-bold text-[15px]">${item.trade_shares_whole.toLocaleString()} หุ้น</b> <span class="text-slate-400 text-xs">(เต็มหุ้น)</span>`
-        : `<span class="text-slate-600 text-[13px]">จำนวน:</span> <b class="text-rose-700 font-bold text-[15px]">${item.trade_shares_fractional} หน่วย</b> <span class="text-slate-400 text-xs">(~${item.trade_shares_whole.toLocaleString()} เต็ม)</span>`;
+        ? `<span class="text-slate-600">จำนวน:</span> <b class="text-rose-700 font-bold text-[15px] whitespace-nowrap">${wholeSharesTxt} หุ้น</b> <span class="text-slate-400 text-xs whitespace-nowrap">(เต็มหุ้น)</span>`
+        : `<span class="text-slate-600">จำนวน:</span> <b class="text-rose-700 font-bold text-[15px] whitespace-nowrap">${fracSharesTxt} หน่วย</b> <span class="text-slate-400 text-xs whitespace-nowrap">(~${wholeSharesTxt} เต็ม)</span>`;
     } else if (item.action === 'BUY') {
-      actionPill = '<span class="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 font-semibold text-[13px]">สั่งซื้อเพิ่ม</span>';
-      amountText = `<div class="font-mono font-bold text-xl sm:text-2xl text-emerald-600 tracking-tight">+${formatMoney(item.trade_amount, 2, true)}</div>`;
+      actionPill = '<span class="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 font-semibold text-xs whitespace-nowrap shrink-0">สั่งซื้อเพิ่ม</span>';
+      amountText = `<div class="font-mono font-bold text-xl sm:text-2xl text-emerald-600 tracking-tight leading-tight tabular-nums">+${formatMoney(item.trade_amount, 2, true)}</div>`;
       sharesLine = isWholeMode
-        ? `<span class="text-slate-600 text-[13px]">จำนวน:</span> <b class="text-emerald-700 font-bold text-[15px]">${item.trade_shares_whole.toLocaleString()} หุ้น</b> <span class="text-slate-400 text-xs">(เต็มหุ้น)</span>`
-        : `<span class="text-slate-600 text-[13px]">จำนวน:</span> <b class="text-emerald-700 font-bold text-[15px]">${item.trade_shares_fractional} หน่วย</b> <span class="text-slate-400 text-xs">(~${item.trade_shares_whole.toLocaleString()} เต็ม)</span>`;
+        ? `<span class="text-slate-600">จำนวน:</span> <b class="text-emerald-700 font-bold text-[15px] whitespace-nowrap">${wholeSharesTxt} หุ้น</b> <span class="text-slate-400 text-xs whitespace-nowrap">(เต็มหุ้น)</span>`
+        : `<span class="text-slate-600">จำนวน:</span> <b class="text-emerald-700 font-bold text-[15px] whitespace-nowrap">${fracSharesTxt} หน่วย</b> <span class="text-slate-400 text-xs whitespace-nowrap">(~${wholeSharesTxt} เต็ม)</span>`;
     }
 
     let sigBadge = '';
@@ -2543,29 +2768,31 @@ function renderOrderChecklistCards(sortedItems, data) {
 
     return `
       <div id="order-card-${safeTicker}" class="qf-ticket-card ${typeCls} ${execCls} flex flex-col justify-between gap-3">
-        <div class="flex items-start justify-between gap-3">
-          <div class="flex items-start gap-2.5 min-w-0">
+        <!-- Row 1: Asset Identity + Non-wrapping Action Pill -->
+        <div class="flex items-center justify-between gap-2.5">
+          <div class="flex items-center gap-2.5 min-w-0 flex-1">
             ${isActionable
-              ? `<input type="checkbox" class="qf-order-check mt-1.5 shrink-0" data-ticker="${safeTicker}" ${isChecked ? 'checked' : ''} onchange="toggleOrderExecution(this.dataset.ticker, this.checked)" title="ติ๊กเมื่อส่งคำสั่งจริงในโบรกเกอร์แล้ว" />`
-              : `<span class="w-4 h-4 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center text-xs mt-1.5 shrink-0">-</span>`}
+              ? `<input type="checkbox" class="qf-order-check shrink-0" data-ticker="${safeTicker}" ${isChecked ? 'checked' : ''} onchange="toggleOrderExecution(this.dataset.ticker, this.checked)" title="ติ๊กเมื่อส่งคำสั่งจริงในโบรกเกอร์แล้ว" />`
+              : `<span class="w-4 h-4 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center text-xs shrink-0">-</span>`}
             ${renderStockLogoBadge(item.ticker, color, 40)}
-            <div class="min-w-0">
-              <div class="flex items-center gap-2 flex-wrap">
-                <span class="font-mono font-bold text-base sm:text-lg text-slate-900 tracking-tight">${safeTicker}</span>
-                ${actionPill}
-              </div>
-              <div class="text-[13px] text-slate-500 truncate mt-0.5">${safeName}</div>
+            <div class="min-w-0 flex-1">
+              <div class="font-mono font-bold text-base sm:text-lg text-slate-900 tracking-tight truncate" title="${safeTicker}">${safeTicker}</div>
+              <div class="text-xs text-slate-500 truncate" title="${safeName}">${safeName}</div>
             </div>
           </div>
-          <div class="text-right shrink-0">
-            ${amountText}
-            <div class="text-xs font-mono text-slate-500 mt-0.5">ราคา ${formatMoney(item.price, 2, false)} <span class="text-slate-300">|</span> ${companionShort}</div>
-          </div>
+          ${actionPill}
         </div>
 
-        <div class="flex items-center justify-between gap-2 bg-slate-50/90 rounded-xl px-3.5 py-2.5 border border-slate-100 text-[13px]">
-          <div class="font-mono text-slate-700">${sharesLine}</div>
-          <div class="text-right font-mono text-slate-500 shrink-0">
+        <!-- Row 2: Dedicated Trade Amount & Unit Price Strip (prevents large amounts from colliding with ticker names) -->
+        <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 pt-2 border-t border-slate-100">
+          ${amountText}
+          <div class="text-xs font-mono text-slate-500 whitespace-nowrap shrink-0">ราคา ${formatMoney(item.price, 2, false)} <span class="text-slate-300">|</span> ${companionShort}</div>
+        </div>
+
+        <!-- Row 3: Comma-Formatted Share Qty & Target Weight -->
+        <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 bg-slate-50/90 rounded-xl px-3.5 py-2.5 border border-slate-100 text-[13px]">
+          <div class="font-mono text-slate-700 min-w-0">${sharesLine}</div>
+          <div class="text-right font-mono text-slate-500 whitespace-nowrap shrink-0 ml-auto">
             สัดส่วน <span class="text-slate-400">${wCurPct}%</span> ➔ <b class="text-slate-900 text-[15px] font-bold">${wTarPct}%</b>
           </div>
         </div>
@@ -2735,10 +2962,16 @@ function renderPortfolioGrowthChart() {
   const unit = state.currencyUnitText;
 
   const namesMap = {
-    max_sharpe: 'Max Sharpe (คุ้มความเสี่ยงสูงสุด)',
-    min_volatility: 'Min Volatility (ผันผวนต่ำ)',
-    hrp: 'Risk Parity (กระจายสมดุล)',
-    equal_weight: 'Equal Weight (เท่ากัน 1/N)'
+    max_sharpe: 'คุ้มความเสี่ยง (จำลอง)',
+    min_volatility: 'ผันผวนต่ำ (จำลอง)',
+    hrp: 'กระจายสมดุล (จำลอง)',
+    equal_weight: 'แบ่งเท่ากัน'
+  };
+  const shortNamesMap = {
+    max_sharpe: 'คุ้มความเสี่ยง',
+    min_volatility: 'ผันผวนต่ำ',
+    hrp: 'กระจายสมดุล',
+    equal_weight: 'แบ่งเท่ากัน'
   };
 
   const isDrawdownMode = state.backtestChartMode === 'drawdown' && pg.drawdown_amount_series;
@@ -2760,7 +2993,7 @@ function renderPortfolioGrowthChart() {
       },
       opacity: isSelected ? 1.0 : 0.7,
       hovertemplate: isDrawdownMode
-        ? `<b>${namesMap[key]}</b><br>เงินที่หายไปจากจุดพีค (เทียบเงินต้น): %{y:,.2f} ${unit}<extra></extra>`
+        ? `<b>${namesMap[key]}</b><br>เงินที่หายไปจากจุดสูงสุด: %{y:,.2f} ${unit}<extra></extra>`
         : `<b>${namesMap[key]}</b><br>มูลค่าพอร์ต: ${sym}%{y:,.2f} (${unit})<extra></extra>`
     };
   });
@@ -2777,9 +3010,9 @@ function renderPortfolioGrowthChart() {
       x: wfDates,
       y: wfSeries,
       mode: 'lines',
-      name: `Walk-Forward OOS (${namesMap[state.activeGoal] || state.activeGoal})`,
+      name: `ทดสอบจริง (${shortNamesMap[state.activeGoal] || state.activeGoal})`,
       line: { color: ct.wfLine, width: 2.4, dash: 'dashdot' },
-      hovertemplate: `<b>Walk-Forward OOS</b><br>มูลค่าพอร์ตจริงนอกตัวอย่าง: ${sym}%{y:,.2f} (${unit})<extra></extra>`
+      hovertemplate: `<b>ทดสอบเสมือนจริงแบบไม่รู้อนาคต</b><br>มูลค่าพอร์ตช่วงทดสอบจริง: ${sym}%{y:,.2f} (${unit})<extra></extra>`
     });
   }
 
@@ -2812,13 +3045,15 @@ function renderPortfolioGrowthChart() {
   const annotations = (!isDrawdownMode && splitDate)
     ? [{
         x: splitDate,
-        y: 1,
+        y: 0.96,
         xref: 'x',
         yref: 'paper',
-        text: 'เริ่ม Out-of-Sample ➔',
+        text: 'เริ่มช่วงทดสอบจริง ➔',
         showarrow: false,
         xanchor: 'left',
         yanchor: 'top',
+        bgcolor: ct.plotBg === '#111620' ? 'rgba(17, 22, 32, 0.88)' : 'rgba(255, 255, 255, 0.90)',
+        borderpad: 3,
         font: { size: 10, color: ct.axisText }
       }]
     : [];
@@ -2826,7 +3061,7 @@ function renderPortfolioGrowthChart() {
   const layout = {
     paper_bgcolor: 'transparent',
     plot_bgcolor: ct.plotBg,
-    margin: { l: isMobileViewport() ? 52 : 75, r: 16, t: 28, b: 40 },
+    margin: { l: isMobileViewport() ? 52 : 75, r: 16, t: isMobileViewport() ? 66 : 64, b: 40 },
     dragmode: isMobileViewport() ? false : 'zoom',
     shapes,
     annotations,
@@ -2845,7 +3080,8 @@ function renderPortfolioGrowthChart() {
     legend: {
       orientation: 'h',
       x: 0,
-      y: 1.15,
+      y: 1.03,
+      yanchor: 'bottom',
       font: { size: isMobileViewport() ? 10 : 11, color: ct.legendText }
     },
     hovermode: isMobileViewport() ? 'closest' : 'x unified'
@@ -2934,7 +3170,7 @@ function renderEfficientFrontierPlot() {
       x: ef.curve.map(p => p.vol),
       y: ef.curve.map(p => p.ret),
       mode: 'lines',
-      name: 'เส้นพอร์ตที่มีประสิทธิภาพสูงสุด (Efficient Frontier)',
+      name: 'แนวพอร์ตที่คุ้มค่าที่สุด',
       line: { color: '#00D084', width: 2.8 },
       hoverinfo: 'skip'
     });
@@ -2954,10 +3190,10 @@ function renderEfficientFrontierPlot() {
   });
 
   const markerConfigs = [
-    { key: 'max_sharpe', label: 'Max Sharpe', color: '#00D084', symbol: 'star', size: 16 },
-    { key: 'min_volatility', label: 'Min Volatility', color: '#38BDF8', symbol: 'diamond', size: 13 },
-    { key: 'hrp', label: 'Risk Parity (HRP)', color: '#A78BFA', symbol: 'circle', size: 13 },
-    { key: 'equal_weight', label: 'Equal Weight (1/N)', color: '#FBBF24', symbol: 'square', size: 11 }
+    { key: 'max_sharpe', label: 'คุ้มความเสี่ยง', color: '#00D084', symbol: 'star', size: 16 },
+    { key: 'min_volatility', label: 'ผันผวนต่ำ', color: '#38BDF8', symbol: 'diamond', size: 13 },
+    { key: 'hrp', label: 'กระจายสมดุล', color: '#A78BFA', symbol: 'circle', size: 13 },
+    { key: 'equal_weight', label: 'แบ่งเท่ากัน', color: '#FBBF24', symbol: 'square', size: 11 }
   ];
 
   markerConfigs.forEach(cfg => {
@@ -2976,7 +3212,7 @@ function renderEfficientFrontierPlot() {
         color: cfg.color,
         line: { color: ct.donutBorder, width: 2 }
       },
-      hovertemplate: `<b>${cfg.label}</b><br>ความผันผวน: %{x:.2%}<br>ผลตอบแทนคาดหวัง: %{y:.2%}<br>Sharpe Ratio: ${s.sharpe_ratio.toFixed(2)}<extra></extra>`
+      hovertemplate: `<b>${cfg.label}</b><br>ความผันผวน: %{x:.2%}<br>ผลตอบแทนคาดหวัง: %{y:.2%}<br>ความคุ้มค่า (กำไร/เสี่ยง): ${s.sharpe_ratio.toFixed(2)}<extra></extra>`
     });
   });
 
@@ -2986,7 +3222,7 @@ function renderEfficientFrontierPlot() {
     margin: { l: isMobileViewport() ? 48 : 60, r: 16, t: 25, b: 50 },
     dragmode: isMobileViewport() ? false : 'zoom',
     xaxis: {
-      title: 'ความผันผวนต่อปี (ความเสี่ยง — ยิ่งซ้ายยิ่งแกว่งน้อย)',
+      title: 'ความผันผวนต่อปี (ความเสี่ยง — ยิ่งซ้ายความเสี่ยงยิ่งต่ำ)',
       tickformat: '.0%',
       gridcolor: ct.grid,
       linecolor: ct.line,
@@ -3543,16 +3779,50 @@ function toggleNewsSignalAdjustment(enable) {
   }
 }
 
+function filterInsightsByTicker(ticker = 'ALL') {
+  state.insightsSelectedTicker = ticker || 'ALL';
+  renderNewsAndSignalSection();
+}
+
+function buildClientFallbackPulseArticle(stat, dec, tech) {
+  const t = stat.ticker;
+  const isThai = String(t).endsWith('.BK');
+  const mom1m = Number(tech.momentum_1m || 0) * 100;
+  const mom3m = Number(tech.momentum_3m || 0) * 100;
+  const rsiVal = Number(tech.rsi_14 !== undefined ? tech.rsi_14 : 50);
+  const trendLabel = tech.trend_label_th || 'แกว่งตัวในกรอบปกติ';
+  const sigLevel = dec.signal_level || 'NEUTRAL_ACCUMULATE';
+  const sent = sigLevel === 'POSITIVE_BUY' ? 'positive' : (sigLevel === 'CAUTIOUS_SHIELD' ? 'negative' : 'neutral');
+  const sentLabel = sent === 'positive' ? 'สัญญาณราคาเชิงบวก' : (sent === 'negative' ? 'สัญญาณระมัดระวัง' : 'สรุปความเคลื่อนไหวราคา');
+  const searchQuery = encodeURIComponent(isThai ? `${t.replace('.BK', '')} หุ้น` : `${t} stock news`);
+  return {
+    ticker: t,
+    title: `สรุปความเคลื่อนไหว ${stat.name || t}: ${trendLabel} (1 เดือน ${mom1m >= 0 ? '+' : ''}${mom1m.toFixed(1)}%, 3 เดือน ${mom3m >= 0 ? '+' : ''}${mom3m.toFixed(1)}%, RSI ${rsiVal.toFixed(0)})`,
+    publisher: 'QuantFolio Market Pulse (วิเคราะห์จากราคาตลาดจริง)',
+    link: `https://news.google.com/search?q=${searchQuery}&hl=${isThai ? 'th' : 'en-US'}`,
+    published_at: stat.latest_price_date || 'ล่าสุด',
+    sentiment: sent,
+    sentiment_label_th: sentLabel,
+    is_market_pulse: true
+  };
+}
+
 function renderNewsAndSignalSection() {
   const data = state.optData;
   if (!data) return;
 
   const intel = data.market_intelligence || {};
   const assetIntelMap = intel.assets || {};
-  const articles = intel.articles || [];
-  const activeStrat = data.strategies[state.activeGoal];
-  const isTHB = getCurrentCurrency() === 'THB';
+  const activeStrat = data.strategies[state.activeGoal] || {};
   const fx = Number(data.metadata?.usd_thb_rate || state.fxRate || 34.50);
+  const allStats = data.asset_stats || [];
+  const allPortfolioTickers = allStats.map(s => s.ticker);
+
+  // Ensure selected filter ticker is valid for current portfolio
+  if (state.insightsSelectedTicker && state.insightsSelectedTicker !== 'ALL' && !allPortfolioTickers.includes(state.insightsSelectedTicker)) {
+    state.insightsSelectedTicker = 'ALL';
+  }
+  const selectedFilter = state.insightsSelectedTicker || 'ALL';
 
   // Sync toggle buttons & checkbox
   const cb = document.getElementById('news-signal-toggle') || document.getElementById('use-news-adjustment-checkbox');
@@ -3562,32 +3832,269 @@ function renderNewsAndSignalSection() {
   const btnOff = document.getElementById('btn-news-adj-off');
   if (btnOn && btnOff) {
     if (state.useNewsAdjustment) {
-      btnOn.className = 'px-3 py-1.5 rounded-md font-bold bg-blue-600 text-white transition';
-      btnOff.className = 'px-3 py-1.5 rounded-md font-semibold text-slate-600 hover:text-slate-900 transition';
+      btnOn.className = 'px-3.5 py-1.5 rounded-lg font-extrabold bg-[#00D084] text-[#0A0D12] transition cursor-pointer';
+      btnOff.className = 'px-3.5 py-1.5 rounded-lg font-semibold text-slate-600 hover:text-slate-900 transition cursor-pointer';
     } else {
-      btnOn.className = 'px-3 py-1.5 rounded-md font-semibold text-slate-600 hover:text-slate-900 transition';
-      btnOff.className = 'px-3 py-1.5 rounded-md font-bold bg-slate-800 text-white transition';
+      btnOn.className = 'px-3.5 py-1.5 rounded-lg font-semibold text-slate-600 hover:text-slate-900 transition cursor-pointer';
+      btnOff.className = 'px-3.5 py-1.5 rounded-lg font-extrabold bg-[#00D084] text-[#0A0D12] transition cursor-pointer';
     }
   }
+
+  // Compute summary counts across ALL portfolio stocks
+  let posCount = 0;
+  let neuCount = 0;
+  let cautCount = 0;
+  allStats.forEach(s => {
+    const lvl = (s.decision || assetIntelMap[s.ticker] || {}).signal_level || 'NEUTRAL_ACCUMULATE';
+    if (lvl === 'POSITIVE_BUY') posCount++;
+    else if (lvl === 'CAUTIOUS_SHIELD' || lvl === 'OVERBOUGHT_TRANCHE') cautCount++;
+    else neuCount++;
+  });
+  const posEl = document.getElementById('insights-count-positive');
+  const neuEl = document.getElementById('insights-count-neutral');
+  const cautEl = document.getElementById('insights-count-caution');
+  if (posEl) posEl.innerText = String(posCount);
+  if (neuEl) neuEl.innerText = String(neuCount);
+  if (cautEl) cautEl.innerText = String(cautCount);
+
+  const covBadge = document.getElementById('insights-stocks-coverage-badge');
+  if (covBadge) {
+    covBadge.innerText = selectedFilter === 'ALL'
+      ? `แสดงครบทั้ง ${allStats.length}/${allStats.length} หุ้นในพอร์ต (100%)`
+      : `กำลังดูเฉพาะ ${selectedFilter} (จาก ${allStats.length} หุ้นในพอร์ต)`;
+  }
+
+  // Render Stock Filter Pill Bar (#insights-ticker-filter-bar)
+  const filterBar = document.getElementById('insights-ticker-filter-bar');
+  if (filterBar) {
+    const allBtnCls = selectedFilter === 'ALL'
+      ? 'px-3 py-1 rounded-xl text-xs font-bold bg-slate-900 text-[#00D084] shadow-2xs transition cursor-pointer'
+      : 'px-3 py-1 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer';
+    const tickerButtonsHtml = allStats.map(s => {
+      const safeT = escapeHtmlText(s.ticker);
+      const isAct = selectedFilter === s.ticker;
+      const cls = isAct
+        ? 'px-2.5 py-1 rounded-xl text-xs font-mono font-bold bg-[#00D084] text-[#0A0D12] shadow-2xs transition cursor-pointer'
+        : 'px-2.5 py-1 rounded-xl text-xs font-mono font-semibold bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 transition cursor-pointer';
+      return `<button type="button" data-ticker="${safeT}" onclick="filterInsightsByTicker(this.dataset.ticker)" class="${cls}">${safeT}</button>`;
+    }).join('');
+    filterBar.innerHTML = `
+      <span class="text-[11px] font-semibold text-slate-500 mr-1">เลือกดูรายหุ้น:</span>
+      <button type="button" onclick="filterInsightsByTicker('ALL')" class="${allBtnCls}">ทั้งหมดครบทุกตัว (${allStats.length})</button>
+      ${tickerButtonsHtml}
+    `;
+  }
+
+  // Build guaranteed per-stock articles map & round-robin article list across ALL portfolio stocks
+  const perTickerArticles = {};
+  allStats.forEach(stat => {
+    const t = stat.ticker;
+    const tech = stat.technical || assetIntelMap[t]?.technical || {};
+    const dec = stat.decision || assetIntelMap[t] || {};
+    const rawArts = (stat.news && Array.isArray(stat.news.articles) && stat.news.articles.length > 0)
+      ? stat.news.articles
+      : (intel.articles || []).filter(a => a.ticker === t);
+    perTickerArticles[t] = rawArts.length > 0 ? rawArts : [buildClientFallbackPulseArticle(stat, dec, tech)];
+  });
+
+  const interleavedArticles = [];
+  const maxDepth = Math.max(1, ...allStats.map(s => (perTickerArticles[s.ticker] || []).length));
+  for (let pass = 0; pass < maxDepth; pass++) {
+    allStats.forEach(s => {
+      const list = perTickerArticles[s.ticker] || [];
+      if (pass < list.length) {
+        interleavedArticles.push(list[pass]);
+      }
+    });
+  }
+
+  const visibleStats = selectedFilter === 'ALL'
+    ? allStats
+    : allStats.filter(s => s.ticker === selectedFilter);
+  const visibleArticles = selectedFilter === 'ALL'
+    ? interleavedArticles
+    : (perTickerArticles[selectedFilter] || []);
 
   // Update news count badge
   const countBadge = document.getElementById('news-count-badge');
   if (countBadge) {
-    countBadge.innerText = articles.length > 0
-      ? `วิเคราะห์ข่าวตลาดจริงแล้ว ${articles.length} ข่าว (จาก Yahoo Finance & Google News)`
-      : `ใช้สัญญาณแนวโน้มราคา (RSI-14 & SMA 50/200) เป็นตัวช่วยตัดสินใจ`;
+    countBadge.innerText = selectedFilter === 'ALL'
+      ? `ครอบคลุมครบ ${allStats.length} หุ้นในพอร์ต (${visibleArticles.length} รายการข่าว & บทวิเคราะห์)`
+      : `ข่าวและบทวิเคราะห์ของ ${selectedFilter} (${visibleArticles.length} รายการ)`;
   }
 
-  // 1. Render Asset Signal & Entry Guidance Table
+  // 1. Render Upfront Per-Stock Easy-Read Intelligence Cards (#insights-stock-cards-grid)
+  const stockCardsGrid = document.getElementById('insights-stock-cards-grid');
+  if (stockCardsGrid) {
+    stockCardsGrid.innerHTML = visibleStats.map(stat => {
+      const t = stat.ticker;
+      const safeT = escapeHtmlText(t);
+      const safeName = escapeHtmlText(stat.name || t);
+      const color = ASSET_COLORS[Math.max(0, (data.metadata?.tickers || []).indexOf(t)) % ASSET_COLORS.length];
+      const tech = stat.technical || assetIntelMap[t]?.technical || {};
+      const newsObj = stat.news || {};
+      const dec = stat.decision || assetIntelMap[t] || {};
+
+      const natCurr = stat.native_currency || (t.endsWith('.BK') ? 'THB' : 'USD');
+      const natPx = Number(stat.native_price || stat.latest_price || 0);
+      const priceThb = convertNativePrice(natPx, natCurr, 'THB', fx);
+      const priceUsd = convertNativePrice(natPx, natCurr, 'USD', fx);
+
+      const histW = ((activeStrat.historical_weights?.[t] ?? activeStrat.weights?.[t] ?? 0) * 100).toFixed(1);
+      const newsW = ((activeStrat.news_adjusted_weights?.[t] ?? activeStrat.weights?.[t] ?? 0) * 100).toFixed(1);
+      const weightDiffNum = Number((Number(newsW) - Number(histW)).toFixed(1));
+      const weightImpactText = weightDiffNum > 0
+        ? `เพิ่มน้ำหนัก +${weightDiffNum.toFixed(1)}% (${histW}% ➔ ${newsW}%)`
+        : weightDiffNum < 0
+        ? `ลดน้ำหนัก ${weightDiffNum.toFixed(1)}% (${histW}% ➔ ${newsW}%)`
+        : `คงสัดส่วน ${newsW}% ตามแผน`;
+      const weightImpactCls = weightDiffNum > 0 ? 'text-emerald-700' : (weightDiffNum < 0 ? 'text-rose-600' : 'text-slate-700');
+
+      const rsiVal = Math.max(5, Math.min(95, Number(tech.rsi_14 !== undefined ? tech.rsi_14 : 50)));
+      let rsiPlainZone = 'โซนราคาสมดุลปกติ (ทยอยซื้อได้)';
+      let rsiZoneColor = 'text-emerald-700';
+      if (rsiVal >= 72) {
+        rsiPlainZone = 'โซนราคาร้อนแรง (ระวังการไล่ราคา แบ่งไม้ซื้อ)';
+        rsiZoneColor = 'text-amber-700';
+      } else if (rsiVal <= 32) {
+        rsiPlainZone = 'โซนราคาอ่อนตัวลงลึก (จังหวะทยอยสะสมของถูก)';
+        rsiZoneColor = 'text-sky-700';
+      }
+
+      const mom1mPct = Number(tech.momentum_1m || 0) * 100;
+      const mom3mPct = Number(tech.momentum_3m || 0) * 100;
+      const trendPlain = tech.trend_status === 'UPTREND'
+        ? 'ขาขึ้นชัดเจน (ราคาวิ่งเหนือเส้นค่าเฉลี่ย)'
+        : tech.trend_status === 'RECOVERY'
+        ? 'กำลังฟื้นตัวระยะสั้น'
+        : tech.trend_status === 'DOWNTREND'
+        ? 'ขาลงระยะสั้น (รอสร้างฐานราคา)'
+        : 'แกว่งตัวสะสมพลังในกรอบ';
+
+      const sentScore = Number(dec.news_sentiment_score ?? newsObj.news_sentiment_score ?? 0);
+      const sentPlain = sentScore > 0.12
+        ? 'ข่าวเชิงบวกหนุนราคา'
+        : sentScore < -0.12
+        ? 'มีข่าวกดดันระยะสั้น'
+        : 'กระแสข่าวเป็นกลาง/ปกติ';
+      const sentTextCls = sentScore > 0.12 ? 'text-emerald-700' : (sentScore < -0.12 ? 'text-rose-600' : 'text-slate-700');
+
+      const signalLevel = dec.signal_level || 'NEUTRAL_ACCUMULATE';
+      let badgeCls = 'bg-blue-50 text-blue-800 border-blue-200';
+      if (signalLevel === 'POSITIVE_BUY') badgeCls = 'bg-emerald-50 text-emerald-800 border-emerald-200';
+      else if (signalLevel === 'OVERBOUGHT_TRANCHE') badgeCls = 'bg-amber-50 text-amber-800 border-amber-200';
+      else if (signalLevel === 'CAUTIOUS_SHIELD') badgeCls = 'bg-rose-50 text-rose-800 border-rose-200';
+
+      const stockArts = (perTickerArticles[t] || []).slice(0, 2);
+      const isThaiSym = t.endsWith('.BK');
+      const googleSearchUrl = `https://news.google.com/search?q=${encodeURIComponent(isThaiSym ? t.replace('.BK', '') + ' หุ้น' : t + ' stock')}&hl=${isThaiSym ? 'th' : 'en-US'}`;
+      const yahooQuoteUrl = `https://finance.yahoo.com/quote/${encodeURIComponent(t)}`;
+
+      const miniNewsHtml = stockArts.map(art => {
+        const safeUrl = sanitizeExternalUrl(art.link);
+        const safeTitle = escapeHtmlText(art.title);
+        const safePub = escapeHtmlText(art.publisher || 'Market News');
+        const sent = String(art.sentiment || 'neutral').toLowerCase();
+        const dotCls = sent === 'positive' ? 'bg-emerald-500' : (sent === 'negative' ? 'bg-rose-500' : 'bg-slate-400');
+        return `
+          <a href="${safeUrl}" target="_blank" rel="noopener noreferrer" class="block p-2.5 rounded-xl bg-slate-50 hover:bg-[#E6FBF3]/60 border border-slate-200/80 transition group">
+            <div class="flex items-start gap-2">
+              <span class="w-2 h-2 rounded-full ${dotCls} mt-1.5 shrink-0"></span>
+              <div class="min-w-0 flex-1">
+                <div class="text-xs font-semibold text-slate-800 group-hover:text-[#008A57] line-clamp-2 leading-snug">${safeTitle}</div>
+                <div class="text-[11px] text-slate-400 mt-0.5 flex items-center justify-between gap-2">
+                  <span class="truncate">${safePub}</span>
+                  <span class="text-[#008A57] font-semibold shrink-0">อ่านต่อ ➔</span>
+                </div>
+              </div>
+            </div>
+          </a>
+        `;
+      }).join('');
+
+      return `
+        <div class="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs space-y-3.5 flex flex-col justify-between">
+          <div class="space-y-3">
+            <!-- Row 1: Stock Identity + Price + Plain-Thai Action Verdict Badge -->
+            <div class="flex items-start justify-between gap-2.5 flex-wrap">
+              <div class="flex items-center gap-2.5 min-w-0">
+                ${renderStockLogoBadge(t, color, 40)}
+                <div class="min-w-0">
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <span class="font-mono font-bold text-base text-slate-900">${safeT}</span>
+                    <span class="text-xs font-mono font-semibold text-slate-600">฿${Number(priceThb).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span class="text-slate-300">|</span> $${Number(priceUsd).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </div>
+                  <div class="text-xs text-slate-500 truncate max-w-[220px]">${safeName}</div>
+                </div>
+              </div>
+              <span class="px-2.5 py-1 rounded-full border text-xs font-bold ${badgeCls} shrink-0">
+                ${escapeHtmlText(dec.signal_badge_th || 'สมดุล/สะสมตามแผน')}
+              </span>
+            </div>
+
+            <!-- Row 2: Visual 3-Zone Price Gauge (อ่อนตัว ⇄ ปกติ ⇄ ร้อนแรง) -->
+            <div class="p-3 rounded-xl bg-slate-50/90 border border-slate-200/70 space-y-1.5">
+              <div class="flex items-center justify-between gap-2 text-xs flex-wrap">
+                <span class="font-bold ${rsiZoneColor}">${rsiPlainZone}</span>
+                <span class="font-mono text-[11px] text-slate-500">(RSI: ${rsiVal.toFixed(1)})</span>
+              </div>
+              <div class="relative h-2.5 w-full rounded-full bg-gradient-to-r from-sky-400 via-emerald-400 to-rose-400">
+                <span class="w-3.5 h-3.5 rounded-full bg-slate-900 border-2 border-white shadow-sm absolute -top-0.5 -ml-1.5 transition-all" style="left:${rsiVal.toFixed(0)}%;"></span>
+              </div>
+              <div class="flex items-center justify-between text-[10px] text-slate-500 font-medium">
+                <span>ราคาอ่อนตัว (น่าสะสม)</span>
+                <span>สมดุลปกติ</span>
+                <span>ราคาร้อนแรง (ระวังไล่ราคา)</span>
+              </div>
+            </div>
+
+            <!-- Row 3: 3 Easy-Read Metrics (แนวโน้มราคา | กระแสข่าว | ผลต่อพอร์ต) -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+              <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                <div class="text-[11px] text-slate-400">ทิศทางราคา</div>
+                <div class="font-bold text-slate-800 mt-0.5 leading-snug">${trendPlain}</div>
+                <div class="text-[11px] font-mono text-slate-500 mt-0.5">1ด: ${mom1mPct >= 0 ? '+' : ''}${mom1mPct.toFixed(1)}% | 3ด: ${mom3mPct >= 0 ? '+' : ''}${mom3mPct.toFixed(1)}%</div>
+              </div>
+              <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                <div class="text-[11px] text-slate-400">กระแสข่าวตลาด</div>
+                <div class="font-bold ${sentTextCls} mt-0.5">${sentPlain}</div>
+                <div class="text-[11px] text-slate-500 mt-0.5">คะแนนข่าว: ${sentScore >= 0 ? '+' : ''}${sentScore.toFixed(2)}</div>
+              </div>
+              <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                <div class="text-[11px] text-slate-400">ผลต่อสัดส่วนพอร์ต</div>
+                <div class="font-bold ${weightImpactCls} mt-0.5 leading-snug">${weightImpactText}</div>
+                <div class="text-[11px] text-slate-500 mt-0.5">${escapeHtmlText(dec.execution_tactic_th || 'จัดสรรตามสัดส่วนเป้าหมาย')}</div>
+              </div>
+            </div>
+
+            <!-- Row 4: Top News / Smart Market Pulse for THIS Stock -->
+            <div class="space-y-1.5">
+              <div class="flex items-center justify-between text-[11px] text-slate-500">
+                <span class="font-semibold text-slate-700">ข่าวและบทวิเคราะห์ล่าสุดของ ${safeT}:</span>
+                <div class="flex items-center gap-2">
+                  <a href="${googleSearchUrl}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline font-medium">Google News ↗</a>
+                  <span class="text-slate-300">•</span>
+                  <a href="${yahooQuoteUrl}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline font-medium">Yahoo Finance ↗</a>
+                </div>
+              </div>
+              ${miniNewsHtml}
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  // 2. Render Asset Signal & Entry Guidance Table (#news-signal-table-body)
   const signalTbody = document.getElementById('news-signal-table-body');
   if (signalTbody) {
-    signalTbody.innerHTML = data.asset_stats.map(stat => {
+    signalTbody.innerHTML = allStats.map(stat => {
       const t = stat.ticker;
       const tech = stat.technical || assetIntelMap[t]?.technical || {};
       const newsObj = stat.news || {};
       const dec = stat.decision || assetIntelMap[t] || {};
-      const histW = ((activeStrat.historical_weights?.[t] ?? activeStrat.weights[t] ?? 0) * 100).toFixed(1);
-      const newsW = ((activeStrat.news_adjusted_weights?.[t] ?? activeStrat.weights[t] ?? 0) * 100).toFixed(1);
+      const histW = ((activeStrat.historical_weights?.[t] ?? activeStrat.weights?.[t] ?? 0) * 100).toFixed(1);
+      const newsW = ((activeStrat.news_adjusted_weights?.[t] ?? activeStrat.weights?.[t] ?? 0) * 100).toFixed(1);
       const weightDiff = (Number(newsW) - Number(histW)).toFixed(1);
 
       const natCurr = stat.native_currency || (t.endsWith('.BK') ? 'THB' : 'USD');
@@ -3615,7 +4122,7 @@ function renderNewsAndSignalSection() {
         : `<span class="text-slate-400">(0.0%)</span>`;
 
       const mom1mPct = tech.momentum_1m !== undefined ? (tech.momentum_1m * 100) : 0;
-      const newsCount = (newsObj.articles ? newsObj.articles.length : 0);
+      const newsCount = (perTickerArticles[t] ? perTickerArticles[t].length : 0);
 
       return `
         <tr class="hover:bg-slate-50/90 transition">
@@ -3638,7 +4145,7 @@ function renderNewsAndSignalSection() {
           </td>
           <td class="py-2.5 px-3 text-center font-sans">
             <div>${sentBadge}</div>
-            <div class="text-[10px] text-slate-500 mt-0.5">ข่าวที่วิเคราะห์: ${newsCount} ข่าว</div>
+            <div class="text-[10px] text-slate-500 mt-0.5">รายการวิเคราะห์: ${newsCount} รายการ</div>
           </td>
           <td class="py-2.5 px-3 text-right font-mono">
             <div class="text-slate-600">${histW}% ➔ <strong class="text-slate-900">${newsW}%</strong></div>
@@ -3655,17 +4162,19 @@ function renderNewsAndSignalSection() {
     }).join('');
   }
 
-  // 2. Render Live Market News Articles Grid
+  // 3. Render Live Market News Articles Grid (All Portfolio Tickers Represented via Round-Robin)
   const newsGrid = document.getElementById('market-news-articles-grid');
   if (newsGrid) {
-    if (!articles || articles.length === 0) {
+    const maxArticlesToShow = Math.max(12, allStats.length * 2);
+    const displayArts = visibleArticles.slice(0, maxArticlesToShow);
+    if (!displayArts || displayArts.length === 0) {
       newsGrid.innerHTML = `
         <div class="col-span-2 p-4 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-500 text-center">
           ไม่พบหัวข้อข่าวล่าสุดในช่วงเวลานี้ ระบบใช้สัญญาณแนวโน้มราคา (Technical Trend & RSI) เป็นตัวช่วยตัดสินใจหลัก
         </div>
       `;
     } else {
-      newsGrid.innerHTML = articles.slice(0, 8).map((art, idx) => {
+      newsGrid.innerHTML = displayArts.map((art, idx) => {
         const sent = (art.sentiment || art.sentiment_label || 'neutral').toLowerCase();
         const sentPillCls = sent === 'positive'
           ? 'dime-pill-up'
@@ -3717,8 +4226,17 @@ async function refreshLiveMarketNews() {
     const res = await fetch(`/api/market-news?tickers=${q}`);
     if (!res.ok) throw new Error('ไม่สามารถดึงข่าวตลาดได้');
     const newsData = await res.json();
-    if (state.optData && state.optData.market_intelligence) {
-      state.optData.market_intelligence.articles = newsData.articles || [];
+    if (state.optData) {
+      if (state.optData.market_intelligence) {
+        state.optData.market_intelligence.articles = newsData.articles || [];
+      }
+      if (newsData.news && Array.isArray(state.optData.asset_stats)) {
+        state.optData.asset_stats.forEach(s => {
+          if (newsData.news[s.ticker] && Array.isArray(newsData.news[s.ticker].articles) && newsData.news[s.ticker].articles.length > 0) {
+            s.news = newsData.news[s.ticker];
+          }
+        });
+      }
       renderNewsAndSignalSection();
     }
   } catch (err) {
@@ -3853,7 +4371,375 @@ function scrollToSectionById(sectionId) {
   }
 }
 
+function setAppView(viewName = 'landing', shouldScroll = true) {
+  const nextView = viewName === 'workspace' ? 'workspace' : 'landing';
+  state.appView = nextView;
+
+  const landingEl = document.getElementById('landing-showcase-view');
+  const workspaceEl = document.getElementById('main-app-workspace');
+  const telemetryEl = document.getElementById('header-workspace-telemetry');
+  if (landingEl) {
+    landingEl.classList.toggle('hidden', nextView !== 'landing');
+  }
+  if (workspaceEl) {
+    workspaceEl.classList.toggle('hidden', nextView !== 'workspace');
+  }
+  if (telemetryEl) {
+    telemetryEl.classList.toggle('hidden', nextView !== 'workspace');
+    telemetryEl.classList.toggle('flex', nextView === 'workspace');
+  }
+  const landingNavEl = document.getElementById('header-landing-nav');
+  if (landingNavEl) {
+    landingNavEl.classList.toggle('lg:flex', nextView === 'landing');
+    landingNavEl.classList.toggle('hidden', nextView !== 'landing');
+  }
+  const landingCtaEl = document.getElementById('header-landing-cta-btn');
+  if (landingCtaEl) {
+    landingCtaEl.classList.toggle('hidden', nextView !== 'landing');
+    landingCtaEl.classList.toggle('inline-flex', nextView === 'landing');
+  }
+
+  const resumeBtn = document.getElementById('landing-resume-results-btn');
+  if (resumeBtn) {
+    resumeBtn.classList.toggle('hidden', state.resultStatus !== 'ready');
+  }
+
+  if (nextView === 'workspace') {
+    resizeVisiblePlotlyCharts();
+  }
+  if (window.lucide) {
+    lucide.createIcons();
+  }
+  if (shouldScroll) {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+}
+
+function showLandingShowcase() {
+  setAppView('landing', true);
+}
+
+const LANDING_RISK_PROFILES = {
+  conservative: {
+    step: 1,
+    badge: 'Conservative',
+    titleTh: 'พอร์ตเน้นรักษาเงินต้นและลดความผันผวน',
+    subtitleTh: 'ให้น้ำหนักตราสารหนี้และทองคำเป็นแกนหลัก เสริมหุ้นปันผลไทยและสหรัฐฯ เพื่อความมั่นคงในภาวะตลาดผันผวน',
+    expectedReturn: '5.4%',
+    volatility: '6.2%',
+    sharpeRatio: '0.71',
+    noteTh: 'กรอบความผันผวนต่ำ เหมาะกับผู้เริ่มต้นและพอร์ตพักเงิน',
+    targetStrategy: 'min_volatility',
+    targetPreset: 'all_weather',
+    targetTickers: ['TLT', 'GLD', 'PTT.BK', 'ADVANC.BK', 'SPY', 'AAPL'],
+    allocations: [
+      { id: 'bonds', labelEn: 'Bonds', labelTh: 'ตราสารหนี้คุณภาพ (Bonds)', tickers: 'TLT • GOVT', weightPct: 55, color: '#2563EB' },
+      { id: 'gold', labelEn: 'Gold', labelTh: 'ทองคำและสินทรัพย์ปลอดภัย (Gold)', tickers: 'GLD', weightPct: 15, color: '#F59E0B' },
+      { id: 'thai_eq', labelEn: 'Thai Equities', labelTh: 'หุ้นไทยปันผลมั่นคง (SET50)', tickers: 'ADVANC.BK • PTT.BK', weightPct: 15, color: '#10B981' },
+      { id: 'us_eq', labelEn: 'US Equities', labelTh: 'หุ้นขนาดใหญ่สหรัฐฯ (US Core)', tickers: 'SPY • AAPL', weightPct: 15, color: '#6366F1' }
+    ],
+    newsFeed: [
+      { assetClass: 'Bonds', sentiment: 'Positive', headline: 'อัตราผลตอบแทนพันธบัตรรัฐบาลสหรัฐฯ ทรงตัวหนุนแรงซื้อสินทรัพย์ปลอดภัยระยะกลาง', impact: 'หนุนเสถียรภาพพอร์ตตราสารหนี้ (+0.4% Tilt)', timeAgo: '18 นาทีที่แล้ว' },
+      { assetClass: 'Gold', sentiment: 'Neutral', headline: 'ราคาทองคำโลกเคลื่อนไหวในกรอบแคบ นักลงทุนรอดูตัวเลขเงินเฟ้อสหรัฐฯ สัปดาห์นี้', impact: 'คงน้ำหนักป้องกันความเสี่ยงตามเกณฑ์มาตรฐาน', timeAgo: '45 นาทีที่แล้ว' },
+      { assetClass: 'Thai Equities', sentiment: 'Positive', headline: 'กลุ่มธนาคารและสื่อสารใน SET50 รักษาอัตราจ่ายเงินปันผลต่อเนื่องท่ามกลางเศรษฐกิจชะลอตัว', impact: 'ช่วยสร้างกระแสเงินสดรับสม่ำเสมอให้พอร์ต', timeAgo: '1 ชั่วโมงที่แล้ว' }
+    ]
+  },
+  balanced: {
+    step: 2,
+    badge: 'Balanced',
+    titleTh: 'พอร์ตสมดุลระหว่างการเติบโตและเกราะป้องกันความเสี่ยง',
+    subtitleTh: 'กระจายน้ำหนักระหว่างหุ้นสหรัฐฯ หุ้นไทย ตราสารหนี้ และทองคำ เพื่อผลตอบแทนคุ้มค่าความเสี่ยง (Max Sharpe / HRP)',
+    expectedReturn: '8.9%',
+    volatility: '10.8%',
+    sharpeRatio: '0.78',
+    noteTh: 'สมดุลความเสี่ยงปานกลาง เหมาะกับการสะสมความมั่งคั่งระยะกลาง-ยาว',
+    targetStrategy: 'hrp',
+    targetPreset: 'all_weather',
+    targetTickers: ['SPY', 'MSFT', 'AAPL', 'TLT', 'PTT.BK', 'BDMS.BK', 'GLD'],
+    allocations: [
+      { id: 'us_eq', labelEn: 'US Equities', labelTh: 'หุ้นขนาดใหญ่และเทคโนโลยีสหรัฐฯ', tickers: 'SPY • MSFT • AAPL', weightPct: 35, color: '#00D084' },
+      { id: 'bonds', labelEn: 'Bonds', labelTh: 'ตราสารหนี้ภาครัฐและเอกชน', tickers: 'TLT • IEF', weightPct: 30, color: '#2563EB' },
+      { id: 'thai_eq', labelEn: 'Thai Equities', labelTh: 'หุ้นพื้นฐานแกร่งตลาดไทย (SET50)', tickers: 'PTT.BK • BDMS.BK • AOT.BK', weightPct: 20, color: '#6366F1' },
+      { id: 'gold', labelEn: 'Gold', labelTh: 'ทองคำป้องกันความเสี่ยงเงินเฟ้อ', tickers: 'GLD', weightPct: 15, color: '#F59E0B' }
+    ],
+    newsFeed: [
+      { assetClass: 'US Equities', sentiment: 'Positive', headline: 'กลุ่มเทคโนโลยีและโครงสร้างพื้นฐาน AI สหรัฐฯ รายงานกำไรไตรมาสล่าสุดเติบโตเกินคาดการณ์', impact: 'โมเดลเพิ่มน้ำหนักหุ้นเติบโตคุณภาพ (+1.2% Tilt)', timeAgo: '12 นาทีที่แล้ว' },
+      { assetClass: 'Thai Equities', sentiment: 'Positive', headline: 'ภาคการท่องเที่ยวและการแพทย์ไทยฟื้นตัวต่อเนื่อง หนุนรายได้กลุ่มบริการในดัชนี SET50', impact: 'รักษาน้ำหนักหุ้นไทยกลุ่ม Defensive Growth', timeAgo: '35 นาทีที่แล้ว' },
+      { assetClass: 'Bonds / Gold', sentiment: 'Negative', headline: 'ความตึงเครียดด้านห่วงโซ่อุปทานโลกกดดันต้นทุนพลังงานในระยะสั้น', impact: 'คงสัดส่วนทองคำ 15% เพื่อกันแรงเหวี่ยงของพอร์ต', timeAgo: '1 ชั่วโมงที่แล้ว' }
+    ]
+  },
+  growth: {
+    step: 3,
+    badge: 'Growth',
+    titleTh: 'พอร์ตมุ่งเน้นการเติบโตของเงินทุนระยะยาว',
+    subtitleTh: 'ให้น้ำหนักหุ้นเติบโตสหรัฐฯ และไทยเป็นหลัก พร้อมคงตราสารหนี้และทองคำบางส่วนเพื่อลดความเสียหายช่วงตลาดย่อตัว',
+    expectedReturn: '12.6%',
+    volatility: '16.4%',
+    sharpeRatio: '0.82',
+    noteTh: 'รับความผันผวนได้สูงขึ้น เพื่อมุ่งสร้างผลตอบแทนทบต้นระยะยาว',
+    targetStrategy: 'max_sharpe',
+    targetPreset: 'tech_titans',
+    targetTickers: ['NVDA', 'AMZN', 'MSFT', 'QQQ', 'DELTA.BK', 'AOT.BK', 'GLD'],
+    allocations: [
+      { id: 'us_eq', labelEn: 'US Equities', labelTh: 'หุ้นเติบโตและนวัตกรรมสหรัฐฯ', tickers: 'NVDA • AMZN • MSFT • QQQ', weightPct: 55, color: '#00D084' },
+      { id: 'thai_eq', labelEn: 'Thai Equities', labelTh: 'หุ้นไทยกลุ่มผู้นำการเติบโต', tickers: 'DELTA.BK • CPALL.BK • AOT.BK', weightPct: 25, color: '#6366F1' },
+      { id: 'gold', labelEn: 'Gold', labelTh: 'ทองคำกระจายความเสี่ยง', tickers: 'GLD', weightPct: 10, color: '#F59E0B' },
+      { id: 'bonds', labelEn: 'Bonds', labelTh: 'ตราสารหนี้สำรองสภาพคล่อง', tickers: 'TLT', weightPct: 10, color: '#2563EB' }
+    ],
+    newsFeed: [
+      { assetClass: 'US Equities', sentiment: 'Positive', headline: 'ยอดคำสั่งซื้อชิปประมวลผลดาต้าเซ็นเตอร์พุ่งสูง หนุนแนวโน้มรายได้กลุ่ม Semiconductor สหรัฐฯ', impact: 'สัญญาณ Momentum หนุนพอร์ต Growth ชัดเจน', timeAgo: '9 นาทีที่แล้ว' },
+      { assetClass: 'Thai Equities', sentiment: 'Neutral', headline: 'ความผันผวนค่าเงินบาทเทียบดอลลาร์เพิ่มขึ้นตามทิศทางฟันด์โฟลว์ต่างชาติ', impact: 'คำนวณผลตอบแทนปรับด้วยเรท USD/THB รายวัน', timeAgo: '28 นาทีที่แล้ว' },
+      { assetClass: 'US Equities', sentiment: 'Negative', headline: 'แรงขายทำกำไรระยะสั้นในหุ้นกลุ่ม Valuation สูงหลังดัชนีทำจุดสูงสุดใหม่', impact: 'ระบบคุมเพดานน้ำหนักต่อตัวไม่ให้กระจุกเกินเกณฑ์', timeAgo: '50 นาทีที่แล้ว' }
+    ]
+  }
+};
+
+function selectLandingRiskProfile(profileKey = 'balanced') {
+  const key = LANDING_RISK_PROFILES[profileKey] ? profileKey : 'balanced';
+  state.landingRiskProfile = key;
+  const preset = LANDING_RISK_PROFILES[key];
+
+  ['conservative', 'balanced', 'growth'].forEach(k => {
+    const tabBtn = document.getElementById(`landing-risk-tab-${k}`);
+    if (tabBtn) {
+      const isAct = k === key;
+      tabBtn.setAttribute('aria-selected', isAct ? 'true' : 'false');
+      tabBtn.className = isAct
+        ? 'px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-bold bg-[#0F172A] text-[#00D084] shadow-2xs transition cursor-pointer'
+        : 'px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-bold text-slate-600 hover:text-slate-900 transition cursor-pointer';
+    }
+  });
+
+  const sliderEl = document.getElementById('landing-risk-slider');
+  if (sliderEl) sliderEl.value = String(preset.step);
+  const stepLbl = document.getElementById('landing-risk-step-label');
+  if (stepLbl) stepLbl.innerText = `${preset.step}/3`;
+
+  const badgeEl = document.getElementById('landing-risk-badge');
+  if (badgeEl) badgeEl.innerText = `${preset.badge} Profile`;
+  const titleEl = document.getElementById('landing-risk-title');
+  if (titleEl) titleEl.innerText = preset.titleTh;
+  const subEl = document.getElementById('landing-risk-subtitle');
+  if (subEl) subEl.innerText = preset.subtitleTh;
+  const noteEl = document.getElementById('landing-risk-note');
+  if (noteEl) noteEl.innerText = preset.noteTh;
+
+  const retEl = document.getElementById('landing-metric-return');
+  if (retEl) retEl.innerText = preset.expectedReturn;
+  const volEl = document.getElementById('landing-metric-vol');
+  if (volEl) volEl.innerText = preset.volatility;
+  const sharpeEl = document.getElementById('landing-metric-sharpe');
+  if (sharpeEl) sharpeEl.innerText = preset.sharpeRatio;
+
+  const topSlice = preset.allocations[0];
+  const dLabel = document.getElementById('landing-risk-donut-label');
+  if (dLabel && topSlice) dLabel.innerText = topSlice.labelEn;
+  const dPct = document.getElementById('landing-risk-donut-pct');
+  if (dPct && topSlice) dPct.innerText = `${topSlice.weightPct}%`;
+  const dTickers = document.getElementById('landing-risk-donut-tickers');
+  if (dTickers && topSlice) dTickers.innerText = topSlice.tickers;
+
+  const svgEl = document.getElementById('landing-risk-donut-svg');
+  if (svgEl) {
+    const r = 56;
+    const circ = 2 * Math.PI * r;
+    let cum = 0;
+    const circles = preset.allocations.map(s => {
+      const dash = `${(s.weightPct / 100) * circ} ${circ}`;
+      const offset = -((cum / 100) * circ);
+      cum += s.weightPct;
+      return `<circle cx="70" cy="70" r="${r}" fill="none" stroke="${s.color}" stroke-width="18" stroke-dasharray="${dash}" stroke-dashoffset="${offset}"></circle>`;
+    }).join('');
+    svgEl.innerHTML = `<circle cx="70" cy="70" r="${r}" fill="none" stroke="#F1F5F9" stroke-width="18"></circle>${circles}`;
+  }
+
+  const barsEl = document.getElementById('landing-risk-bars-list');
+  if (barsEl) {
+    barsEl.innerHTML = preset.allocations.map(s => `
+      <div class="p-2.5 rounded-xl bg-white border border-slate-100 hover:border-slate-200 transition">
+        <div class="flex items-center justify-between text-xs mb-1.5 gap-2">
+          <div class="flex items-center gap-2 min-w-0">
+            <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background-color:${s.color};"></span>
+            <span class="font-bold text-slate-800 truncate">${escapeHtmlText(s.labelEn)}</span>
+            <span class="text-slate-500 truncate hidden sm:inline">• ${escapeHtmlText(s.labelTh)}</span>
+          </div>
+          <span class="font-mono font-bold text-slate-900 tabular-nums shrink-0">${s.weightPct}%</span>
+        </div>
+        <div class="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
+          <div class="h-full rounded-full transition-all duration-300" style="width:${s.weightPct}%;background-color:${s.color};"></div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  const newsEl = document.getElementById('landing-risk-news-list');
+  if (newsEl) {
+    const sentStyles = {
+      Positive: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+      Neutral: 'bg-slate-100 text-slate-700 border-slate-200',
+      Negative: 'bg-rose-50 text-rose-700 border-rose-200'
+    };
+    newsEl.innerHTML = preset.newsFeed.map(item => `
+      <article class="p-3 rounded-2xl bg-white border border-slate-200/80 space-y-1.5 shadow-2xs">
+        <div class="flex items-center justify-between gap-2 flex-wrap">
+          <span class="text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700">${escapeHtmlText(item.assetClass)}</span>
+          <span class="text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${sentStyles[item.sentiment] || sentStyles.Neutral}">${escapeHtmlText(item.sentiment)}</span>
+        </div>
+        <h5 class="text-xs sm:text-sm font-semibold text-slate-900 leading-snug">${escapeHtmlText(item.headline)}</h5>
+        <div class="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-slate-100 gap-2">
+          <span class="truncate">${escapeHtmlText(item.impact)}</span>
+          <span class="shrink-0 font-mono">${escapeHtmlText(item.timeAgo)}</span>
+        </div>
+      </article>
+    `).join('');
+  }
+}
+
+function selectLandingRiskProfileByStep(stepVal) {
+  const num = parseInt(stepVal, 10);
+  const map = { 1: 'conservative', 2: 'balanced', 3: 'growth' };
+  selectLandingRiskProfile(map[num] || 'balanced');
+}
+
+function enterWorkspaceWithRiskProfile(profileKey = 'balanced') {
+  const key = LANDING_RISK_PROFILES[profileKey] ? profileKey : (state.landingRiskProfile || 'balanced');
+  const preset = LANDING_RISK_PROFILES[key];
+  selectLandingRiskProfile(key);
+  selectLandingPreset(preset.targetPreset);
+
+  setAppView('workspace', false);
+  switchAppTab('setup');
+  applyPreset(preset.targetPreset, false, true);
+  if (Array.isArray(preset.targetTickers) && preset.targetTickers.length >= 2) {
+    state.tickers = [...preset.targetTickers];
+    renderTickersList();
+    updateMaxWeightLabel(document.getElementById('max-weight-slider')?.value || 100);
+    refreshAdvancedSummaryLabel();
+    fetchLiveQuotesForTickers();
+  }
+
+  state.activeGoal = preset.targetStrategy;
+  if (typeof selectGoal === 'function') {
+    selectGoal(preset.targetStrategy);
+  }
+  const optTargetSelect = document.getElementById('opt-target');
+  if (optTargetSelect) {
+    optTargetSelect.value = preset.targetStrategy;
+  }
+
+  setTimeout(() => {
+    const setupCard = document.getElementById('tab-view-setup') || document.getElementById('main-input-bar');
+    if (setupCard && typeof setupCard.scrollIntoView === 'function') {
+      setupCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, 80);
+}
+
+const LANDING_PRESET_LABELS = {
+  colab_original: 'US Tech + BTC',
+  tech_titans: 'Big Tech 7',
+  all_weather: 'All-Weather',
+  thai_set50: 'หุ้นไทย SET50'
+};
+
+function selectLandingPreset(presetKey) {
+  const p = PRESETS[presetKey];
+  if (!p) return;
+  state.landingSelectedPreset = presetKey;
+
+  Object.keys(PRESETS).forEach(k => {
+    const card = document.getElementById(`landing-preset-card-${k}`);
+    if (card) {
+      const isSelected = k === presetKey;
+      card.className = isSelected
+        ? 'qf-landing-preset-btn active text-left px-3.5 py-2.5 rounded-2xl bg-[#E6FBF3]/80 border-2 border-[#00D084] transition cursor-pointer'
+        : 'qf-landing-preset-btn text-left px-3.5 py-2.5 rounded-2xl bg-slate-50 hover:bg-slate-100 border border-slate-200 transition cursor-pointer';
+    }
+  });
+
+  const titleEl = document.getElementById('landing-preview-preset-title');
+  if (titleEl) {
+    const label = LANDING_PRESET_LABELS[presetKey] || presetKey;
+    titleEl.innerText = `${label} • ตัวอย่างหน้าจอผลลัพธ์`;
+  }
+
+  const tickersWrap = document.getElementById('landing-preview-tickers');
+  if (tickersWrap) {
+    const badgeStyles = [
+      'bg-[#00D084]/15 text-[#00E593] border-[#00D084]/30',
+      'bg-sky-500/15 text-sky-300 border-sky-400/30',
+      'bg-indigo-500/15 text-indigo-300 border-indigo-400/30',
+      'bg-amber-500/15 text-amber-300 border-amber-400/30',
+      'bg-slate-700/70 text-slate-200 border-slate-600'
+    ];
+    tickersWrap.innerHTML = (p.tickers || []).map((sym, idx) => {
+      const cls = badgeStyles[idx % badgeStyles.length];
+      return `<span class="px-2.5 py-1 rounded-lg border text-xs font-mono font-bold ${cls}">${escapeHtmlText(sym)}</span>`;
+    }).join('');
+  }
+}
+
+function enterWorkspaceFromLanding(tabKey = 'setup') {
+  const landingBudget = parseNumericInput(document.getElementById('landing-budget-input')?.value);
+  if (tabKey === 'setup' && state.resultStatus === 'idle') {
+    const chosenKey = state.landingSelectedPreset || 'colab_original';
+    applyPreset(chosenKey, false, true);
+    if (landingBudget >= 10) {
+      state.budget = landingBudget;
+      const fmt = formatNumberWithCommas(landingBudget, state.currency === 'USD' ? 2 : 0);
+      syncAllBudgetInputs(fmt, '');
+    }
+  }
+  setAppView('workspace', false);
+  switchAppTab(tabKey);
+}
+
+function enterWorkspaceWithPreset(presetKey) {
+  selectLandingPreset(presetKey);
+  setAppView('workspace', false);
+  switchAppTab('setup');
+  applyPreset(presetKey, true, false);
+}
+
+function enterWorkspaceAndCalculate() {
+  const landingBudget = parseNumericInput(document.getElementById('landing-budget-input')?.value);
+  const effectiveBudget = landingBudget >= 10 ? landingBudget : (state.budget || 100000);
+  const chosenKey = state.landingSelectedPreset || 'colab_original';
+
+  setAppView('workspace', false);
+  applyPreset(chosenKey, false, true);
+  state.budget = effectiveBudget;
+  const fmt = formatNumberWithCommas(effectiveBudget, state.currency === 'USD' ? 2 : 0);
+  syncAllBudgetInputs(fmt, '');
+
+  switchAppTab('trade-plan');
+  runOptimization(true);
+}
+
+function selectLandingPreviewTab(tabKey) {
+  const validPreviewTabs = ['allocation', 'orders', 'insights', 'backtest', 'goals'];
+  const nextKey = validPreviewTabs.includes(tabKey) ? tabKey : 'allocation';
+  state.landingPreviewTab = nextKey;
+
+  validPreviewTabs.forEach(k => {
+    const btn = document.getElementById(`landing-preview-tab-${k}`);
+    if (btn) {
+      const isActive = k === nextKey;
+      btn.className = isActive
+        ? 'qf-landing-preview-tab active px-3 py-1.5 rounded-xl text-xs font-bold bg-[#00D084] text-[#0A0D12] whitespace-nowrap transition cursor-pointer'
+        : 'qf-landing-preview-tab px-3 py-1.5 rounded-xl text-xs font-medium bg-white/5 text-slate-300 hover:text-white whitespace-nowrap transition cursor-pointer';
+    }
+    const panel = document.getElementById(`landing-preview-panel-${k}`);
+    if (panel) {
+      panel.classList.toggle('hidden', k !== nextKey);
+    }
+  });
+}
+
 function switchAppTab(tabKey) {
+  if (state.appView !== 'workspace') {
+    setAppView('workspace', false);
+  }
   const validTabs = ['setup', 'trade-plan', 'insights', 'backtest', 'goals'];
   const nextTab = validTabs.includes(tabKey) ? tabKey : 'setup';
   state.activeTab = nextTab;
@@ -4333,7 +5219,7 @@ function computeGoalProjectionMetrics() {
   // Prudent long-term compounding cap (prevent extreme multi-year distortion while preserving strategy differences)
   const effectiveAnnualReturn = hasRealOptData ? Math.max(0.02, Math.min(0.28, rawExpectedReturn)) : 0.0;
   const bullAnnualReturn = hasRealOptData ? Math.min(0.36, effectiveAnnualReturn + 0.25 * annualVol) : 0.0;
-  const conservativeAnnualReturn = hasRealOptData ? Math.max(0.015, effectiveAnnualReturn - 0.30 * annualVol) : 0.0;
+  const conservativeAnnualReturn = hasRealOptData ? Math.max(-0.05, effectiveAnnualReturn - 0.30 * annualVol) : 0.0;
 
   const yearsAxis = [];
   const principalSeries = [];
@@ -4720,6 +5606,22 @@ if (typeof window !== 'undefined') {
     getEffectiveAssetPrice,
     markResultsStale,
     setResultStatus,
+    setAppView,
+    showLandingShowcase,
+    selectStockCatalogCategory,
+    toggleCatalogTicker,
+    renderQuickStockCatalog,
+    filterInsightsByTicker,
+    selectLandingRiskProfile,
+    selectLandingRiskProfileByStep,
+    enterWorkspaceWithRiskProfile,
+    enterWorkspaceFromLanding,
+    enterWorkspaceWithPreset,
+    enterWorkspaceAndCalculate,
+    selectLandingPreset,
+    setLandingQuickBudget,
+    syncLandingBudgetToWorkspace,
+    selectLandingPreviewTab,
     computeRebalancePlan,
     computeGoalProjectionMetrics,
     escapeHtmlText,

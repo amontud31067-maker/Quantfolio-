@@ -282,7 +282,15 @@ html body.theme-dark .qf-stock-logo-img:not([data-custom-svg="1"]) {
 #kpi-return,
 #kpi-volatility,
 #kpi-mdd-baht,
-#kpi-sharpe,
+#kpi-sharpe {
+  font-size: clamp(1.45rem, 2.2vw, 2.0rem) !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.025em !important;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Backtest Stress & Goal Projection 4-Col Tiles: compact overflow-safe clamp */
 #bt-dd-initial-budget,
 #bt-dd-loss-baht,
 #bt-dd-remaining-baht,
@@ -290,11 +298,12 @@ html body.theme-dark .qf-stock-logo-img:not([data-custom-svg="1"]) {
 #goal-proj-final-wealth,
 #goal-proj-annual-dividend,
 #goal-proj-achievement-pct {
-  font-size: clamp(1.6rem, 2.35vw, 2.05rem) !important;
+  font-size: clamp(1.05rem, 1.45vw, 1.4rem) !important;
   font-weight: 700 !important;
-  letter-spacing: -0.025em !important;
-  line-height: 1.2;
+  letter-spacing: -0.02em !important;
+  line-height: 1.25;
   font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
 }
 
 .goal-preset-card {
@@ -685,6 +694,11 @@ html body.theme-dark .qf-tab-step {
   color: #CBD5E1;
 }
 
+html body.theme-dark .qf-tab-btn.active .qf-tab-step {
+  background: #0A0D12 !important;
+  color: #00D084 !important;
+}
+
 html body.theme-dark .qf-tip {
   background: #263044;
   color: #CBD5E1;
@@ -800,15 +814,20 @@ html body.theme-dark .text-\[\#1A1D1F\] {
   color: #F8FAFC !important;
 }
 
-/* Keep dark text inside bright #00D084 Mint buttons/pills in both themes */
+/* Keep dark text inside bright #00D084 Mint buttons/pills in both themes (preserve bright step number) */
 .bg-\[\#00D084\],
 .bg-\[\#00D084\] span,
 .bg-\[\#00D084\] i,
 .qf-tab-btn.active,
-.qf-tab-btn.active span,
+.qf-tab-btn.active > span:not(.qf-tab-step),
 .rebal-mode-btn.active,
 .rebal-mode-btn.active span {
   color: #0A0D12 !important;
+}
+
+.qf-tab-btn.active .qf-tab-step {
+  background: #0A0D12 !important;
+  color: #00D084 !important;
 }
 
 html body.theme-dark .text-slate-700,
@@ -882,7 +901,7 @@ html body.theme-dark .divide-slate-200\/80 > :not([hidden]) ~ :not([hidden]) {
   border-color: #232B3A !important;
 }
 
-html body.theme-dark input[type="text"]:not(#strip-budget-input),
+html body.theme-dark input[type="text"]:not(#strip-budget-input):not(#landing-budget-input),
 html body.theme-dark input[type="number"],
 html body.theme-dark input[type="date"],
 html body.theme-dark input[type="email"],
@@ -914,6 +933,37 @@ html body.theme-dark #header-utility-menu .bg-slate-100,
 html body.theme-dark #header-utility-menu .bg-slate-50 {
   background-color: #1B2230 !important;
   border-color: #263044 !important;
+}
+
+/* Landing Showcase Dark-Theme & Interactive Preview Polish */
+html body.theme-dark #landing-showcase-view .bg-white,
+html body.theme-dark #landing-showcase-view .bg-white\/85 {
+  background-color: #131822 !important;
+}
+
+html body.theme-dark #landing-showcase-view .bg-slate-50,
+html body.theme-dark #landing-showcase-view .bg-slate-50\/90,
+html body.theme-dark #landing-showcase-view .bg-slate-100 {
+  background-color: #1B2230 !important;
+}
+
+html body.theme-dark #landing-showcase-view .qf-landing-preview-tab.active {
+  background-color: #00D084 !important;
+  color: #0A0D12 !important;
+}
+
+html body.theme-dark #landing-showcase-view .qf-landing-preset-btn.active {
+  background-color: rgba(0, 208, 132, 0.14) !important;
+  border-color: #00D084 !important;
+}
+
+html body.theme-dark #landing-preview-card {
+  background-color: #0B111E !important;
+  border-color: #263044 !important;
+}
+
+html body.theme-dark #landing-showcase-view svg text {
+  fill: #CBD5E1;
 }
 
 .qf-stale-dimmed {
@@ -1047,13 +1097,21 @@ html body.theme-dark #header-utility-menu .bg-slate-50 {
     font-size: 10px !important;
   }
 
-  #nav-trade-count-badge {
+  #nav-trade-count-badge:not(.hidden) {
     position: absolute;
-    top: 2px;
+    top: 3px;
     right: 6px;
-    padding: 0 5px !important;
+    min-width: 16px;
+    height: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 4px !important;
     font-size: 9px !important;
-    line-height: 1.4 !important;
+    line-height: 1 !important;
+    background-color: #059669 !important;
+    color: #FFFFFF !important;
+    border: 1.5px solid #FFFFFF !important;
   }
 
   /* Prevent touch scrolling from getting stuck inside Plotly charts */
@@ -1085,17 +1143,11 @@ html body.theme-dark #header-utility-menu .bg-slate-50 {
   #kpi-return,
   #kpi-volatility,
   #kpi-mdd-baht,
-  #kpi-sharpe,
-  #bt-dd-initial-budget,
-  #bt-dd-loss-baht,
-  #bt-dd-remaining-baht,
-  #goal-proj-total-principal,
-  #goal-proj-final-wealth,
-  #goal-proj-annual-dividend,
-  #goal-proj-achievement-pct {
-    font-size: 1.25rem !important;
+  #kpi-sharpe {
+    font-size: clamp(1.02rem, 4.2vw, 1.25rem) !important;
     line-height: 1.25 !important;
-    white-space: nowrap;
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 
   #order-kpi-budget,
