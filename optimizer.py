@@ -4,6 +4,7 @@ Production-hardened with Thread-Safety & Multi-User TTL Caching
 """
 
 import os
+import re
 import time
 import tempfile
 import threading
@@ -102,18 +103,54 @@ except ImportError:
         n = len(v)
         low = max(0.0, float(low))
         high = min(1.0, max(float(high), 1.0 / n + 1e-6))
-        lo_lam = float(np.min(v) - high)
-        hi_lam = float(np.max(v) - low)
+        v_list = v.tolist() if hasattr(v, "tolist") else [float(x) for x in v]
+        lo_lam = min(v_list) - high
+        hi_lam = max(v_list) - low
         for _ in range(50):
             mid = 0.5 * (lo_lam + hi_lam)
-            s = np.clip(v - mid, low, high).sum()
+            s = 0.0
+            for x in v_list:
+                val = x - mid
+                if val < low:
+                    s += low
+                elif val > high:
+                    s += high
+                else:
+                    s += val
             if s > 1.0:
                 lo_lam = mid
             else:
                 hi_lam = mid
-        w = np.clip(v - 0.5 * (lo_lam + hi_lam), low, high)
-        w_sum = w.sum()
+            if hi_lam - lo_lam <= 1e-13:
+                break
+        lam = 0.5 * (lo_lam + hi_lam)
+        w = np.clip(np.asarray(v, dtype=float) - lam, low, high)
+        w_sum = float(w.sum())
         return w / w_sum if w_sum > 0 else np.ones(n) / n
+
+    def _project_capped_simplex_batch(V: np.ndarray, low: float, high: float) -> np.ndarray:
+        """Vectorized row-wise capped simplex projection (mathematically identical to _project_capped_simplex)."""
+        V = np.asarray(V, dtype=float)
+        _, n = V.shape
+        low = max(0.0, float(low))
+        high = min(1.0, max(float(high), 1.0 / n + 1e-6))
+        if low <= 0.0 and high >= 1.0:
+            row_sums = V.sum(axis=1)
+            if np.all(V >= 0.0) and np.all(np.abs(row_sums - 1.0) <= 1e-12):
+                return V.copy()
+        lo_lam = np.min(V, axis=1) - high
+        hi_lam = np.max(V, axis=1) - low
+        for _ in range(50):
+            mid = 0.5 * (lo_lam + hi_lam)
+            s = np.clip(V - mid[:, None], low, high).sum(axis=1)
+            gt = s > 1.0
+            lo_lam = np.where(gt, mid, lo_lam)
+            hi_lam = np.where(gt, hi_lam, mid)
+            if float(np.max(hi_lam - lo_lam)) <= 1e-13:
+                break
+        W = np.clip(V - (0.5 * (lo_lam + hi_lam))[:, None], low, high)
+        W_sum = W.sum(axis=1, keepdims=True)
+        return np.where(W_sum > 0.0, W / np.where(W_sum > 0.0, W_sum, 1.0), 1.0 / n)
 
     class EfficientFrontier:
         def __init__(self, mu: pd.Series, S: pd.DataFrame, weight_bounds: Tuple[float, float] = (0.0, 1.0)):
@@ -130,15 +167,18 @@ except ImportError:
             step = 0.5 / (float(np.linalg.norm(self.S, ord=2)) + 1e-6)
             for _ in range(350):
                 grad = 2.0 * (self.S @ w)
-                w = _project_capped_simplex(w - step * grad, self.low, self.high)
+                w_next = _project_capped_simplex(w - step * grad, self.low, self.high)
+                if float(np.max(np.abs(w_next - w))) < 1e-9:
+                    w = w_next
+                    break
+                w = w_next
             self.w = w
             return self.clean_weights()
 
         def max_sharpe(self, risk_free_rate: float = 0.04):
             n = len(self.tickers)
             rng = np.random.default_rng(42)
-            W_cand = rng.dirichlet(np.ones(n), 2500)
-            W_cand = np.array([_project_capped_simplex(row, self.low, self.high) for row in W_cand])
+            W_cand = _project_capped_simplex_batch(rng.dirichlet(np.ones(n), 2500), self.low, self.high)
             rets = W_cand @ self.mu
             vols = np.sqrt(np.maximum(1e-12, np.einsum('ij,jk,ik->i', W_cand, self.S, W_cand)))
             srs = (rets - risk_free_rate) / vols
@@ -167,9 +207,45 @@ except ImportError:
             for _ in range(350):
                 diff = float(w @ self.mu) - target_return
                 grad = 2.0 * (self.S @ w) + 2.0 * penalty * diff * self.mu
-                w = _project_capped_simplex(w - step * grad, self.low, self.high)
+                w_next = _project_capped_simplex(w - step * grad, self.low, self.high)
+                if float(np.max(np.abs(w_next - w))) < 1e-9:
+                    w = w_next
+                    break
+                w = w_next
             self.w = w
             return self.clean_weights()
+
+        def efficient_return_batch(self, target_returns: np.ndarray, risk_free_rate: float = 0.04) -> List[Dict[str, float]]:
+            """Vectorized simultaneous efficient_return solver across all frontier targets (identical math)."""
+            targets = np.asarray(target_returns, dtype=float)
+            m = len(targets)
+            n = len(self.tickers)
+            if m == 0 or n == 0:
+                return []
+            w0 = _project_capped_simplex(np.ones(n) / n, self.low, self.high)
+            W = np.repeat(w0[None, :], m, axis=0)
+            norm_s = float(np.linalg.norm(self.S, ord=2)) + 1e-6
+            penalty = 25.0 * norm_s
+            step = 0.5 / (norm_s + penalty * float(np.dot(self.mu, self.mu)) + 1e-6)
+            for _ in range(350):
+                diffs = (W @ self.mu) - targets
+                grad = 2.0 * (W @ self.S) + (2.0 * penalty) * diffs[:, None] * self.mu[None, :]
+                W_next = _project_capped_simplex_batch(W - step * grad, self.low, self.high)
+                if float(np.max(np.abs(W_next - W))) < 1e-9:
+                    W = W_next
+                    break
+                W = W_next
+            rets = W @ self.mu
+            vols = np.sqrt(np.maximum(1e-12, np.einsum('ij,jk,ik->i', W, self.S, W)))
+            srs = np.where(vols > 0.0, (rets - risk_free_rate) / vols, 0.0)
+            return [
+                {
+                    "vol": round(float(vols[i]), 4),
+                    "ret": round(float(rets[i]), 4),
+                    "sharpe": round(float(srs[i]), 3)
+                }
+                for i in range(m)
+            ]
 
         def clean_weights(self) -> Dict[str, float]:
             w_clean = np.where(self.w < 1e-4, 0.0, self.w)
@@ -277,17 +353,22 @@ TRADING_DAYS = 252
 
 # Thread lock & in-memory TTL caches for multi-user concurrency
 _yf_lock = threading.Lock()
+_news_cache_lock = threading.Lock()
+_compute_cache_lock = threading.Lock()
 _price_cache: Dict[Tuple, Tuple[float, pd.DataFrame, List[str], List[str]]] = {}
 _rf_cache: Dict[str, Tuple[float, float]] = {}
 _fx_cache: Dict[str, Tuple[float, float]] = {}
 _news_cache: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+_wf_cache: Dict[Tuple, Tuple[float, Dict[str, pd.Series]]] = {}
+_frontier_cache: Dict[Tuple, Tuple[float, List[Dict[str, float]]]] = {}
 _fx_meta: Dict[str, Dict[str, Any]] = {}
 _rf_meta: Dict[str, Dict[str, Any]] = {}
 
-PRICE_CACHE_TTL = 900   # 15 minutes
-RF_CACHE_TTL = 3600     # 1 hour
-FX_CACHE_TTL = 1800     # 30 minutes
-NEWS_CACHE_TTL = 600    # 10 minutes
+PRICE_CACHE_TTL = 900    # 15 minutes
+COMPUTE_CACHE_TTL = 900  # 15 minutes
+RF_CACHE_TTL = 3600      # 1 hour
+FX_CACHE_TTL = 1800      # 30 minutes
+NEWS_CACHE_TTL = 600     # 10 minutes
 
 # Well-known asset display names for institutional look
 KNOWN_NAMES = {
@@ -887,6 +968,25 @@ def compute_discrete_allocation(
         return {"shares": {}, "leftover": budget, "cash_spent": 0, "allocated_percent": 0, "allocations": []}
 
 
+POSITIVE_NEWS_PHRASES = [
+    "rate cut", "rate cuts", "cuts rates", "cut rates", "cutting rates",
+    "price target raised", "raises price target", "raised price target",
+    "beats expectations", "beat expectations", "better than expected",
+    "record high", "all-time high", "strong buy", "share buyback",
+    "dividend hike", "earnings beat", "revenue beat", "lifts guidance", "raises guidance",
+    "ลดดอกเบี้ย", "ปรับเป้าขึ้น", "กำไรโตเกินคาด", "ทำจุดสูงสุดใหม่", "ซื้อหุ้นคืน"
+]
+
+NEGATIVE_NEWS_PHRASES = [
+    "rate hike", "rate hikes", "raises rates", "raise rates", "hiking rates",
+    "high risk", "not a buy", "no longer a buy", "no growth", "not bullish",
+    "misses expectations", "miss expectations", "worse than expected",
+    "price target cut", "cuts price target", "cut price target",
+    "downgraded to sell", "profit warning", "earnings miss", "revenue miss",
+    "cuts guidance", "lowers guidance", "below expectations",
+    "ขึ้นดอกเบี้ย", "ไม่แนะนำซื้อ", "หั่นเป้าราคา", "ความเสี่ยงสูง", "กำไรต่ำคาด", "ขาดทุนหนัก"
+]
+
 POSITIVE_NEWS_KEYWORDS = [
     "beat", "beats", "surge", "surges", "soar", "soars", "record", "upgrade", "upgraded",
     "bullish", "outperform", "growth", "profit", "gain", "gains", "rally", "rallies",
@@ -904,15 +1004,96 @@ NEGATIVE_NEWS_KEYWORDS = [
     "ขาดทุน", "ร่วง", "ดิ่ง", "ลดเป้า", "กังวล", "กดดัน", "ชะลอตัว", "เสี่ยง", "หั่นเป้า", "ลบ", "ขาลง", "ผันผวน"
 ]
 
+_EN_NEGATION_TOKENS = {
+    "not", "no", "never", "without", "hardly", "unlikely", "avoid",
+    "fails", "failed", "failing", "dont", "don't", "doesnt", "doesn't",
+    "isnt", "isn't", "arent", "aren't", "wont", "won't", "cant", "can't"
+}
+
 
 def analyze_headline_sentiment(title: str) -> Tuple[str, float, str]:
     """
-    Analyze financial news headline sentiment (English & Thai).
+    Analyze financial news headline sentiment (English & Thai) with phrase-first
+    financial idioms, English word-boundary matching, and negation window handling.
     Returns (sentiment_type, score_in_[-1,1], thai_label).
     """
     lower_t = (title or "").lower()
-    pos_hits = sum(1 for kw in POSITIVE_NEWS_KEYWORDS if kw in lower_t)
-    neg_hits = sum(1 for kw in NEGATIVE_NEWS_KEYWORDS if kw in lower_t)
+    working = lower_t
+    pos_hits = 0
+    neg_hits = 0
+
+    # 1. Phrase-first matching (prevents idioms like "rate cut", "not a buy", "high risk" from mis-scoring)
+    for phrase in sorted(NEGATIVE_NEWS_PHRASES, key=len, reverse=True):
+        if phrase.isascii():
+            pat = r"\b" + re.escape(phrase) + r"\b"
+            matches = re.findall(pat, working)
+            if matches:
+                neg_hits += len(matches)
+                working = re.sub(pat, " ", working)
+        elif phrase in working:
+            neg_hits += working.count(phrase)
+            working = working.replace(phrase, " ")
+
+    for phrase in sorted(POSITIVE_NEWS_PHRASES, key=len, reverse=True):
+        if phrase.isascii():
+            pat = r"\b" + re.escape(phrase) + r"\b"
+            matches = re.findall(pat, working)
+            if matches:
+                pos_hits += len(matches)
+                working = re.sub(pat, " ", working)
+        elif phrase in working:
+            pos_hits += working.count(phrase)
+            working = working.replace(phrase, " ")
+
+    # 2. Single-keyword matching with word boundaries (ASCII) and clause-bounded negation window
+    _CLAUSE_BREAK_TOKENS = {"but", "however", "while", "whereas", "although", "yet"}
+
+    def _has_en_negation_before(text: str, start_idx: int) -> bool:
+        raw_prefix = text[max(0, start_idx - 32):start_idx]
+        # Truncate at the most recent punctuation clause separator (, . ; : ! ? - |)
+        clause_tail = re.split(r"[,.;:!?|—\-]+", raw_prefix)[-1]
+        tokens = re.findall(r"[a-z']+", clause_tail)
+        # Also truncate after contrastive conjunctions ("but", "however", "while")
+        for idx_tok in range(len(tokens) - 1, -1, -1):
+            if tokens[idx_tok] in _CLAUSE_BREAK_TOKENS:
+                tokens = tokens[idx_tok + 1:]
+                break
+        recent_tokens = tokens[-3:]
+        return any(tok in _EN_NEGATION_TOKENS for tok in recent_tokens)
+
+    def _has_th_negation_before(text: str, start_idx: int, neg_words: Tuple[str, ...]) -> bool:
+        raw_prefix = text[max(0, start_idx - 10):start_idx]
+        clause_tail = re.split(r"[,.;:!?|—\-\s]+", raw_prefix)[-1]
+        for conj in ("และ", "พร้อม", "แต่", "ทว่า", "แม้", "ส่วน", "ขณะที่"):
+            if conj in clause_tail:
+                clause_tail = clause_tail.split(conj)[-1]
+        # In Thai, negation immediately precedes the verb/adjective (or with 'ได้'/'ค่อย'/'เคย')
+        near_tail = clause_tail[-5:]
+        return any(neg_th in near_tail for neg_th in neg_words)
+
+    for kw in POSITIVE_NEWS_KEYWORDS:
+        if kw.isascii():
+            for m in re.finditer(r"\b" + re.escape(kw) + r"\b", working):
+                if _has_en_negation_before(working, m.start()):
+                    neg_hits += 1
+                else:
+                    pos_hits += 1
+        else:
+            for m in re.finditer(re.escape(kw), working):
+                if _has_th_negation_before(working, m.start(), ("ไม่", "ไร้", "มิใช่")):
+                    neg_hits += 1
+                else:
+                    pos_hits += 1
+
+    for kw in NEGATIVE_NEWS_KEYWORDS:
+        if kw.isascii():
+            for m in re.finditer(r"\b" + re.escape(kw) + r"\b", working):
+                if not _has_en_negation_before(working, m.start()):
+                    neg_hits += 1
+        else:
+            for m in re.finditer(re.escape(kw), working):
+                if not _has_th_negation_before(working, m.start(), ("ไม่", "ไร้", "พ้น")):
+                    neg_hits += 1
 
     if pos_hits > neg_hits:
         score = min(1.0, 0.45 + 0.25 * (pos_hits - neg_hits))
@@ -923,22 +1104,28 @@ def analyze_headline_sentiment(title: str) -> Tuple[str, float, str]:
     return "neutral", 0.0, "ข่าวติดตามสภาวะตลาด"
 
 
-def fetch_market_news_for_ticker(ticker: str, max_items: int = 4) -> Dict[str, Any]:
+def fetch_market_news_for_ticker(ticker: str, max_items: int = 4, force_refresh: bool = False) -> Dict[str, Any]:
     """
     Fetch live market news for a ticker from Yahoo Finance Search API and Google News RSS.
-    Thread-safe and cached for 10 minutes.
+    Thread-safe, deduplicated by normalized title, and cached for 10 minutes unless force_refresh=True.
     """
     clean_t = ticker.strip().upper()
     now = time.time()
-    if clean_t in _news_cache:
-        ts, cached_val = _news_cache[clean_t]
-        if now - ts < NEWS_CACHE_TTL:
-            return cached_val
+    if not force_refresh:
+        with _news_cache_lock:
+            if clean_t in _news_cache:
+                ts, cached_val = _news_cache[clean_t]
+                if now - ts < NEWS_CACHE_TTL:
+                    return cached_val
 
     articles: List[Dict[str, Any]] = []
+    seen_titles: set = set()
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
     }
+
+    def _norm_title_key(raw: str) -> str:
+        return re.sub(r"\s+", " ", (raw or "").strip().lower())
 
     # 1. Try Yahoo Finance Search News first for non-.BK tickers
     if not clean_t.endswith(".BK"):
@@ -949,8 +1136,10 @@ def fetch_market_news_for_ticker(ticker: str, max_items: int = 4) -> Dict[str, A
                 raw_news = res.json().get("news", [])
                 for item in raw_news:
                     title = (item.get("title") or "").strip()
-                    if not title:
+                    norm_key = _norm_title_key(title)
+                    if not title or norm_key in seen_titles:
                         continue
+                    seen_titles.add(norm_key)
                     pub_ts = item.get("providerPublishTime")
                     pub_str = (
                         datetime.fromtimestamp(pub_ts, tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
@@ -991,6 +1180,10 @@ def fetch_market_news_for_ticker(ticker: str, max_items: int = 4) -> Dict[str, A
                     publisher = source_el.text.strip() if (source_el is not None and source_el.text) else "Google Finance News"
                     if " - " in raw_title and raw_title.endswith(publisher):
                         raw_title = raw_title[: -len(publisher) - 3].strip()
+                    norm_key = _norm_title_key(raw_title)
+                    if not raw_title or norm_key in seen_titles:
+                        continue
+                    seen_titles.add(norm_key)
                     link = (item.findtext("link") or f"https://finance.yahoo.com/quote/{clean_t}").strip()
                     pub_date = (item.findtext("pubDate") or "")[:16].strip() or "ล่าสุด"
                     sent_type, sent_score, sent_label = analyze_headline_sentiment(raw_title)
@@ -1027,13 +1220,14 @@ def fetch_market_news_for_ticker(ticker: str, max_items: int = 4) -> Dict[str, A
         "neutral_count": neu_cnt,
         "articles": articles[:max_items]
     }
-    if len(_news_cache) > 200:
-        _news_cache.clear()
-    _news_cache[clean_t] = (now, result)
+    with _news_cache_lock:
+        if len(_news_cache) > 200:
+            _news_cache.clear()
+        _news_cache[clean_t] = (now, result)
     return result
 
 
-def fetch_portfolio_market_news(tickers: List[str]) -> Dict[str, Dict[str, Any]]:
+def fetch_portfolio_market_news(tickers: List[str], force_refresh: bool = False) -> Dict[str, Dict[str, Any]]:
     """Fetch market news concurrently for all tickers in portfolio."""
     from concurrent.futures import ThreadPoolExecutor
     results: Dict[str, Dict[str, Any]] = {}
@@ -1042,7 +1236,7 @@ def fetch_portfolio_market_news(tickers: List[str]) -> Dict[str, Dict[str, Any]]
         return results
 
     with ThreadPoolExecutor(max_workers=min(6, len(clean_list))) as executor:
-        future_map = {executor.submit(fetch_market_news_for_ticker, t): t for t in clean_list}
+        future_map = {executor.submit(fetch_market_news_for_ticker, t, 4, force_refresh): t for t in clean_list}
         for fut, t in future_map.items():
             try:
                 results[t] = fut.result(timeout=4.5)
@@ -1209,6 +1403,129 @@ def build_asset_decision_intelligence(
         "signal_badge_th": signal_badge_th,
         "execution_tactic_th": execution_tactic_th,
         "decision_reason_th": decision_reason_th
+    }
+
+
+def compute_black_litterman_posterior(
+    mu_hist: pd.Series,
+    S_mat: pd.DataFrame,
+    prior_weights: Dict[str, float],
+    valid_tickers: List[str],
+    rf_rate: float,
+    views_delta: Optional[Dict[str, float]] = None,
+    confidence: float = 0.50,
+    tau: float = 0.05
+) -> Dict[str, Any]:
+    """
+    Analytical Black-Litterman Posterior (He & Litterman 1999 + Idzorek 2005 Confidence Scaling)
+    using pure NumPy linear algebra (zero heavy external dependencies).
+
+    - Prior (Equilibrium): pi = rf + delta * Sigma * w_prior (where w_prior = HRP risk-balanced weights).
+      Maximizing Sharpe on (pi, Sigma) recovers w_prior cleanly when confidence = 0 or views = 0.
+    - Views: Absolute return views Q_k = pi_k + views_delta[k] for each non-zero view.
+    - Uncertainty Omega (Idzorek 2005): omega_k = ((1 - c) / c) * (p_k * tau * Sigma * p_k^T).
+    - Posterior via Woodbury form (avoids inverting Omega directly, safe even at confidence = 1.0):
+        mu_BL    = pi + tau * Sigma * P^T * (P * tau * Sigma * P^T + Omega)^(-1) * (Q - P * pi)
+        Sigma_BL = Sigma + tau * Sigma - tau * Sigma * P^T * (P * tau * Sigma * P^T + Omega)^(-1) * P * tau * Sigma
+    """
+    tickers = list(valid_tickers)
+    n = len(tickers)
+    if n == 0:
+        empty_s = pd.Series(dtype=float)
+        empty_df = pd.DataFrame()
+        return {
+            "mu_bl": empty_s,
+            "Sigma_bl": empty_df,
+            "pi_total": empty_s,
+            "delta": 2.5,
+            "tau": float(tau),
+            "confidence": float(np.clip(confidence, 0.0, 1.0)),
+            "applied_views": {},
+            "active_view_count": 0
+        }
+
+    S_arr = S_mat.loc[tickers, tickers].values.astype(float)
+    S_arr = 0.5 * (S_arr + S_arr.T)
+    mu_arr = mu_hist.reindex(tickers).fillna(0.0).values.astype(float)
+
+    w_prior = np.array([max(0.0, float(prior_weights.get(t, 1.0 / n))) for t in tickers], dtype=float)
+    w_sum = float(w_prior.sum())
+    w_prior = (w_prior / w_sum) if w_sum > 1e-12 else np.ones(n, dtype=float) / n
+
+    # Risk aversion coefficient delta (clamped to realistic [1.5, 5.0], fallback 2.5)
+    prior_var = float(w_prior @ S_arr @ w_prior)
+    prior_excess = float(w_prior @ mu_arr) - float(rf_rate)
+    if prior_var > 1e-8 and prior_excess > 0.0:
+        delta = float(np.clip(prior_excess / prior_var, 1.5, 5.0))
+    else:
+        delta = 2.5
+
+    # Reverse-optimized equilibrium prior returns: pi_total = rf + delta * Sigma * w_prior
+    pi_excess = delta * (S_arr @ w_prior)
+    pi_total = float(rf_rate) + pi_excess
+
+    conf_val = float(np.clip(confidence, 0.0, 1.0))
+    tau_val = float(np.clip(tau, 0.005, 0.5))
+    tau_S = tau_val * S_arr
+
+    # Sanitize views_delta into [-0.25, +0.25] annual return shift relative to equilibrium prior
+    applied_views: Dict[str, float] = {}
+    active_indices: List[int] = []
+    q_vals: List[float] = []
+    raw_views = views_delta or {}
+
+    for idx, t in enumerate(tickers):
+        raw_v = raw_views.get(t, 0.0)
+        try:
+            v_clean = float(np.clip(float(raw_v), -0.25, 0.25))
+        except (TypeError, ValueError):
+            v_clean = 0.0
+        applied_views[t] = round(v_clean, 4)
+        if abs(v_clean) > 1e-6:
+            active_indices.append(idx)
+            q_vals.append(float(pi_total[idx] + v_clean))
+
+    if conf_val <= 1e-6 or not active_indices:
+        mu_bl_arr = pi_total.copy()
+        Sigma_bl_arr = S_arr.copy()
+    else:
+        k = len(active_indices)
+        P = np.zeros((k, n), dtype=float)
+        omega_diag = np.zeros(k, dtype=float)
+        for row_idx, asset_idx in enumerate(active_indices):
+            P[row_idx, asset_idx] = 1.0
+            view_prior_var = float(max(tau_S[asset_idx, asset_idx], 1e-10))
+            if conf_val >= 1.0 - 1e-9:
+                omega_diag[row_idx] = 0.0
+            else:
+                omega_diag[row_idx] = ((1.0 - conf_val) / conf_val) * view_prior_var
+
+        Q = np.array(q_vals, dtype=float)
+        Omega = np.diag(omega_diag)
+        M = P @ tau_S @ P.T + Omega
+        M = 0.5 * (M + M.T)
+        rhs = Q - (P @ pi_total)
+
+        try:
+            sol_ret = np.linalg.solve(M, rhs)
+        except np.linalg.LinAlgError:
+            jitter = np.eye(k, dtype=float) * 1e-8
+            sol_ret = np.linalg.solve(M + jitter, rhs)
+
+        mu_bl_arr = pi_total + (tau_S @ P.T @ sol_ret)
+        # Keep empirical covariance S_arr aligned with pi_total = rf + delta * S_arr * w_prior (Idzorek 2005)
+        # so confidence 0% -> 1% -> 100% is 100% continuous with zero (+2.47%) volatility step jump.
+        Sigma_bl_arr = S_arr.copy()
+
+    return {
+        "mu_bl": pd.Series(mu_bl_arr, index=tickers),
+        "Sigma_bl": pd.DataFrame(Sigma_bl_arr, index=tickers, columns=tickers),
+        "pi_total": pd.Series(pi_total, index=tickers),
+        "delta": round(delta, 3),
+        "tau": round(tau_val, 4),
+        "confidence": round(conf_val, 4),
+        "applied_views": applied_views,
+        "active_view_count": len(active_indices) if conf_val > 1e-6 else 0
     }
 
 
@@ -1409,6 +1726,26 @@ def compute_walk_forward_backtest(
         eq_curve = simulate_drifting_backtest_with_fees(returns_df, w_eq, rebalance_every, fee_bps)
         return {k: eq_curve for k in ("max_sharpe", "min_volatility", "hrp", "equal_weight")}
 
+    wf_cache_key = (
+        tuple(valid_tickers),
+        str(prices_base.index[0]),
+        str(prices_base.index[-1]),
+        int(len(prices_base)),
+        round(float(prices_base[valid_tickers].iloc[0].sum()), 6),
+        round(float(prices_base[valid_tickers].iloc[-1].sum()), 6),
+        (round(float(weight_bounds[0]), 6), round(float(weight_bounds[1]), 6)),
+        round(float(rf_rate), 6),
+        int(effective_freq),
+        str(backtest_split or ""),
+        int(rebalance_every),
+        round(float(fee_bps), 4),
+    )
+    now_ts = time.time()
+    with _compute_cache_lock:
+        cached_wf = _wf_cache.get(wf_cache_key)
+        if cached_wf is not None and (now_ts - cached_wf[0] < COMPUTE_CACHE_TTL):
+            return {k: s.copy() for k, s in cached_wf[1].items()}
+
     # Determine initial training window end index
     min_train = min(max(30, n_total // 3), max(20, n_total - 5))
     split_idx = min_train
@@ -1464,7 +1801,12 @@ def compute_walk_forward_backtest(
                 curr_w_dict[k] = asset_growth / day_factor
             cum_arr_dict[k][d] = wealth_dict[k]
 
-    return {k: pd.Series(cum_arr_dict[k], index=returns_df.index) for k in strat_keys}
+    wf_result = {k: pd.Series(cum_arr_dict[k], index=returns_df.index) for k in strat_keys}
+    with _compute_cache_lock:
+        if len(_wf_cache) > 64:
+            _wf_cache.clear()
+        _wf_cache[wf_cache_key] = (time.time(), {k: s.copy() for k, s in wf_result.items()})
+    return wf_result
 
 
 def run_portfolio_optimization(
@@ -1479,41 +1821,56 @@ def run_portfolio_optimization(
     backtest_split: Optional[str] = None,
     currency: str = "THB",
     fx_rate: Optional[float] = None,
-    use_news_adjustment: bool = True
+    use_news_adjustment: bool = False,
+    bl_confidence: float = 0.50,
+    bl_views: Optional[Dict[str, float]] = None
 ) -> Dict[str, Any]:
     """
     Execute full Markowitz, HRP, Monte Carlo, Walk-Forward Out-of-Sample Portfolio Growth,
     and Live Market News & Technical Intelligence.
     """
-    prices, valid_tickers, missing_tickers = fetch_historical_prices(tickers, start_date, end_date)
-    rates_meta = get_market_rates_metadata(currency=currency)
+    from concurrent.futures import ThreadPoolExecutor
 
-    usd_thb = float(fx_rate) if (fx_rate is not None and fx_rate > 0) else float(rates_meta["usd_thb_rate"])
+    # Start market news retrieval concurrently while historical prices & FX are being fetched/aligned
+    clean_req_tickers = [t.strip().upper() for t in (tickers or []) if str(t).strip()]
+    news_executor = ThreadPoolExecutor(max_workers=1)
+    news_future = news_executor.submit(fetch_portfolio_market_news, clean_req_tickers) if clean_req_tickers else None
 
-    if risk_free_rate is None or risk_free_rate <= 0:
-        rf_rate = float(rates_meta["risk_free_rate"])
+    try:
+        prices, valid_tickers, missing_tickers = fetch_historical_prices(tickers, start_date, end_date)
+        rates_meta = get_market_rates_metadata(currency=currency)
+
+        usd_thb = float(fx_rate) if (fx_rate is not None and fx_rate > 0) else float(rates_meta["usd_thb_rate"])
+
+        if risk_free_rate is None or risk_free_rate <= 0:
+            rf_rate = float(rates_meta["risk_free_rate"])
+        else:
+            rf_rate = float(risk_free_rate)
+
+        raw_last_dates = getattr(prices, "attrs", {}).get("raw_last_dates", {}) or {}
+        default_last_date = prices.index[-1].strftime('%Y-%m-%d') if hasattr(prices.index[-1], 'strftime') else str(prices.index[-1])
+
+        # Convert historical prices into a consistent base currency (THB or USD) using daily historical FX
+        prices_base = convert_prices_to_base_currency(
+            prices[valid_tickers],
+            base_currency=currency,
+            fallback_fx_rate=usd_thb
+        )
+        fx_history_fallback = bool(getattr(prices_base, "attrs", {}).get("fx_history_fallback", False))
+        effective_freq = _infer_effective_trading_days(prices_base)
+
+        # 1. Expected Returns (Exact Calendar CAGR) & Analytical Ledoit-Wolf Covariance Shrinkage
+        mu = expected_returns.mean_historical_return(prices_base, frequency=None)
+        S = risk_models.CovarianceShrinkage(prices_base, frequency=effective_freq).ledoit_wolf()
+        returns_df = prices_base.pct_change().dropna()
+
+        # Collect concurrent live market news (falls back cleanly if any ticker missed)
+        news_map = news_future.result(timeout=6.0) if news_future is not None else {}
+    except Exception:
+        news_executor.shutdown(wait=False)
+        raise
     else:
-        rf_rate = float(risk_free_rate)
-
-    raw_last_dates = getattr(prices, "attrs", {}).get("raw_last_dates", {}) or {}
-    default_last_date = prices.index[-1].strftime('%Y-%m-%d') if hasattr(prices.index[-1], 'strftime') else str(prices.index[-1])
-
-    # Convert historical prices into a consistent base currency (THB or USD) using daily historical FX
-    prices_base = convert_prices_to_base_currency(
-        prices[valid_tickers],
-        base_currency=currency,
-        fallback_fx_rate=usd_thb
-    )
-    fx_history_fallback = bool(getattr(prices_base, "attrs", {}).get("fx_history_fallback", False))
-    effective_freq = _infer_effective_trading_days(prices_base)
-
-    # 1. Expected Returns (Exact Calendar CAGR) & Analytical Ledoit-Wolf Covariance Shrinkage
-    mu = expected_returns.mean_historical_return(prices_base, frequency=None)
-    S = risk_models.CovarianceShrinkage(prices_base, frequency=effective_freq).ledoit_wolf()
-    returns_df = prices_base.pct_change().dropna()
-
-    # Fetch live market news & compute technical signals for each ticker
-    news_map = fetch_portfolio_market_news(valid_tickers)
+        news_executor.shutdown(wait=False)
 
     # Individual asset volatility from un-shrunk sample standard deviation (fixes shrunken diagonal bug)
     sample_vols_series = returns_df[valid_tickers].std(ddof=1) * np.sqrt(effective_freq)
@@ -1643,7 +2000,59 @@ def run_portfolio_optimization(
     weight_bounds = (float(min_weight), effective_max_weight)
 
     hist_solutions = _solve_all_strategies(mu, S, returns_df, valid_tickers, weight_bounds, rf_rate, None)
-    adj_solutions = _solve_all_strategies(mu_adjusted, S, returns_df, valid_tickers, weight_bounds, rf_rate, signal_scores_map)
+
+    # Analytical Black-Litterman posterior (HRP Equilibrium Prior + Hybrid Auto/Manual Views + Idzorek Confidence)
+    # Preserves core asset formulas (mu, S) and Min Volatility / HRP / Equal Weight 100% untouched.
+    suggested_views_map = {
+        a["ticker"]: round(float(a["decision"]["return_tilt"]), 4)
+        for a in asset_stats
+    }
+    if bl_views is not None:
+        effective_views_map = {
+            t: round(float(np.clip(float(bl_views.get(t, 0.0)), -0.25, 0.25)), 4)
+            for t in valid_tickers
+        }
+        views_source = "custom_hybrid"
+    else:
+        effective_views_map = dict(suggested_views_map)
+        views_source = "auto_signal"
+
+    bl_posterior = compute_black_litterman_posterior(
+        mu_hist=mu,
+        S_mat=S,
+        prior_weights=hist_solutions["hrp"]["weights"],
+        valid_tickers=valid_tickers,
+        rf_rate=rf_rate,
+        views_delta=effective_views_map,
+        confidence=float(bl_confidence),
+        tau=0.05
+    )
+
+    low_b, high_b = float(weight_bounds[0]), float(weight_bounds[1])
+    bl_max_error = None
+    try:
+        ef_bl = EfficientFrontier(bl_posterior["mu_bl"], bl_posterior["Sigma_bl"], weight_bounds=weight_bounds)
+        ef_bl.max_sharpe(risk_free_rate=rf_rate)
+        w_bl_max = _cap_and_normalize_weights(ef_bl.clean_weights(), valid_tickers, low_b, high_b)
+        w_bl_s = pd.Series(w_bl_max).reindex(valid_tickers).fillna(0.0)
+        ret_bl_max = float(w_bl_s @ bl_posterior["mu_bl"])
+        vol_bl_max = float(np.sqrt(max(1e-12, w_bl_s @ bl_posterior["Sigma_bl"] @ w_bl_s)))
+        sr_bl_max = (ret_bl_max - rf_rate) / vol_bl_max if vol_bl_max > 0 else 0.0
+    except Exception as e:
+        bl_max_error = str(e)
+        w_bl_max = dict(hist_solutions["hrp"]["weights"])
+        w_bl_s = pd.Series(w_bl_max).reindex(valid_tickers).fillna(0.0)
+        ret_bl_max = float(w_bl_s @ bl_posterior["mu_bl"])
+        vol_bl_max = float(np.sqrt(max(1e-12, w_bl_s @ bl_posterior["Sigma_bl"] @ w_bl_s)))
+        sr_bl_max = (ret_bl_max - rf_rate) / vol_bl_max if vol_bl_max > 0 else 0.0
+
+    # Min Volatility, HRP, and Equal Weight stay 100% identical to pure historical (mu, S)
+    adj_solutions = {
+        "max_sharpe": {"weights": w_bl_max, "ret": ret_bl_max, "vol": vol_bl_max, "sr": sr_bl_max, "error": bl_max_error},
+        "min_volatility": dict(hist_solutions["min_volatility"]),
+        "hrp": dict(hist_solutions["hrp"]),
+        "equal_weight": dict(hist_solutions["equal_weight"])
+    }
 
     active_solutions = adj_solutions if use_news_adjustment else hist_solutions
 
@@ -1768,19 +2177,49 @@ def run_portfolio_optimization(
         min_target = float(ret_min)
         max_target = float(ret_min + 0.95 * (mu.max() - ret_min))
         if max_target > min_target:
-            target_returns = np.linspace(min_target, max_target, 35)
-            for tr in target_returns:
-                try:
-                    ef_curve = EfficientFrontier(mu, S, weight_bounds=weight_bounds)
-                    ef_curve.efficient_return(tr)
-                    r_perf, v_perf, s_perf = ef_curve.portfolio_performance(risk_free_rate=rf_rate)
-                    frontier_curve.append({
-                        "vol": round(float(v_perf), 4),
-                        "ret": round(float(r_perf), 4),
-                        "sharpe": round(float(s_perf), 3)
-                    })
-                except Exception:
-                    continue
+            frontier_cache_key = (
+                tuple(valid_tickers),
+                str(prices_base.index[0]),
+                str(prices_base.index[-1]),
+                int(len(prices_base)),
+                round(float(prices_base[valid_tickers].iloc[0].sum()), 6),
+                round(float(prices_base[valid_tickers].iloc[-1].sum()), 6),
+                (round(float(weight_bounds[0]), 6), round(float(weight_bounds[1]), 6)),
+                round(float(rf_rate), 6),
+                round(min_target, 6),
+                round(max_target, 6),
+            )
+            now_fc = time.time()
+            cached_fc = None
+            with _compute_cache_lock:
+                entry = _frontier_cache.get(frontier_cache_key)
+                if entry is not None and (now_fc - entry[0] < COMPUTE_CACHE_TTL):
+                    cached_fc = [dict(pt) for pt in entry[1]]
+
+            if cached_fc is not None:
+                frontier_curve = cached_fc
+            else:
+                target_returns = np.linspace(min_target, max_target, 35)
+                ef_batch = EfficientFrontier(mu, S, weight_bounds=weight_bounds)
+                if hasattr(ef_batch, "efficient_return_batch"):
+                    frontier_curve = ef_batch.efficient_return_batch(target_returns, risk_free_rate=rf_rate)
+                else:
+                    for tr in target_returns:
+                        try:
+                            ef_curve = EfficientFrontier(mu, S, weight_bounds=weight_bounds)
+                            ef_curve.efficient_return(tr)
+                            r_perf, v_perf, s_perf = ef_curve.portfolio_performance(risk_free_rate=rf_rate)
+                            frontier_curve.append({
+                                "vol": round(float(v_perf), 4),
+                                "ret": round(float(r_perf), 4),
+                                "sharpe": round(float(s_perf), 3)
+                            })
+                        except Exception:
+                            continue
+                with _compute_cache_lock:
+                    if len(_frontier_cache) > 64:
+                        _frontier_cache.clear()
+                    _frontier_cache[frontier_cache_key] = (time.time(), [dict(pt) for pt in frontier_curve])
     except Exception:
         pass
 
@@ -1818,6 +2257,23 @@ def run_portfolio_optimization(
         "articles": all_news_articles[:max(24, len(valid_tickers) * 4)]
     }
 
+    black_litterman_data = {
+        "enabled": bool(use_news_adjustment),
+        "model": "He-Litterman + Idzorek (2005)",
+        "prior_source": "hrp_equilibrium",
+        "views_source": views_source,
+        "tau": bl_posterior["tau"],
+        "risk_aversion_delta": bl_posterior["delta"],
+        "confidence": bl_posterior["confidence"],
+        "active_view_count": bl_posterior["active_view_count"],
+        "prior_weights": {k: round(float(v), 4) for k, v in hist_solutions["hrp"]["weights"].items()},
+        "posterior_weights": {k: round(float(v), 4) for k, v in adj_solutions["max_sharpe"]["weights"].items()},
+        "prior_returns": {t: round(float(bl_posterior["pi_total"][t]), 4) for t in valid_tickers},
+        "posterior_returns": {t: round(float(bl_posterior["mu_bl"][t]), 4) for t in valid_tickers},
+        "suggested_views": suggested_views_map,
+        "applied_views": bl_posterior["applied_views"]
+    }
+
     return {
         "status": "success",
         "metadata": {
@@ -1847,6 +2303,7 @@ def run_portfolio_optimization(
             "model_version": "QuantFolio-v2.4.0",
             "max_weight": effective_max_weight,
             "use_news_adjustment": bool(use_news_adjustment),
+            "bl_confidence": bl_posterior["confidence"],
             "rebalance_assumption": "ปรับสมดุลพอร์ตทุก 63 วันข้อมูล หักค่าธรรมเนียมซื้อขาย 0.15%",
             "walk_forward_out_of_sample": True,
             "dividend_included_in_total_return": True
@@ -1854,6 +2311,7 @@ def run_portfolio_optimization(
         "asset_stats": asset_stats,
         "correlation": correlation_data,
         "covariance": cov_matrix_data,
+        "black_litterman": black_litterman_data,
         "market_intelligence": market_intelligence,
         "growth_100": growth_chart_data,
         "portfolio_growth": portfolio_growth_chart,

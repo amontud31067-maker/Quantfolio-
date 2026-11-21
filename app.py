@@ -14,8 +14,11 @@ import secrets
 import hashlib
 import tempfile
 import threading
+import contextvars
+import concurrent.futures
+import math
 import requests
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Dict, Any, Tuple
 from fastapi import FastAPI, HTTPException, Query, Depends, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,6 +26,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel, Field
 import yfinance as yf
+import optimizer as _opt_module
 
 from optimizer import (
     run_portfolio_optimization,
@@ -36,10 +40,67 @@ from optimizer import (
     _yf_lock
 )
 
+# Thread-safe context propagation so Guest /api/optimize requests skip external news scraping without modifying optimizer.py
+_GUEST_SKIP_NEWS_CV: contextvars.ContextVar[bool] = contextvars.ContextVar("_guest_skip_news_cv", default=False)
+_orig_tpe_submit = concurrent.futures.ThreadPoolExecutor.submit
+
+
+def _context_aware_tpe_submit(self, fn, /, *args, **kwargs):
+    ctx = contextvars.copy_context()
+    return _orig_tpe_submit(self, ctx.run, fn, *args, **kwargs)
+
+
+if getattr(concurrent.futures.ThreadPoolExecutor.submit, "__name__", "") != "_context_aware_tpe_submit":
+    concurrent.futures.ThreadPoolExecutor.submit = _context_aware_tpe_submit
+
+_orig_opt_fetch_news = _opt_module.fetch_portfolio_market_news
+
+
+def _entitlement_guarded_fetch_news(tickers: List[str], force_refresh: bool = False) -> Dict[str, Any]:
+    clean_list = [str(t).strip().upper() for t in (tickers or []) if str(t).strip()]
+    if _GUEST_SKIP_NEWS_CV.get():
+        return {
+            t: {
+                "ticker": t,
+                "news_sentiment_score": 0.0,
+                "positive_count": 0,
+                "negative_count": 0,
+                "neutral_count": 0,
+                "articles": [],
+            }
+            for t in clean_list
+        }
+    if len(clean_list) > 10:
+        results: Dict[str, Any] = {}
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(12, len(clean_list))) as executor:
+            future_map = {
+                executor.submit(_opt_module.fetch_market_news_for_ticker, t, 4, force_refresh): t
+                for t in clean_list
+            }
+            for fut, t in future_map.items():
+                try:
+                    results[t] = fut.result(timeout=4.5)
+                except Exception:
+                    results[t] = {
+                        "ticker": t,
+                        "name": get_asset_name(t),
+                        "news_sentiment_score": 0.0,
+                        "positive_count": 0,
+                        "negative_count": 0,
+                        "neutral_count": 0,
+                        "articles": [],
+                    }
+        return results
+    return _orig_opt_fetch_news(clean_list, force_refresh=force_refresh)
+
+
+if getattr(_opt_module.fetch_portfolio_market_news, "__name__", "") != "_entitlement_guarded_fetch_news":
+    _opt_module.fetch_portfolio_market_news = _entitlement_guarded_fetch_news
+
 app = FastAPI(
     title="QuantFolio Wealth Analytics API",
     description="Real-time Financial Portfolio Optimization Engine",
-    version="2.3.0"
+    version="4.2.0"
 )
 
 ALLOWED_ORIGINS = [
@@ -62,14 +123,14 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
 # Multi-user in-memory caches
 _quote_cache: Dict[str, Tuple[float, Dict[str, Any]]] = {}
 _search_cache: Dict[str, Tuple[float, List[Dict[str, Any]]]] = {}
-QUOTE_CACHE_TTL = 45    # 45 seconds
+QUOTE_CACHE_TTL = 90    # 90 seconds
 SEARCH_CACHE_TTL = 600  # 10 minutes
 
 
@@ -85,12 +146,14 @@ class OptimizeRequest(BaseModel):
     risk_free_rate: Optional[float] = Field(default=None)
     backtest_split: Optional[str] = Field(default=None)
     num_simulations: int = Field(default=3500, ge=500, le=10000)
-    use_news_adjustment: bool = Field(default=True)
+    use_news_adjustment: bool = Field(default=False)
+    bl_confidence: float = Field(default=0.50, ge=0.0, le=1.0)
+    bl_views: Optional[Dict[str, float]] = Field(default=None)
 
 
 @app.get("/api/health")
 def health_check():
-    return {"status": "ok", "app": "QuantFolio Wealth Analytics", "version": "2.3.0"}
+    return {"status": "ok", "app": "QuantFolio Wealth Analytics", "version": "4.2.0"}
 
 
 @app.get("/api/rf")
@@ -195,75 +258,131 @@ def get_realtime_quotes(tickers: str = Query(..., description="Comma-separated t
     if to_fetch:
         fetched_at_iso = datetime.now(timezone.utc).isoformat()
         today_utc = datetime.now(timezone.utc).date()
+
+        def _store_quote(symbol: str, last_price: Optional[float], prev_close: Optional[float], as_of_date: Optional[str]):
+            market_type = get_asset_market_type(symbol)
+            is_stale = False
+            if as_of_date:
+                try:
+                    dt_obs = datetime.strptime(as_of_date[:10], "%Y-%m-%d").date()
+                    cal_age = (today_utc - dt_obs).days
+                    # Warn if equity data is older than 5 calendar days (>~3 business days) or crypto > 1 day
+                    is_stale = cal_age > (1 if market_type == "crypto" else 5)
+                except Exception:
+                    is_stale = False
+
+            if last_price is not None:
+                chg = 0.0
+                chg_pct = 0.0
+                if prev_close and prev_close > 0:
+                    chg = last_price - prev_close
+                    chg_pct = (chg / prev_close) * 100.0
+
+                native_curr = get_ticker_currency(symbol)
+                price_thb = round(float(last_price) * fx, 2) if native_curr == "USD" else round(float(last_price), 2)
+                price_usd = round(float(last_price), 2) if native_curr == "USD" else (round(float(last_price) / fx, 2) if fx > 0 else round(float(last_price), 2))
+
+                q_data = {
+                    "symbol": symbol,
+                    "name": get_asset_name(symbol),
+                    "market_type": market_type,
+                    "price": round(float(last_price), 2),
+                    "price_thb": price_thb,
+                    "price_usd": price_usd,
+                    "prev_close": round(float(prev_close), 2) if prev_close else None,
+                    "change": round(float(chg), 2),
+                    "change_pct": round(float(chg_pct), 2),
+                    "currency": native_curr,
+                    "as_of_date": as_of_date,
+                    "fetched_at": fetched_at_iso,
+                    "is_cached": False,
+                    "cache_age_sec": 0.0,
+                    "is_stale": is_stale
+                }
+                quotes[symbol] = q_data
+                _quote_cache[symbol] = (now, q_data)
+
         try:
-            with _yf_lock:
-                t_objs = yf.Tickers(" ".join(to_fetch))
-                for symbol in to_fetch:
-                    try:
-                        t = t_objs.tickers.get(symbol)
-                        if not t:
-                            continue
-                        info = t.fast_info
-                        last_price = getattr(info, 'last_price', None)
-                        prev_close = getattr(info, 'previous_close', None)
+            remaining_symbols = list(to_fetch)
+            is_real_yfinance = (getattr(yf.Tickers, "__module__", "") or "").startswith("yfinance")
 
-                        as_of_date = None
-                        is_stale = False
-                        try:
-                            if hasattr(t, "history"):
-                                hist = t.history(period="5d", auto_adjust=True, progress=False)
-                                if hist is not None and not hist.empty:
-                                    last_idx = hist.index[-1]
-                                    as_of_date = last_idx.strftime('%Y-%m-%d') if hasattr(last_idx, 'strftime') else str(last_idx)[:10]
-                                    if last_price is None and "Close" in hist.columns:
-                                        last_price = float(hist["Close"].dropna().iloc[-1])
-                                    if prev_close is None and "Close" in hist.columns and len(hist["Close"].dropna()) >= 2:
-                                        prev_close = float(hist["Close"].dropna().iloc[-2])
-                        except Exception:
-                            as_of_date = None
-
-                        market_type = get_asset_market_type(symbol)
-                        if as_of_date:
+            # Fast single-request batch download for all tickers simultaneously (avoids N*2 serial Yahoo calls)
+            if is_real_yfinance and remaining_symbols:
+                try:
+                    with _yf_lock:
+                        batch_df = yf.download(
+                            remaining_symbols,
+                            period="5d",
+                            auto_adjust=True,
+                            progress=False,
+                            threads=True,
+                        )
+                    if batch_df is not None and not batch_df.empty:
+                        close_part = batch_df["Close"] if "Close" in batch_df.columns else batch_df
+                        still_missing = []
+                        for symbol in remaining_symbols:
                             try:
-                                dt_obs = datetime.strptime(as_of_date[:10], "%Y-%m-%d").date()
-                                cal_age = (today_utc - dt_obs).days
-                                # Warn if equity data is older than 5 calendar days (>~3 business days) or crypto > 1 day
-                                is_stale = cal_age > (1 if market_type == "crypto" else 5)
+                                if hasattr(close_part, "columns"):
+                                    if symbol in close_part.columns:
+                                        s = close_part[symbol].dropna()
+                                    elif len(remaining_symbols) == 1 and len(close_part.columns) == 1:
+                                        s = close_part.iloc[:, 0].dropna()
+                                    else:
+                                        still_missing.append(symbol)
+                                        continue
+                                else:
+                                    s = close_part.dropna() if len(remaining_symbols) == 1 else None
+                                if s is not None and not s.empty:
+                                    last_idx = s.index[-1]
+                                    as_of_date = last_idx.strftime('%Y-%m-%d') if hasattr(last_idx, 'strftime') else str(last_idx)[:10]
+                                    last_price = float(s.iloc[-1])
+                                    prev_close = float(s.iloc[-2]) if len(s) >= 2 else None
+                                    _store_quote(symbol, last_price, prev_close, as_of_date)
+                                else:
+                                    still_missing.append(symbol)
                             except Exception:
-                                is_stale = False
+                                still_missing.append(symbol)
+                        remaining_symbols = still_missing
+                except Exception:
+                    pass
 
-                        if last_price is not None:
-                            chg = 0.0
-                            chg_pct = 0.0
-                            if prev_close and prev_close > 0:
-                                chg = last_price - prev_close
-                                chg_pct = (chg / prev_close) * 100.0
+            # Fallback to yf.Tickers for any symbols missed by batch download (or when monkeypatched in tests)
+            if remaining_symbols:
+                with _yf_lock:
+                    t_objs = yf.Tickers(" ".join(remaining_symbols))
+                    for symbol in remaining_symbols:
+                        try:
+                            t = t_objs.tickers.get(symbol)
+                            if not t:
+                                continue
+                            info = t.fast_info
+                            last_price = getattr(info, 'last_price', None)
+                            prev_close = getattr(info, 'previous_close', None)
 
-                            native_curr = get_ticker_currency(symbol)
-                            price_thb = round(float(last_price) * fx, 2) if native_curr == "USD" else round(float(last_price), 2)
-                            price_usd = round(float(last_price), 2) if native_curr == "USD" else (round(float(last_price) / fx, 2) if fx > 0 else round(float(last_price), 2))
+                            as_of_date = None
+                            try:
+                                if hasattr(t, "history"):
+                                    hist = t.history(period="5d", auto_adjust=True, progress=False)
+                                    if hist is not None and not hist.empty:
+                                        last_idx = hist.index[-1]
+                                        as_of_date = last_idx.strftime('%Y-%m-%d') if hasattr(last_idx, 'strftime') else str(last_idx)[:10]
+                                        if last_price is None and "Close" in hist.columns:
+                                            last_price = float(hist["Close"].dropna().iloc[-1])
+                                        if prev_close is None and "Close" in hist.columns and len(hist["Close"].dropna()) >= 2:
+                                            prev_close = float(hist["Close"].dropna().iloc[-2])
+                            except Exception:
+                                as_of_date = None
 
-                            q_data = {
-                                "symbol": symbol,
-                                "name": get_asset_name(symbol),
-                                "market_type": market_type,
-                                "price": round(float(last_price), 2),
-                                "price_thb": price_thb,
-                                "price_usd": price_usd,
-                                "prev_close": round(float(prev_close), 2) if prev_close else None,
-                                "change": round(float(chg), 2),
-                                "change_pct": round(float(chg_pct), 2),
-                                "currency": native_curr,
-                                "as_of_date": as_of_date,
-                                "fetched_at": fetched_at_iso,
-                                "is_cached": False,
-                                "cache_age_sec": 0.0,
-                                "is_stale": is_stale
-                            }
-                            quotes[symbol] = q_data
-                            _quote_cache[symbol] = (now, q_data)
-                    except Exception as item_err:
-                        quotes[symbol] = {"symbol": symbol, "name": get_asset_name(symbol), "error": str(item_err)}
+                            if last_price is not None:
+                                _store_quote(symbol, last_price, prev_close, as_of_date)
+                            else:
+                                err_q = {"symbol": symbol, "name": get_asset_name(symbol), "error": "ไม่พบข้อมูลราคาล่าสุด"}
+                                quotes[symbol] = err_q
+                                _quote_cache[symbol] = (now, err_q)
+                        except Exception as item_err:
+                            err_q = {"symbol": symbol, "name": get_asset_name(symbol), "error": str(item_err)}
+                            quotes[symbol] = err_q
+                            _quote_cache[symbol] = (now, err_q)
         except Exception as e:
             return {
                 "quotes": quotes,
@@ -284,24 +403,102 @@ def get_realtime_quotes(tickers: str = Query(..., description="Comma-separated t
 
 
 @app.post("/api/optimize")
-def optimize_portfolio(req: OptimizeRequest):
-    """Run full Markowitz, HRP, Monte Carlo, Portfolio Growth, and Market News Signal calculations."""
-    try:
-        results = run_portfolio_optimization(
-            tickers=req.tickers,
-            start_date=req.start_date,
-            end_date=req.end_date,
-            budget=req.budget,
-            max_weight=req.max_weight,
-            min_weight=req.min_weight,
-            risk_free_rate=req.risk_free_rate,
-            num_simulations=req.num_simulations,
-            backtest_split=req.backtest_split,
-            currency=req.currency,
-            fx_rate=req.fx_rate,
-            use_news_adjustment=req.use_news_adjustment
+def optimize_portfolio(
+    req: OptimizeRequest,
+    authorization: Optional[str] = Header(default=None),
+    x_qf_admin_preview_tier: Optional[str] = Header(default=None, alias="X-QF-Admin-Preview-Tier")
+):
+    """Run full Markowitz, HRP, Monte Carlo, Portfolio Growth, and Market News Signal calculations with tier enforcement."""
+    _, entitlements = _resolve_request_user_and_entitlements(authorization, x_qf_admin_preview_tier)
+    max_assets = int(entitlements.get("max_assets", 5))
+    clean_tickers = [t.strip().upper() for t in (req.tickers or []) if str(t).strip()]
+    if len(clean_tickers) > max_assets:
+        plan_tier = str(entitlements.get("plan_tier") or "guest")
+        if plan_tier == "guest":
+            upgrade_hint = "กรุณาสมัครสมาชิกฟรีเพื่อเพิ่มเป็น 8 สินทรัพย์ หรืออัปเกรดเป็น QuantFolio Pro (15 สินทรัพย์) / Advisor Pro (25 สินทรัพย์)"
+        elif plan_tier == "free":
+            upgrade_hint = "กรุณาอัปเกรดเป็น QuantFolio Pro (15 สินทรัพย์) หรือ Advisor Pro (25 สินทรัพย์)"
+        elif plan_tier == "pro":
+            upgrade_hint = "กรุณาอัปเกรดเป็น Advisor Pro (IC / IP) เพื่อขยายเพดานพอร์ตขนาดใหญ่ได้สูงสุด 25 สินทรัพย์"
+        else:
+            upgrade_hint = "ระบบรองรับสูงสุด 25 สินทรัพย์ต่อพอร์ต กรุณาลดจำนวนสินทรัพย์ลง"
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                f"แพ็กเกจปัจจุบันของคุณ ({entitlements['label_th']}) รองรับสูงสุด {max_assets} สินทรัพย์ต่อพอร์ต "
+                f"(คุณเลือก {len(clean_tickers)} สินทรัพย์) {upgrade_hint}"
+            ),
         )
+
+    can_view_news = bool(entitlements.get("can_view_news", False))
+    can_customize_bl = bool(entitlements.get("can_customize_bl_views", False))
+    safe_conf_cap = float(entitlements.get("safe_bl_confidence_cap", 0.35))
+
+    try:
+        effective_use_news = bool(req.use_news_adjustment) if can_view_news else False
+        effective_bl_confidence = float(req.bl_confidence)
+        if not can_customize_bl:
+            # Free Member safe confidence cap (35%) prevents noisy short-term news from over-swinging weights
+            effective_bl_confidence = min(effective_bl_confidence, safe_conf_cap)
+
+        clean_bl_views = None
+        if can_customize_bl and req.bl_views is not None:
+            clean_bl_views = {}
+            for k, v in req.bl_views.items():
+                try:
+                    fv = float(v)
+                    if -0.25 <= fv <= 0.25:
+                        clean_bl_views[str(k).strip().upper()] = fv
+                    else:
+                        clean_bl_views[str(k).strip().upper()] = max(-0.25, min(0.25, fv))
+                except (TypeError, ValueError):
+                    continue
+
+        cv_token = _GUEST_SKIP_NEWS_CV.set(not can_view_news)
+        try:
+            results = run_portfolio_optimization(
+                tickers=req.tickers,
+                start_date=req.start_date,
+                end_date=req.end_date,
+                budget=req.budget,
+                max_weight=req.max_weight,
+                min_weight=req.min_weight,
+                risk_free_rate=req.risk_free_rate,
+                num_simulations=req.num_simulations,
+                backtest_split=req.backtest_split,
+                currency=req.currency,
+                fx_rate=req.fx_rate,
+                use_news_adjustment=effective_use_news,
+                bl_confidence=effective_bl_confidence,
+                bl_views=clean_bl_views
+            )
+        finally:
+            _GUEST_SKIP_NEWS_CV.reset(cv_token)
+
+        # Strip news articles & headlines from Guest responses so unauthenticated users/bots never receive news payloads
+        if not can_view_news and isinstance(results, dict):
+            mi = results.get("market_intelligence")
+            if isinstance(mi, dict):
+                mi["articles"] = []
+                mi["total_articles_analyzed"] = 0
+                mi["news_locked_guest"] = True
+            for stat in results.get("asset_stats", []) or []:
+                if isinstance(stat, dict) and isinstance(stat.get("news"), dict):
+                    stat["news"]["articles"] = []
+
+        if isinstance(results, dict) and isinstance(results.get("metadata"), dict):
+            results["metadata"]["plan_tier"] = entitlements["plan_tier"]
+            results["metadata"]["applied_use_news_adjustment"] = bool(effective_use_news)
+            results["metadata"]["applied_bl_confidence"] = round(effective_bl_confidence, 4)
+            results["metadata"]["tier_info"] = {
+                "plan_tier": entitlements["plan_tier"],
+                "entitlements": entitlements,
+                "applied_use_news_adjustment": bool(effective_use_news),
+                "applied_bl_confidence": round(effective_bl_confidence, 4),
+            }
         return results
+    except HTTPException:
+        raise
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
@@ -309,8 +506,19 @@ def optimize_portfolio(req: OptimizeRequest):
 
 
 @app.get("/api/market-news")
-def get_market_news_endpoint(tickers: str = Query(..., description="Comma-separated tickers")):
-    """Fetch live market news and sentiment analysis for selected tickers."""
+def get_market_news_endpoint(
+    tickers: str = Query(..., description="Comma-separated tickers"),
+    force: bool = Query(default=False, description="Bypass 10-minute cache to fetch live headlines"),
+    authorization: Optional[str] = Header(default=None),
+    x_qf_admin_preview_tier: Optional[str] = Header(default=None, alias="X-QF-Admin-Preview-Tier")
+):
+    """Fetch live market news and sentiment analysis for selected tickers (Requires authenticated Member/Pro/Advisor)."""
+    _, entitlements = _resolve_request_user_and_entitlements(authorization, x_qf_admin_preview_tier)
+    if not entitlements.get("can_view_news", False):
+        raise HTTPException(
+            status_code=403,
+            detail="กรุณาเข้าสู่ระบบหรือสมัครสมาชิกฟรีเพื่อดูข้อมูลวิเคราะห์ข่าวและสัญญาณตลาดรายสินทรัพย์"
+        )
     ticker_list = []
     for t in tickers.split(","):
         s = t.strip().upper()
@@ -318,7 +526,7 @@ def get_market_news_endpoint(tickers: str = Query(..., description="Comma-separa
             ticker_list.append(s)
     if not ticker_list:
         return {"news": {}, "articles": []}
-    news_map = fetch_portfolio_market_news(ticker_list)
+    news_map = _entitlement_guarded_fetch_news(ticker_list, force_refresh=bool(force))
     all_articles = []
     max_len = max((len(news_map.get(t, {}).get("articles", [])) for t in ticker_list), default=0)
     for idx in range(max_len):
@@ -358,15 +566,18 @@ def verify_system_integrity():
             budget=100000.0,
             currency="THB",
             fx_rate=fx,
-            use_news_adjustment=True
+            use_news_adjustment=True,
+            bl_confidence=0.50
         )
         ms = opt_res["strategies"]["max_sharpe"]
         w_sum = sum(ms["weights"].values())
+        bl_info = opt_res.get("black_litterman", {})
+        bl_ok = bool(bl_info.get("posterior_returns")) and abs(sum(bl_info.get("posterior_weights", {}).values()) - 1.0) < 0.01
         checks.append({
             "id": "weight_constraints",
-            "name": "สมการคำนวณสัดส่วนพอร์ต (Markowitz & HRP Weight Sum = 100%)",
-            "passed": abs(w_sum - 1.0) < 0.01,
-            "detail": f"ผลรวมน้ำหนักพอร์ต = {w_sum * 100:.2f}% (ครบ 4 กลยุทธ์)"
+            "name": "สมการคำนวณสัดส่วนพอร์ต (Markowitz, HRP & Black-Litterman Weight Sum = 100%)",
+            "passed": (abs(w_sum - 1.0) < 0.01) and bl_ok,
+            "detail": f"ผลรวมน้ำหนักพอร์ต = {w_sum * 100:.2f}% | BL δ={bl_info.get('risk_aversion_delta', 2.5)}, Confidence={int(round(float(bl_info.get('confidence', 0.5)) * 100))}%"
         })
 
         dd_det = ms.get("drawdown_details", {})
@@ -449,24 +660,43 @@ def _load_db() -> Dict[str, Any]:
         with open(target_path, "r", encoding="utf-8") as f:
             content = f.read().strip()
             if not content:
-                return {"users": {}, "portfolios": []}
+                return {"users": {}, "portfolios": [], "activation_codes": [], "upgrade_requests": []}
             data = json.loads(content)
-            if "users" not in data:
+            if "users" not in data or not isinstance(data["users"], dict):
                 data["users"] = {}
-            if "portfolios" not in data:
+            if "portfolios" not in data or not isinstance(data["portfolios"], list):
                 data["portfolios"] = []
+            if "activation_codes" not in data or not isinstance(data["activation_codes"], list):
+                data["activation_codes"] = []
+            if "upgrade_requests" not in data or not isinstance(data["upgrade_requests"], list):
+                data["upgrade_requests"] = []
             return data
     except Exception:
-        return {"users": {}, "portfolios": []}
+        return {"users": {}, "portfolios": [], "activation_codes": [], "upgrade_requests": []}
 
 
 def _save_db(data: Dict[str, Any]) -> None:
-    path = _get_db_file_path()
+    """Atomic JSON write: serialize to temp file in same directory, fsync, then os.replace()."""
+    path = os.path.abspath(_get_db_file_path())
+    parent_dir = os.path.dirname(path) or "."
+    tmp_path = None
     try:
-        with open(path, "w", encoding="utf-8") as f:
+        os.makedirs(parent_dir, exist_ok=True)
+        fd, tmp_path = tempfile.mkstemp(prefix=".quantfolio_db_", suffix=".tmp", dir=parent_dir)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, path)
+        tmp_path = None
     except Exception as e:
         print(f"Notice: Could not write local DB ({e})")
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
 
 
 def _init_auth_secret() -> bytes:
@@ -537,11 +767,338 @@ def _get_authenticated_user(authorization: Optional[str] = Header(default=None))
     return {"id": user_id, "email": email}
 
 
+_DEFAULT_ADMIN_EMAILS = {"amontud31067@gmail.com"}
+
+TIER_ENTITLEMENTS: Dict[str, Dict[str, Any]] = {
+    "guest": {
+        "plan_tier": "guest",
+        "label_th": "โหมดทดลองใช้ (Guest)",
+        "badge_text": "GUEST • 5 หุ้น",
+        "max_assets": 5,
+        "max_saved_portfolios": 1,
+        "can_view_news": False,
+        "can_download_sim_pdf": False,
+        "can_customize_bl_views": False,
+        "can_whitelabel_advisor_pdf": False,
+        "safe_bl_confidence_cap": 0.35,
+    },
+    "free": {
+        "plan_tier": "free",
+        "label_th": "สมาชิกทั่วไป (Member ฟรี)",
+        "badge_text": "MEMBER ฟรี • 8 หุ้น",
+        "max_assets": 8,
+        "max_saved_portfolios": 3,
+        "can_view_news": True,
+        "can_download_sim_pdf": True,
+        "can_customize_bl_views": False,
+        "can_whitelabel_advisor_pdf": False,
+        "safe_bl_confidence_cap": 0.35,
+    },
+    "pro": {
+        "plan_tier": "pro",
+        "label_th": "QuantFolio Pro (นักลงทุนรายย่อย)",
+        "badge_text": "PRO • 15 หุ้น & BL",
+        "max_assets": 15,
+        "max_saved_portfolios": 20,
+        "can_view_news": True,
+        "can_download_sim_pdf": True,
+        "can_customize_bl_views": True,
+        "can_whitelabel_advisor_pdf": False,
+        "safe_bl_confidence_cap": 1.00,
+    },
+    "advisor": {
+        "plan_tier": "advisor",
+        "label_th": "Advisor Pro (IC / IP White-label)",
+        "badge_text": "ADVISOR PRO • 25 หุ้น",
+        "max_assets": 25,
+        "max_saved_portfolios": 9999,
+        "can_view_news": True,
+        "can_download_sim_pdf": True,
+        "can_customize_bl_views": True,
+        "can_whitelabel_advisor_pdf": True,
+        "safe_bl_confidence_cap": 1.00,
+    },
+}
+
+
+_TIER_RANK: Dict[str, int] = {"guest": -1, "free": 0, "pro": 1, "advisor": 2}
+_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+_redeem_fail_attempts: Dict[str, List[float]] = {}
+_REDEEM_RATE_LIMIT_MAX = 10
+_REDEEM_RATE_LIMIT_WINDOW = 900.0  # 15 minutes
+
+
+def _is_admin_email(email: str) -> bool:
+    clean = (email or "").strip().lower()
+    if not clean:
+        return False
+    env_admins = {
+        e.strip().lower()
+        for e in os.environ.get("QUANTFOLIO_ADMIN_EMAILS", "").split(",")
+        if e.strip()
+    }
+    return clean in _DEFAULT_ADMIN_EMAILS or clean in env_admins
+
+
+def _get_pro_activation_code() -> str:
+    return os.environ.get("QUANTFOLIO_PRO_CODE", "QF-PRO-2026").strip()
+
+
+def _get_advisor_activation_code() -> str:
+    return os.environ.get("QUANTFOLIO_ADVISOR_CODE", "QF-ADVISOR-2026").strip()
+
+
+def _generate_secure_activation_code(plan_tier: str) -> str:
+    prefix = "QF-ADV" if plan_tier == "advisor" else "QF-PRO"
+    part1 = "".join(secrets.choice(_CODE_ALPHABET) for _ in range(4))
+    part2 = "".join(secrets.choice(_CODE_ALPHABET) for _ in range(4))
+    return f"{prefix}-{part1}-{part2}"
+
+
+def _is_redeem_rate_limited(email: str, now_ts: float) -> bool:
+    key = (email or "").strip().lower()
+    recent = [t for t in _redeem_fail_attempts.get(key, []) if now_ts - t < _REDEEM_RATE_LIMIT_WINDOW]
+    _redeem_fail_attempts[key] = recent
+    return len(recent) >= _REDEEM_RATE_LIMIT_MAX
+
+
+def _record_redeem_failure(email: str, now_ts: float) -> None:
+    key = (email or "").strip().lower()
+    recent = [t for t in _redeem_fail_attempts.get(key, []) if now_ts - t < _REDEEM_RATE_LIMIT_WINDOW]
+    recent.append(now_ts)
+    _redeem_fail_attempts[key] = recent
+
+
+def _clear_redeem_failures(email: str) -> None:
+    _redeem_fail_attempts.pop((email or "").strip().lower(), None)
+
+
+def _parse_iso_utc(raw: Optional[str]) -> Optional[datetime]:
+    if not raw or not isinstance(raw, str):
+        return None
+    s = raw.strip()
+    if not s:
+        return None
+    try:
+        if s.endswith("Z"):
+            s = s[:-1] + "+00:00"
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except Exception:
+        return None
+
+
+def _resolve_effective_plan_tier(
+    stored: Dict[str, Any],
+    now_utc: Optional[datetime] = None,
+) -> Tuple[str, Optional[str], Optional[int], bool]:
+    """
+    Resolve effective plan_tier after checking plan_expires_at.
+    Returns (effective_tier, plan_expires_at_iso, days_remaining, is_expired).
+    """
+    now_dt = now_utc or datetime.now(timezone.utc)
+    raw_tier = str(stored.get("plan_tier") or "free").strip().lower()
+    if raw_tier not in ("free", "pro", "advisor"):
+        raw_tier = "free"
+
+    exp_raw = stored.get("plan_expires_at")
+    exp_dt = _parse_iso_utc(exp_raw)
+    if raw_tier in ("pro", "advisor") and exp_dt is not None:
+        if exp_dt <= now_dt:
+            return "free", exp_dt.isoformat(), 0, True
+        days_rem = max(1, int(math.ceil((exp_dt - now_dt).total_seconds() / 86400.0)))
+        return raw_tier, exp_dt.isoformat(), days_rem, False
+
+    if raw_tier in ("pro", "advisor"):
+        return raw_tier, None, None, False
+    return "free", None, None, False
+
+
+def _compute_extended_expiry(
+    stored: Dict[str, Any],
+    target_tier: str,
+    duration_days: int,
+    now_utc: Optional[datetime] = None,
+) -> Optional[str]:
+    """
+    Compute new plan_expires_at:
+    - 'free' or duration_days <= 0 -> None (no expiry / lifetime)
+    - Renewing the same active paid tier -> stacks onto existing plan_expires_at (or preserves lifetime)
+    - Upgrading from free/expired or from pro -> advisor -> starts fresh from now + duration_days
+    """
+    now_dt = now_utc or datetime.now(timezone.utc)
+    if target_tier == "free" or int(duration_days or 0) <= 0:
+        return None
+
+    eff_tier, exp_iso, _, is_exp = _resolve_effective_plan_tier(stored, now_dt)
+    if eff_tier == target_tier and not is_exp:
+        if exp_iso is None:
+            return None
+        existing_dt = _parse_iso_utc(exp_iso)
+        base_dt = existing_dt if (existing_dt and existing_dt > now_dt) else now_dt
+        return (base_dt + timedelta(days=int(duration_days))).isoformat()
+
+    return (now_dt + timedelta(days=int(duration_days))).isoformat()
+
+
+def _normalize_admin_preview_tier(raw_header: Optional[str]) -> Optional[str]:
+    val = str(raw_header or "").strip().lower()
+    if val in ("guest", "free", "pro", "advisor"):
+        return val
+    return None
+
+
+def _require_admin_user(current_user: Dict[str, str]) -> str:
+    """Strictly verify real Admin identity from server config/env (ignores preview tier headers)."""
+    auth_email = (current_user.get("email") or "").strip().lower()
+    if not _is_admin_email(auth_email):
+        raise HTTPException(
+            status_code=403,
+            detail="เฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่เข้าถึงและดำเนินการส่วนนี้ได้"
+        )
+    return auth_email
+
+
+def _get_user_entitlements(plan_tier: str, custom_flags: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    norm_tier = str(plan_tier or "free").strip().lower()
+    if norm_tier not in TIER_ENTITLEMENTS:
+        norm_tier = "free"
+    ent = dict(TIER_ENTITLEMENTS[norm_tier])
+    if isinstance(custom_flags, dict):
+        for k, v in custom_flags.items():
+            if k in ent and v is not None:
+                ent[k] = v
+    return ent
+
+
+def _build_user_response_obj(
+    stored: Dict[str, Any],
+    email: str,
+    fallback_name: Optional[str] = None,
+    admin_preview_tier: Optional[str] = None,
+) -> Dict[str, Any]:
+    clean_email = (email or "").strip().lower()
+    display_name = stored.get("full_name") or fallback_name or (clean_email.split("@")[0] if clean_email else "ผู้ใช้งาน")
+    avatar_url = stored.get("avatar_url") or _build_local_svg_avatar(display_name)
+    eff_tier, exp_iso, days_rem, is_expired = _resolve_effective_plan_tier(stored)
+    is_admin = _is_admin_email(clean_email)
+
+    norm_preview = _normalize_admin_preview_tier(admin_preview_tier) if is_admin else None
+    active_tier = norm_preview if norm_preview else eff_tier
+    entitlements = _get_user_entitlements(
+        active_tier,
+        None if norm_preview else stored.get("entitlements")
+    )
+    return {
+        "id": str(stored["id"]),
+        "email": clean_email,
+        "plan_tier": active_tier,
+        "real_plan_tier": eff_tier,
+        "preview_tier": norm_preview,
+        "plan_expires_at": exp_iso,
+        "days_remaining": days_rem,
+        "is_expired": is_expired,
+        "is_admin": is_admin,
+        "entitlements": entitlements,
+        "user_metadata": {
+            "full_name": display_name,
+            "name": display_name,
+            "avatar_url": avatar_url,
+            "plan_tier": active_tier,
+            "real_plan_tier": eff_tier,
+            "preview_tier": norm_preview,
+            "plan_expires_at": exp_iso,
+            "days_remaining": days_rem,
+            "is_expired": is_expired,
+            "is_admin": is_admin,
+            "entitlements": entitlements,
+        },
+    }
+
+
+def _resolve_request_user_and_entitlements(
+    authorization: Optional[str] = None,
+    admin_preview_tier: Optional[str] = None,
+) -> Tuple[Optional[Dict[str, Any]], Dict[str, Any]]:
+    if not authorization or not authorization.lower().startswith("bearer "):
+        return None, _get_user_entitlements("guest")
+    try:
+        auth_info = _get_authenticated_user(authorization)
+        with _db_lock:
+            db = _load_db()
+            stored = db.get("users", {}).get(auth_info["email"])
+            if not stored:
+                return None, _get_user_entitlements("guest")
+            user_obj = _build_user_response_obj(
+                stored,
+                auth_info["email"],
+                admin_preview_tier=admin_preview_tier,
+            )
+            return user_obj, user_obj["entitlements"]
+    except HTTPException:
+        return None, _get_user_entitlements("guest")
+
+
 class AuthLoginRequest(BaseModel):
     email: str
     password: str
     full_name: Optional[str] = None
     mode: str = "auto"  # 'signin' | 'signup' | 'auto'
+
+
+class AuthProfileUpdateRequest(BaseModel):
+    full_name: str
+
+
+class AuthChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class AuthSubscriptionUpdateRequest(BaseModel):
+    plan_tier: str  # 'free' | 'pro' | 'advisor'
+    activation_code: Optional[str] = None
+    duration_days: int = 0  # 0 = lifetime
+
+
+class AuthRedeemCodeRequest(BaseModel):
+    code: str
+
+
+class UpgradeRequestCreate(BaseModel):
+    target_tier: str  # 'pro' | 'advisor'
+    duration_days: int = 30
+    transfer_amount: str = ""
+    transfer_datetime: str = ""
+    account_last4: str = ""
+    slip_ref: str = ""
+    contact_note: str = ""
+
+
+class AdminUpgradeDecisionRequest(BaseModel):
+    decision: str  # 'approve' | 'reject'
+    admin_note: str = ""
+    duration_days: Optional[int] = None
+
+
+class AdminCreateCodeRequest(BaseModel):
+    plan_tier: str  # 'pro' | 'advisor'
+    duration_days: int = 30  # 0 = lifetime
+    max_uses: int = 1
+    code_valid_days: int = 30  # 0 = no claim deadline
+    custom_code: Optional[str] = None
+    note: str = ""
+
+
+class AdminSetUserTierRequest(BaseModel):
+    target_email: str
+    plan_tier: str  # 'free' | 'pro' | 'advisor'
+    duration_days: int = 0  # 0 = lifetime; > 0 stacks if renewing same active tier
+    expires_at: Optional[str] = None  # Explicit ISO-8601 expiry (naive treated as Asia/Bangkok UTC+7)
+    reset_expiry: bool = False
+    custom_entitlements: Optional[Dict[str, Any]] = None
 
 
 class PortfolioSaveRequest(BaseModel):
@@ -652,7 +1209,7 @@ def _build_local_svg_avatar(name: str) -> str:
     initials = html.escape((clean[:2] if len(clean) >= 2 else clean).upper())
     svg = (
         f'<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">'
-        f'<rect width="64" height="64" rx="32" fill="#1d4ed8"/>'
+        f'<rect width="64" height="64" rx="32" fill="#00A86B"/>'
         f'<text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" '
         f'fill="#ffffff" font-family="sans-serif" font-size="24" font-weight="bold">{initials}</text>'
         f'</svg>'
@@ -687,6 +1244,11 @@ def backend_auth_login(req: AuthLoginRequest, request: Request):
         users = db["users"]
 
         if email in users:
+            if (req.mode or "").strip().lower() == "signup":
+                raise HTTPException(
+                    status_code=409,
+                    detail="อีเมลนี้ถูกสมัครใช้งานแล้ว กรุณาสลับไปที่แท็บ 'เข้าสู่ระบบ'"
+                )
             stored = users[email]
             is_valid, needs_upgrade = _verify_password(password, stored.get("password_hash", ""))
             if not is_valid:
@@ -698,7 +1260,7 @@ def backend_auth_login(req: AuthLoginRequest, request: Request):
             if needs_upgrade:
                 stored["password_hash"] = _hash_password(password)
                 db_dirty = True
-            if req.full_name and req.full_name.strip():
+            if (req.mode or "").strip().lower() != "signin" and req.full_name and req.full_name.strip():
                 stored["full_name"] = req.full_name.strip()
                 db_dirty = True
             if not stored.get("avatar_url") or "ui-avatars.com" in str(stored.get("avatar_url", "")):
@@ -708,15 +1270,7 @@ def backend_auth_login(req: AuthLoginRequest, request: Request):
                 _save_db(db)
 
             user_id = str(stored["id"])
-            user_obj = {
-                "id": user_id,
-                "email": email,
-                "user_metadata": {
-                    "full_name": stored.get("full_name") or default_name,
-                    "name": stored.get("full_name") or default_name,
-                    "avatar_url": stored.get("avatar_url")
-                }
-            }
+            user_obj = _build_user_response_obj(stored, email, fallback_name=default_name)
             token = _create_auth_token(user_id, email)
             return {"status": "ok", "action": "signed_in", "token": token, "user": user_obj}
         else:
@@ -733,21 +1287,678 @@ def backend_auth_login(req: AuthLoginRequest, request: Request):
                 "email": email,
                 "full_name": default_name,
                 "avatar_url": avatar_url,
+                "plan_tier": "free",
+                "is_admin": _is_admin_email(email),
                 "password_hash": _hash_password(password),
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
             _save_db(db)
-            user_obj = {
-                "id": user_id,
-                "email": email,
-                "user_metadata": {
-                    "full_name": default_name,
-                    "name": default_name,
-                    "avatar_url": avatar_url
-                }
-            }
+            user_obj = _build_user_response_obj(users[email], email, fallback_name=default_name)
             token = _create_auth_token(user_id, email)
             return {"status": "ok", "action": "signed_up", "token": token, "user": user_obj}
+
+
+@app.get("/api/auth/me")
+def get_backend_current_user(
+    current_user: Dict[str, str] = Depends(_get_authenticated_user),
+    x_qf_admin_preview_tier: Optional[str] = Header(default=None, alias="X-QF-Admin-Preview-Tier"),
+):
+    """Verify active HMAC session token and return fresh profile metadata + effective plan_tier & entitlements."""
+    auth_email = current_user["email"]
+    with _db_lock:
+        db = _load_db()
+        stored = db.get("users", {}).get(auth_email)
+        if not stored:
+            raise HTTPException(status_code=401, detail="ไม่พบบัญชีผู้ใช้งานนี้ในระบบ")
+        user_obj = _build_user_response_obj(
+            stored,
+            auth_email,
+            admin_preview_tier=x_qf_admin_preview_tier,
+        )
+    return {"status": "ok", "user": user_obj}
+
+
+@app.patch("/api/auth/profile")
+def update_backend_profile(
+    req: AuthProfileUpdateRequest,
+    current_user: Dict[str, str] = Depends(_get_authenticated_user)
+):
+    """Update authenticated user's display name and regenerate local SVG initials avatar."""
+    new_name = (req.full_name or "").strip()
+    if len(new_name) < 1 or len(new_name) > 80:
+        raise HTTPException(status_code=400, detail="ชื่อที่ใช้แสดงผลต้องมีความยาวระหว่าง 1–80 ตัวอักษร")
+
+    auth_email = current_user["email"]
+    with _db_lock:
+        db = _load_db()
+        stored = db.get("users", {}).get(auth_email)
+        if not stored:
+            raise HTTPException(status_code=404, detail="ไม่พบบัญชีผู้ใช้งาน")
+        stored["full_name"] = new_name
+        stored["avatar_url"] = _build_local_svg_avatar(new_name)
+        stored["updated_at"] = datetime.now(timezone.utc).isoformat()
+        _save_db(db)
+        user_obj = _build_user_response_obj(stored, auth_email)
+    return {"status": "ok", "user": user_obj}
+
+
+@app.post("/api/auth/redeem-code")
+def redeem_activation_code(
+    req: AuthRedeemCodeRequest,
+    current_user: Dict[str, str] = Depends(_get_authenticated_user),
+):
+    """
+    Redeem an Activation Code with strict 4-layer validation, Tier Change Guard, and brute-force rate limit.
+    Enforced identically for ALL authenticated accounts (including Admin) so Admin can test the exact customer flow.
+    """
+    auth_email = current_user["email"]
+    raw_code = (req.code or "").strip().upper()
+    now_ts = time.time()
+    now_utc = datetime.now(timezone.utc)
+
+    with _db_lock:
+        if _is_redeem_rate_limited(auth_email, now_ts):
+            raise HTTPException(
+                status_code=429,
+                detail="คุณกรอกรหัสเปิดใช้งานผิดเกินจำนวนครั้งที่กำหนด (10 ครั้ง / 15 นาที) กรุณารอสักครู่แล้วลองใหม่อีกครั้ง"
+            )
+
+        if not raw_code or len(raw_code) < 4:
+            _record_redeem_failure(auth_email, now_ts)
+            raise HTTPException(status_code=400, detail="กรุณากรอกรหัสเปิดใช้งาน (Activation Code) ให้ครบถ้วน")
+
+        db = _load_db()
+        stored = db.get("users", {}).get(auth_email)
+        if not stored:
+            raise HTTPException(status_code=404, detail="ไม่พบบัญชีผู้ใช้งาน")
+
+        eff_tier, _, _, _ = _resolve_effective_plan_tier(stored, now_utc)
+        codes_list = db.get("activation_codes", [])
+        code_rec = next(
+            (c for c in codes_list if hmac.compare_digest(str(c.get("code") or "").strip().upper(), raw_code)),
+            None,
+        )
+
+        if code_rec is None:
+            _record_redeem_failure(auth_email, now_ts)
+            raise HTTPException(
+                status_code=403,
+                detail="รหัสเปิดใช้งานไม่ถูกต้อง กรุณาตรวจสอบรหัสอีกครั้งหรือติดต่อผู้ดูแลระบบ"
+            )
+
+        # Layer 1: Not revoked
+        if bool(code_rec.get("revoked", False)):
+            _record_redeem_failure(auth_email, now_ts)
+            raise HTTPException(status_code=403, detail="รหัสเปิดใช้งานนี้ถูกเพิกถอนแล้ว ไม่สามารถใช้งานได้")
+
+        # Layer 2: Code itself not past claim deadline (code_expires_at)
+        code_exp_dt = _parse_iso_utc(code_rec.get("code_expires_at"))
+        if code_exp_dt is not None and code_exp_dt <= now_utc:
+            _record_redeem_failure(auth_email, now_ts)
+            raise HTTPException(status_code=403, detail="รหัสเปิดใช้งานนี้หมดเขตรับสิทธิ์แล้ว")
+
+        # Layer 3: Usage count < max_uses
+        used_by = code_rec.get("used_by") or []
+        max_uses = int(code_rec.get("max_uses", 1))
+        if len(used_by) >= max_uses:
+            _record_redeem_failure(auth_email, now_ts)
+            raise HTTPException(status_code=403, detail="รหัสเปิดใช้งานนี้ถูกใช้งานครบตามจำนวนสิทธิ์แล้ว")
+
+        # Layer 4: Same email cannot redeem the same multi-use code twice
+        used_emails = {
+            str(entry.get("email") if isinstance(entry, dict) else entry).strip().lower()
+            for entry in used_by
+        }
+        if auth_email in used_emails:
+            _record_redeem_failure(auth_email, now_ts)
+            raise HTTPException(status_code=403, detail="บัญชีของคุณเคยใช้รหัสเปิดใช้งานชุดนี้ไปแล้ว ไม่สามารถใช้ซ้ำได้")
+
+        target_tier = str(code_rec.get("plan_tier") or "pro").strip().lower()
+        if target_tier not in ("pro", "advisor"):
+            target_tier = "pro"
+        duration_days = int(code_rec.get("duration_days") or 0)
+
+        # Tier Change Guard: NEVER downgrade an active higher tier (e.g., active Advisor redeeming a Pro code)
+        if _TIER_RANK.get(eff_tier, 0) > _TIER_RANK.get(target_tier, 0):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"บัญชีของคุณกำลังใช้งานแพ็กเกจที่สูงกว่า ({TIER_ENTITLEMENTS[eff_tier]['label_th']}) อยู่แล้ว "
+                    f"ไม่สามารถนำรหัสของแพ็กเกจ {TIER_ENTITLEMENTS[target_tier]['label_th']} มาลดระดับสิทธิ์ได้ (ไม่ได้หักสิทธิ์รหัสนี้)"
+                ),
+            )
+
+        new_expiry = _compute_extended_expiry(stored, target_tier, duration_days, now_utc)
+        stored["plan_tier"] = target_tier
+        stored["plan_expires_at"] = new_expiry
+        stored["updated_at"] = now_utc.isoformat()
+
+        used_by.append({"email": auth_email, "used_at": now_utc.isoformat()})
+        code_rec["used_by"] = used_by
+
+        _clear_redeem_failures(auth_email)
+        _save_db(db)
+        user_obj = _build_user_response_obj(stored, auth_email)
+
+    return {
+        "status": "ok",
+        "user": user_obj,
+        "applied_tier": target_tier,
+        "duration_days": duration_days,
+        "plan_expires_at": new_expiry,
+    }
+
+
+@app.post("/api/auth/subscription")
+def update_backend_subscription(
+    req: AuthSubscriptionUpdateRequest,
+    current_user: Dict[str, str] = Depends(_get_authenticated_user)
+):
+    """
+    Update user's subscription tier ('free' | 'pro' | 'advisor').
+    - Real Admin accounts (verified via _is_admin_email) can switch directly when needed.
+    - Non-admin accounts must provide a valid activation code (validated against DB codes or env codes).
+    """
+    target_tier = (req.plan_tier or "").strip().lower()
+    if target_tier not in ("free", "pro", "advisor"):
+        raise HTTPException(status_code=400, detail="แพ็กเกจที่ระบุไม่ถูกต้อง (รองรับเฉพาะ free, pro, advisor)")
+
+    auth_email = current_user["email"]
+    code_input = (req.activation_code or "").strip()
+    now_utc = datetime.now(timezone.utc)
+
+    with _db_lock:
+        db = _load_db()
+        stored = db.get("users", {}).get(auth_email)
+        if not stored:
+            raise HTTPException(status_code=404, detail="ไม่พบบัญชีผู้ใช้งาน")
+
+        is_admin = _is_admin_email(auth_email)
+        duration_days = int(req.duration_days or 0)
+        if target_tier in ("pro", "advisor") and not is_admin:
+            if not code_input:
+                raise HTTPException(
+                    status_code=403,
+                    detail="กรุณากรอกรหัสเปิดใช้งาน (Activation Code) ที่ได้รับจากผู้ดูแลระบบเพื่อปลดล็อกแพ็กเกจนี้"
+                )
+            pro_code = _get_pro_activation_code()
+            adv_code = _get_advisor_activation_code()
+            if target_tier == "pro":
+                valid_code = hmac.compare_digest(code_input, pro_code) or hmac.compare_digest(code_input, adv_code)
+            else:
+                valid_code = hmac.compare_digest(code_input, adv_code)
+
+            if not valid_code:
+                raise HTTPException(
+                    status_code=403,
+                    detail="รหัสเปิดใช้งานไม่ถูกต้อง กรุณาตรวจสอบรหัสอีกครั้งหรือติดต่อผู้ดูแลระบบ"
+                )
+
+        new_expiry = _compute_extended_expiry(stored, target_tier, duration_days, now_utc)
+        stored["plan_tier"] = target_tier
+        stored["plan_expires_at"] = new_expiry
+        stored["updated_at"] = now_utc.isoformat()
+        _save_db(db)
+        user_obj = _build_user_response_obj(stored, auth_email)
+    return {"status": "ok", "user": user_obj}
+
+
+@app.post("/api/upgrade-requests")
+def create_upgrade_request(
+    req: UpgradeRequestCreate,
+    current_user: Dict[str, str] = Depends(_get_authenticated_user),
+):
+    """
+    Submit an upgrade / payment notification request into the Admin approval queue.
+    - Authenticated members ONLY (Guest rejected with 401).
+    - Email and user_id are strictly bound from the verified session token (NEVER accepted from request body).
+    - Anti-spam: Max 1 'pending' request per account (409 Conflict if one already exists).
+    """
+    auth_email = current_user["email"]
+    auth_user_id = current_user["id"]
+    target_tier = (req.target_tier or "").strip().lower()
+    if target_tier not in ("pro", "advisor"):
+        raise HTTPException(status_code=400, detail="กรุณาเลือกแพ็กเกจที่ต้องการอัปเกรด (Pro หรือ Advisor Pro)")
+
+    duration_days = int(req.duration_days or 30)
+    if duration_days not in (30, 90, 365):
+        duration_days = 30
+
+    transfer_amount = (req.transfer_amount or "").strip()[:60]
+    transfer_datetime = (req.transfer_datetime or "").strip()[:60]
+    account_last4 = (req.account_last4 or "").strip()[:20]
+    slip_ref = (req.slip_ref or "").strip()[:300]
+    contact_note = (req.contact_note or "").strip()[:300]
+
+    if not transfer_amount or not transfer_datetime:
+        raise HTTPException(
+            status_code=400,
+            detail="กรุณาระบุยอดเงินและวัน–เวลาที่โอนเงินให้ครบถ้วนเพื่อให้ผู้ดูแลตรวจสอบได้อย่างรวดเร็ว"
+        )
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    with _db_lock:
+        db = _load_db()
+        stored = db.get("users", {}).get(auth_email)
+        if not stored:
+            raise HTTPException(status_code=404, detail="ไม่พบบัญชีผู้ใช้งาน")
+
+        reqs = db.get("upgrade_requests", [])
+        has_pending = any(
+            str(r.get("email", "")).lower() == auth_email and str(r.get("status", "")) == "pending"
+            for r in reqs
+        )
+        if has_pending:
+            raise HTTPException(
+                status_code=409,
+                detail="คุณมีคำขออัปเกรดที่รอการตรวจสอบอยู่แล้ว 1 รายการ กรุณารอผู้ดูแลอนุมัติหรือยกเลิกคำขอเดิมก่อนส่งใหม่"
+            )
+
+        new_req = {
+            "id": str(uuid.uuid4()),
+            "user_id": auth_user_id,
+            "email": auth_email,
+            "full_name": stored.get("full_name") or auth_email.split("@")[0],
+            "target_tier": target_tier,
+            "duration_days": duration_days,
+            "transfer_amount": transfer_amount,
+            "transfer_datetime": transfer_datetime,
+            "account_last4": account_last4,
+            "slip_ref": slip_ref,
+            "contact_note": contact_note,
+            "status": "pending",
+            "admin_note": "",
+            "created_at": now_iso,
+            "decided_at": None,
+            "decided_by": None,
+        }
+        reqs.append(new_req)
+        db["upgrade_requests"] = reqs
+        _save_db(db)
+
+    return {"status": "ok", "request": new_req}
+
+
+@app.get("/api/upgrade-requests/mine")
+def list_my_upgrade_requests(current_user: Dict[str, str] = Depends(_get_authenticated_user)):
+    """Return the authenticated user's own upgrade request history (newest first)."""
+    auth_email = current_user["email"]
+    with _db_lock:
+        db = _load_db()
+        mine = [
+            r for r in db.get("upgrade_requests", [])
+            if str(r.get("email", "")).lower() == auth_email
+        ]
+    mine.sort(key=lambda x: str(x.get("created_at") or ""), reverse=True)
+    return {"status": "ok", "requests": mine}
+
+
+@app.delete("/api/upgrade-requests/{request_id}")
+def cancel_my_upgrade_request(
+    request_id: str,
+    current_user: Dict[str, str] = Depends(_get_authenticated_user),
+):
+    """Allow an authenticated user to cancel their own still-pending upgrade request."""
+    auth_email = current_user["email"]
+    with _db_lock:
+        db = _load_db()
+        reqs = db.get("upgrade_requests", [])
+        idx = next(
+            (
+                i for i, r in enumerate(reqs)
+                if str(r.get("id")) == str(request_id) and str(r.get("email", "")).lower() == auth_email
+            ),
+            None,
+        )
+        if idx is None:
+            raise HTTPException(status_code=404, detail="ไม่พบคำขออัปเกรดที่ระบุ")
+        if str(reqs[idx].get("status")) != "pending":
+            raise HTTPException(status_code=409, detail="ไม่สามารถยกเลิกคำขอที่ดำเนินการเสร็จสิ้นแล้วได้")
+        reqs.pop(idx)
+        db["upgrade_requests"] = reqs
+        _save_db(db)
+    return {"status": "ok", "cancelled_id": request_id}
+
+
+@app.get("/api/admin/overview")
+def admin_console_overview(current_user: Dict[str, str] = Depends(_get_authenticated_user)):
+    """Owner/Admin unified console payload: all users, upgrade requests queue, and activation codes."""
+    _require_admin_user(current_user)
+    now_utc = datetime.now(timezone.utc)
+    with _db_lock:
+        db = _load_db()
+        port_counts: Dict[str, int] = {}
+        for p in db.get("portfolios", []) or []:
+            uid = str(p.get("user_id") or "")
+            if uid:
+                port_counts[uid] = port_counts.get(uid, 0) + 1
+
+        user_list = []
+        for em, u in (db.get("users", {}) or {}).items():
+            eff_tier, exp_iso, days_rem, is_exp = _resolve_effective_plan_tier(u, now_utc)
+            uid = str(u.get("id", ""))
+            user_list.append({
+                "id": uid,
+                "email": em,
+                "full_name": u.get("full_name") or em.split("@")[0],
+                "plan_tier": eff_tier,
+                "stored_plan_tier": str(u.get("plan_tier") or "free").strip().lower(),
+                "plan_expires_at": exp_iso,
+                "days_remaining": days_rem,
+                "is_expired": is_exp,
+                "is_admin": _is_admin_email(em),
+                "portfolio_count": port_counts.get(uid, 0),
+                "created_at": u.get("created_at"),
+                "updated_at": u.get("updated_at"),
+            })
+        user_list.sort(key=lambda x: str(x.get("created_at") or ""), reverse=True)
+
+        reqs = list(db.get("upgrade_requests", []) or [])
+        reqs.sort(
+            key=lambda x: (0 if str(x.get("status")) == "pending" else 1, str(x.get("created_at") or "")),
+            reverse=False,
+        )
+        # Put newest first within each status bucket
+        pending_reqs = sorted(
+            [r for r in reqs if str(r.get("status")) == "pending"],
+            key=lambda x: str(x.get("created_at") or ""),
+            reverse=True,
+        )
+        other_reqs = sorted(
+            [r for r in reqs if str(r.get("status")) != "pending"],
+            key=lambda x: str(x.get("decided_at") or x.get("created_at") or ""),
+            reverse=True,
+        )
+        ordered_reqs = pending_reqs + other_reqs
+
+        codes = []
+        for c in (db.get("activation_codes", []) or []):
+            c_copy = dict(c)
+            code_exp_dt = _parse_iso_utc(c.get("code_expires_at"))
+            c_copy["is_code_expired"] = bool(code_exp_dt is not None and code_exp_dt <= now_utc)
+            c_copy["used_count"] = len(c.get("used_by") or [])
+            codes.append(c_copy)
+        codes.sort(key=lambda x: str(x.get("created_at") or ""), reverse=True)
+
+    return {
+        "status": "ok",
+        "users": user_list,
+        "upgrade_requests": ordered_reqs,
+        "pending_requests_count": len(pending_reqs),
+        "activation_codes": codes,
+    }
+
+
+@app.get("/api/admin/users")
+def admin_list_users(current_user: Dict[str, str] = Depends(_get_authenticated_user)):
+    """Owner/Admin endpoint to view registered users and their active plan tiers."""
+    _require_admin_user(current_user)
+    now_utc = datetime.now(timezone.utc)
+    with _db_lock:
+        db = _load_db()
+        user_list = []
+        for em, u in (db.get("users", {}) or {}).items():
+            eff_tier, exp_iso, days_rem, is_exp = _resolve_effective_plan_tier(u, now_utc)
+            user_list.append({
+                "id": str(u.get("id", "")),
+                "email": em,
+                "full_name": u.get("full_name") or em.split("@")[0],
+                "plan_tier": eff_tier,
+                "plan_expires_at": exp_iso,
+                "days_remaining": days_rem,
+                "is_expired": is_exp,
+                "is_admin": _is_admin_email(em),
+                "created_at": u.get("created_at"),
+                "updated_at": u.get("updated_at"),
+            })
+    user_list.sort(key=lambda x: str(x.get("created_at") or ""), reverse=True)
+    return {"status": "ok", "users": user_list}
+
+
+_BANGKOK_TZ = timezone(timedelta(hours=7))
+
+
+def _parse_admin_expiry_to_utc(raw: str) -> datetime:
+    """Parse explicit ISO-8601 datetime from Admin; naive timestamps are interpreted in Thailand time (UTC+7)."""
+    s = str(raw or "").strip()
+    if not s:
+        raise HTTPException(status_code=400, detail="กรุณาระบุวัน–เวลาหมดอายุให้ถูกต้อง")
+    try:
+        if s.endswith("Z"):
+            s = s[:-1] + "+00:00"
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=_BANGKOK_TZ)
+        return dt.astimezone(timezone.utc)
+    except Exception:
+        raise HTTPException(status_code=400, detail="รูปแบบวัน–เวลาหมดอายุไม่ถูกต้อง (เช่น 2026-12-31T23:59)")
+
+
+@app.post("/api/admin/set-user-tier")
+def admin_set_user_tier(
+    req: AdminSetUserTierRequest,
+    current_user: Dict[str, str] = Depends(_get_authenticated_user)
+):
+    """Owner/Admin endpoint to assign 'free', 'pro', or 'advisor' tier + stacked duration OR explicit expiry datetime."""
+    _require_admin_user(current_user)
+    target_email = (req.target_email or "").strip().lower()
+    target_tier = (req.plan_tier or "").strip().lower()
+    if not target_email or "@" not in target_email:
+        raise HTTPException(status_code=400, detail="กรุณาระบุอีเมลของลูกค้าให้ถูกต้อง")
+    if target_tier not in ("free", "pro", "advisor"):
+        raise HTTPException(status_code=400, detail="แพ็กเกจต้องเป็น free, pro หรือ advisor เท่านั้น")
+
+    duration_days = max(0, int(req.duration_days or 0))
+    explicit_exp_raw = (req.expires_at or "").strip()
+    explicit_exp_dt = _parse_admin_expiry_to_utc(explicit_exp_raw) if (explicit_exp_raw and target_tier != "free") else None
+    now_utc = datetime.now(timezone.utc)
+
+    with _db_lock:
+        db = _load_db()
+        target_stored = db.get("users", {}).get(target_email)
+        if not target_stored:
+            raise HTTPException(status_code=404, detail=f"ไม่พบบัญชีผู้ใช้ {target_email} ในระบบ")
+
+        if target_tier == "free":
+            new_expiry = None
+        elif explicit_exp_dt is not None:
+            new_expiry = explicit_exp_dt.isoformat()
+        elif req.reset_expiry:
+            new_expiry = (now_utc + timedelta(days=duration_days)).isoformat() if duration_days > 0 else None
+        else:
+            new_expiry = _compute_extended_expiry(target_stored, target_tier, duration_days, now_utc)
+
+        target_stored["plan_tier"] = target_tier
+        target_stored["plan_expires_at"] = new_expiry
+        if isinstance(req.custom_entitlements, dict):
+            target_stored["entitlements"] = req.custom_entitlements
+        target_stored["updated_at"] = now_utc.isoformat()
+        _save_db(db)
+        updated_obj = _build_user_response_obj(target_stored, target_email)
+    return {"status": "ok", "user": updated_obj, "target_user": updated_obj}
+
+
+@app.post("/api/admin/upgrade-requests/{request_id}/decide")
+def admin_decide_upgrade_request(
+    request_id: str,
+    req: AdminUpgradeDecisionRequest,
+    current_user: Dict[str, str] = Depends(_get_authenticated_user),
+):
+    """
+    Idempotent Admin Approval/Rejection of a customer upgrade request.
+    Strictly verifies status == 'pending' under _db_lock; returns 409 Conflict if already decided.
+    """
+    admin_email = _require_admin_user(current_user)
+    decision = (req.decision or "").strip().lower()
+    if decision not in ("approve", "reject"):
+        raise HTTPException(status_code=400, detail="คำสั่งตัดสินต้องเป็น approve หรือ reject เท่านั้น")
+
+    admin_note = (req.admin_note or "").strip()[:300]
+    now_utc = datetime.now(timezone.utc)
+
+    with _db_lock:
+        db = _load_db()
+        reqs = db.get("upgrade_requests", [])
+        req_rec = next((r for r in reqs if str(r.get("id")) == str(request_id)), None)
+        if req_rec is None:
+            raise HTTPException(status_code=404, detail="ไม่พบคำขออัปเกรดที่ระบุ")
+
+        # Strict Idempotency Guard: prevent double-click approval from double-stacking days
+        if str(req_rec.get("status")) != "pending":
+            raise HTTPException(
+                status_code=409,
+                detail="คำขอนี้ถูกดำเนินการไปแล้ว ไม่สามารถอนุมัติหรือปฏิเสธซ้ำได้"
+            )
+
+        target_email = str(req_rec.get("email") or "").strip().lower()
+        target_tier = str(req_rec.get("target_tier") or "pro").strip().lower()
+        duration_days = (
+            max(0, int(req.duration_days))
+            if req.duration_days is not None
+            else max(0, int(req_rec.get("duration_days") or 30))
+        )
+
+        updated_user_obj = None
+        if decision == "approve":
+            target_stored = db.get("users", {}).get(target_email)
+            if not target_stored:
+                raise HTTPException(status_code=404, detail=f"ไม่พบบัญชีผู้ใช้ {target_email} ในระบบ")
+
+            new_expiry = _compute_extended_expiry(target_stored, target_tier, duration_days, now_utc)
+            target_stored["plan_tier"] = target_tier
+            target_stored["plan_expires_at"] = new_expiry
+            target_stored["updated_at"] = now_utc.isoformat()
+            req_rec["status"] = "approved"
+            req_rec["applied_duration_days"] = duration_days
+            req_rec["applied_expires_at"] = new_expiry
+            updated_user_obj = _build_user_response_obj(target_stored, target_email)
+        else:
+            req_rec["status"] = "rejected"
+
+        req_rec["admin_note"] = admin_note
+        req_rec["decided_at"] = now_utc.isoformat()
+        req_rec["decided_by"] = admin_email
+        _save_db(db)
+
+    return {
+        "status": "ok",
+        "request": req_rec,
+        "target_user": updated_user_obj,
+    }
+
+
+@app.post("/api/admin/codes")
+def admin_create_activation_code(
+    req: AdminCreateCodeRequest,
+    current_user: Dict[str, str] = Depends(_get_authenticated_user),
+):
+    """Owner/Admin endpoint to generate a cryptographically secure Activation Code stored in DB."""
+    admin_email = _require_admin_user(current_user)
+    plan_tier = (req.plan_tier or "").strip().lower()
+    if plan_tier not in ("pro", "advisor"):
+        raise HTTPException(status_code=400, detail="แพ็กเกจของรหัสต้องเป็น pro หรือ advisor เท่านั้น")
+
+    duration_days = max(0, int(req.duration_days or 0))
+    max_uses = max(1, min(10000, int(req.max_uses or 1)))
+    code_valid_days = max(0, int(req.code_valid_days or 0))
+    note = (req.note or "").strip()[:200]
+    now_utc = datetime.now(timezone.utc)
+    code_expires_at = (
+        (now_utc + timedelta(days=code_valid_days)).isoformat()
+        if code_valid_days > 0
+        else None
+    )
+
+    with _db_lock:
+        db = _load_db()
+        codes_list = db.get("activation_codes", [])
+        existing_codes = {str(c.get("code") or "").strip().upper() for c in codes_list}
+
+        if req.custom_code and req.custom_code.strip():
+            clean_custom = req.custom_code.strip().upper()
+            if len(clean_custom) < 8 or len(clean_custom) > 40 or not all(ch.isalnum() or ch in "-_" for ch in clean_custom):
+                raise HTTPException(
+                    status_code=400,
+                    detail="รหัสกำหนดเองต้องมีความยาว 8–40 ตัวอักษร และใช้ได้เฉพาะ A-Z, 0-9, '-' หรือ '_'"
+                )
+            if clean_custom in existing_codes:
+                raise HTTPException(status_code=409, detail="รหัสเปิดใช้งานนี้มีอยู่ในระบบแล้ว กรุณาใช้รหัสอื่น")
+            final_code = clean_custom
+        else:
+            final_code = _generate_secure_activation_code(plan_tier)
+            while final_code in existing_codes:
+                final_code = _generate_secure_activation_code(plan_tier)
+
+        code_record = {
+            "id": str(uuid.uuid4()),
+            "code": final_code,
+            "plan_tier": plan_tier,
+            "duration_days": duration_days,
+            "max_uses": max_uses,
+            "code_expires_at": code_expires_at,
+            "used_by": [],
+            "revoked": False,
+            "revoked_at": None,
+            "revoked_by": None,
+            "note": note,
+            "created_by": admin_email,
+            "created_at": now_utc.isoformat(),
+        }
+        codes_list.append(code_record)
+        db["activation_codes"] = codes_list
+        _save_db(db)
+
+    return {"status": "ok", "code": code_record}
+
+
+@app.post("/api/admin/codes/{code_id}/revoke")
+def admin_revoke_activation_code(
+    code_id: str,
+    current_user: Dict[str, str] = Depends(_get_authenticated_user),
+):
+    """Owner/Admin endpoint to immediately revoke an Activation Code."""
+    admin_email = _require_admin_user(current_user)
+    now_iso = datetime.now(timezone.utc).isoformat()
+    with _db_lock:
+        db = _load_db()
+        codes_list = db.get("activation_codes", [])
+        code_rec = next((c for c in codes_list if str(c.get("id")) == str(code_id)), None)
+        if code_rec is None:
+            raise HTTPException(status_code=404, detail="ไม่พบรหัสเปิดใช้งานที่ระบุ")
+        code_rec["revoked"] = True
+        code_rec["revoked_at"] = now_iso
+        code_rec["revoked_by"] = admin_email
+        _save_db(db)
+    return {"status": "ok", "code": code_rec}
+
+
+@app.post("/api/auth/change-password")
+def change_backend_password(
+    req: AuthChangePasswordRequest,
+    current_user: Dict[str, str] = Depends(_get_authenticated_user)
+):
+    """Verify current password, enforce >= 8 chars, store salted PBKDF2-SHA256 hash, and rotate token."""
+    current_pw = (req.current_password or "").strip()
+    new_pw = (req.new_password or "").strip()
+    if len(new_pw) < 8:
+        raise HTTPException(status_code=400, detail="รหัสผ่านใหม่ต้องมีอย่างน้อย 8 ตัวอักษร")
+    if current_pw == new_pw:
+        raise HTTPException(status_code=400, detail="รหัสผ่านใหม่ต้องแตกต่างจากรหัสผ่านเดิม")
+
+    auth_email = current_user["email"]
+    with _db_lock:
+        db = _load_db()
+        stored = db.get("users", {}).get(auth_email)
+        if not stored:
+            raise HTTPException(status_code=404, detail="ไม่พบบัญชีผู้ใช้งาน")
+        is_valid, _ = _verify_password(current_pw, stored.get("password_hash", ""))
+        if not is_valid:
+            raise HTTPException(status_code=401, detail="รหัสผ่านปัจจุบันไม่ถูกต้อง")
+        stored["password_hash"] = _hash_password(new_pw)
+        stored["updated_at"] = datetime.now(timezone.utc).isoformat()
+        _save_db(db)
+        new_token = _create_auth_token(str(stored["id"]), auth_email)
+    return {"status": "ok", "token": new_token}
 
 
 @app.delete("/api/auth/account")
@@ -825,8 +2036,13 @@ def _build_portfolio_record(req: PortfolioSaveRequest, item_id: str, current_use
 
 
 @app.post("/api/portfolios")
-def save_backend_portfolio(req: PortfolioSaveRequest, current_user: Dict[str, str] = Depends(_get_authenticated_user)):
+def save_backend_portfolio(
+    req: PortfolioSaveRequest,
+    current_user: Dict[str, str] = Depends(_get_authenticated_user),
+    x_qf_admin_preview_tier: Optional[str] = Header(default=None, alias="X-QF-Admin-Preview-Tier"),
+):
     auth_user_id = current_user["id"]
+    auth_email = current_user["email"]
     with _db_lock:
         db = _load_db()
         if req.id is not None:
@@ -842,9 +2058,45 @@ def save_backend_portfolio(req: PortfolioSaveRequest, current_user: Dict[str, st
             new_item = _build_portfolio_record(req, str(req.id), current_user)
             db["portfolios"][existing_idx] = new_item
         else:
-            item_id = str(uuid.uuid4())
-            new_item = _build_portfolio_record(req, item_id, current_user)
-            db["portfolios"].append(new_item)
+            clean_req_name = (req.portfolio_name or "").strip().lower()
+            existing_same_name_idx = next(
+                (
+                    idx for idx, p in enumerate(db.get("portfolios", []))
+                    if str(p.get("user_id")) == str(auth_user_id)
+                    and clean_req_name
+                    and str(p.get("portfolio_name") or "").strip().lower() == clean_req_name
+                ),
+                None,
+            )
+            if existing_same_name_idx is not None:
+                existing_id = str(db["portfolios"][existing_same_name_idx].get("id") or uuid.uuid4())
+                new_item = _build_portfolio_record(req, existing_id, current_user)
+                db["portfolios"][existing_same_name_idx] = new_item
+            else:
+                stored_user = (db.get("users", {}) or {}).get(auth_email) or {}
+                eff_tier, _, _, _ = _resolve_effective_plan_tier(stored_user)
+                norm_preview = _normalize_admin_preview_tier(x_qf_admin_preview_tier) if _is_admin_email(auth_email) else None
+                active_tier = norm_preview if norm_preview else eff_tier
+                user_ent = _get_user_entitlements(
+                    active_tier,
+                    None if norm_preview else stored_user.get("entitlements")
+                )
+                max_portfolios = int(user_ent.get("max_saved_portfolios", 3))
+                user_existing_count = sum(
+                    1 for p in db.get("portfolios", [])
+                    if str(p.get("user_id")) == str(auth_user_id)
+                )
+                if user_existing_count >= max_portfolios:
+                    raise HTTPException(
+                        status_code=403,
+                        detail=(
+                            f"แพ็กเกจปัจจุบันของคุณ ({user_ent['label_th']}) บันทึกแผนพอร์ตได้สูงสุด {max_portfolios} แผน "
+                            f"กรุณาอัปเกรดเป็น QuantFolio Pro หรือ Advisor Pro เพื่อบันทึกแผนเพิ่มเติม"
+                        ),
+                    )
+                item_id = str(uuid.uuid4())
+                new_item = _build_portfolio_record(req, item_id, current_user)
+                db["portfolios"].append(new_item)
         _save_db(db)
     return {"status": "ok", "portfolio": new_item}
 
@@ -898,7 +2150,6 @@ PUBLIC_ROOT_ALLOWLIST = frozenset({
     "app.js",
     "styles.css",
     "supabase_auth.js",
-    "v2_preview.html",
 })
 
 
