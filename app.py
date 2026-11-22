@@ -4,6 +4,7 @@ Supports Multi-User Concurrency, Caching, Cloud Hosting (Hugging Face Spaces / R
 """
 
 import os
+import re
 import time
 import json
 import html
@@ -141,8 +142,11 @@ app.add_middleware(
 # Multi-user in-memory caches
 _quote_cache: Dict[str, Tuple[float, Dict[str, Any]]] = {}
 _search_cache: Dict[str, Tuple[float, List[Dict[str, Any]]]] = {}
-QUOTE_CACHE_TTL = 90    # 90 seconds
-SEARCH_CACHE_TTL = 600  # 10 minutes
+_popular_assets_cache: Optional[Tuple[float, Dict[str, Any]]] = None
+_popular_assets_lock = threading.Lock()
+QUOTE_CACHE_TTL = 90              # 90 seconds
+SEARCH_CACHE_TTL = 600            # 10 minutes
+POPULAR_ASSETS_CACHE_TTL = 86400  # 24 hours (auto-evolves over years with zero deploys)
 
 
 class OptimizeRequest(BaseModel):
@@ -265,6 +269,390 @@ def search_tickers(q: str = Query(..., min_length=1)):
         return {"query": q, "results": []}
     except Exception as e:
         return {"query": q, "results": [], "error": str(e)}
+
+
+# ==============================================================================
+# DYNAMIC POPULAR ASSETS ENGINE (5-YEAR FUTURE-PROOF TOP MARKET CAP + FALLBACK)
+# ==============================================================================
+_POPULAR_ASSET_LABEL_MAP: Dict[str, str] = {
+    # Thailand SET Blue Chips (Thai + English friendly names)
+    "DELTA.BK": "DELTA (เดลต้า)",
+    "PTT.BK": "PTT (ปตท.)",
+    "ADVANC.BK": "ADVANC (AIS)",
+    "GULF.BK": "GULF (กัลฟ์)",
+    "AOT.BK": "AOT (ทอท.)",
+    "KBANK.BK": "KBANK (กสิกรไทย)",
+    "KTB.BK": "KTB (กรุงไทย)",
+    "PTTEP.BK": "PTTEP (ปตท.สผ.)",
+    "SCB.BK": "SCB (เอสซีบี เอกซ์)",
+    "CPALL.BK": "CPALL (7-Eleven)",
+    "TRUE.BK": "TRUE (ทรู)",
+    "BBL.BK": "BBL (กรุงเทพ)",
+    "BDMS.BK": "BDMS (รพ.กรุงเทพ)",
+    "CPN.BK": "CPN (เซ็นทรัลพัฒนา)",
+    "BAY.BK": "BAY (กรุงศรี)",
+    "SCC.BK": "SCC (ปูนซิเมนต์ไทย)",
+    "TTB.BK": "TTB (ทีทีบี)",
+    "CRC.BK": "CRC (เซ็นทรัล รีเทล)",
+    "BH.BK": "BH (รพ.บำรุงราษฎร์)",
+    "MINT.BK": "MINT (ไมเนอร์)",
+    "TISCO.BK": "TISCO (ทิสโก้)",
+    "OR.BK": "OR (ปตท. น้ำมันและการค้าปลีก)",
+    "CPF.BK": "CPF (ซีพีเอฟ)",
+    "GPSC.BK": "GPSC (โกลบอล เพาเวอร์)",
+    "IVL.BK": "IVL (อินโดรามา)",
+    "BEM.BK": "BEM (ทางด่วนและรถไฟฟ้า)",
+    "BTS.BK": "BTS (บีทีเอส)",
+    "HMPRO.BK": "HMPRO (โฮมโปร)",
+    "LH.BK": "LH (แลนด์ แอนด์ เฮ้าส์)",
+    "TLI.BK": "TLI (ไทยประกันชีวิต)",
+    "AWC.BK": "AWC (แอสเสท เวิรด์)",
+    "MTC.BK": "MTC (เมืองไทย แคปปิตอล)",
+    "SAWAD.BK": "SAWAD (ศรีสวัสดิ์)",
+    "TOP.BK": "TOP (ไทยออยล์)",
+    "WHA.BK": "WHA (ดับบลิวเอชเอ)",
+    # US Mega-Cap Equities
+    "NVDA": "NVDA (NVIDIA)",
+    "AAPL": "AAPL (Apple)",
+    "MSFT": "MSFT (Microsoft)",
+    "AMZN": "AMZN (Amazon)",
+    "GOOGL": "GOOGL (Alphabet)",
+    "META": "META (Meta)",
+    "TSLA": "TSLA (Tesla)",
+    "AVGO": "AVGO (Broadcom)",
+    "TSM": "TSM (TSMC)",
+    "BRK-B": "BRK-B (Berkshire)",
+    "LLY": "LLY (Eli Lilly)",
+    "WMT": "WMT (Walmart)",
+    "JPM": "JPM (JPMorgan)",
+    "V": "V (Visa)",
+    "MA": "MA (Mastercard)",
+    "XOM": "XOM (ExxonMobil)",
+    "COST": "COST (Costco)",
+    "ORCL": "ORCL (Oracle)",
+    "NFLX": "NFLX (Netflix)",
+    "AMD": "AMD",
+    "JNJ": "JNJ (Johnson & Johnson)",
+    "KO": "KO (Coca-Cola)",
+    "PG": "PG (P&G)",
+    "HD": "HD (Home Depot)",
+    "UNH": "UNH (UnitedHealth)",
+    "BAC": "BAC (Bank of America)",
+    "PLTR": "PLTR (Palantir)",
+    # Evergreen Multi-Asset ETFs
+    "SPY": "SPY (S&P 500 ETF)",
+    "QQQ": "QQQ (Nasdaq 100 ETF)",
+    "VOO": "VOO (Vanguard S&P 500)",
+    "VTI": "VTI (US Total Stock)",
+    "GLD": "GLD (ทองคำโลก ETF)",
+    "SLV": "SLV (แร่เงิน ETF)",
+    "TLT": "TLT (พันธบัตรสหรัฐฯ 20 ปี+)",
+    "BND": "BND (ตราสารหนี้รวมสหรัฐฯ)",
+    "VNQ": "VNQ (อสังหาฯ สหรัฐฯ REIT)",
+    "DBC": "DBC (สินค้าโภคภัณฑ์รวม)",
+    # Top Crypto
+    "BTC-USD": "BTC-USD (Bitcoin)",
+    "ETH-USD": "ETH-USD (Ethereum)",
+    "BNB-USD": "BNB-USD (BNB)",
+    "XRP-USD": "XRP-USD (XRP)",
+    "SOL-USD": "SOL-USD (Solana)",
+    "ADA-USD": "ADA-USD (Cardano)",
+    "TRX-USD": "TRX-USD (TRON)",
+    "DOGE-USD": "DOGE-USD (Dogecoin)",
+    "LINK-USD": "LINK-USD (Chainlink)",
+    "AVAX-USD": "AVAX-USD (Avalanche)",
+}
+
+FALLBACK_POPULAR_ASSETS: Dict[str, List[Dict[str, str]]] = {
+    "thai_set50": [
+        {"symbol": s, "label": _POPULAR_ASSET_LABEL_MAP[s]}
+        for s in [
+            "DELTA.BK", "PTT.BK", "ADVANC.BK", "GULF.BK", "AOT.BK", "KBANK.BK",
+            "KTB.BK", "PTTEP.BK", "SCB.BK", "CPALL.BK", "TRUE.BK", "BBL.BK",
+            "BDMS.BK", "CPN.BK", "SCC.BK", "BH.BK", "MINT.BK", "TISCO.BK",
+        ]
+    ],
+    "us_equities": [
+        {"symbol": s, "label": _POPULAR_ASSET_LABEL_MAP[s]}
+        for s in [
+            "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "AVGO",
+            "BRK-B", "LLY", "WMT", "JPM", "V", "MA", "COST", "AMD", "NFLX", "KO",
+        ]
+    ],
+    "etf_gold_bonds": [
+        {"symbol": s, "label": _POPULAR_ASSET_LABEL_MAP[s]}
+        for s in ["SPY", "QQQ", "VOO", "VTI", "GLD", "SLV", "TLT", "BND", "VNQ", "DBC"]
+    ],
+    "crypto": [
+        {"symbol": s, "label": _POPULAR_ASSET_LABEL_MAP[s]}
+        for s in ["BTC-USD", "ETH-USD", "BNB-USD", "XRP-USD", "SOL-USD", "ADA-USD"]
+    ],
+}
+
+_PUBLIC_US_EXCHANGES = {"NMS", "NYQ", "NGM", "NCM", "ASE", "PCX", "BTS"}
+_US_DUAL_CLASS_SKIP = {"GOOG", "BRK-A", "BRK.A", "FOX", "NWS", "UHAL-B", "HEI-A", "LEN-B", "BF-A"}
+_THAI_DR_SUFFIX_RE = re.compile(r"(01|03|06|11|13|19|23|41|80)$")
+_CRYPTO_SYMBOL_RE = re.compile(r"^[A-Z]{2,8}-USD$")
+_MIN_TRADING_HISTORY_DAYS = 365  # Require >=1 year of public history so brand-new IPOs never collapse multi-year covariance/backtests
+
+
+def _has_sufficient_trading_history(quote: Dict[str, Any], min_days: int = _MIN_TRADING_HISTORY_DAYS) -> bool:
+    """Exclude brand-new IPOs (<1Y history) that would truncate multi-year portfolio backtests; graduate them automatically once mature."""
+    ftd_ms = quote.get("firstTradeDateMilliseconds")
+    if ftd_ms is None:
+        return True
+    try:
+        cutoff_ms = (time.time() - min_days * 86400) * 1000.0
+        return float(ftd_ms) <= cutoff_ms
+    except Exception:
+        return True
+_CRYPTO_EXCLUDED = {
+    "USDT-USD", "USDC-USD", "DAI-USD", "FDUSD-USD", "USDE-USD", "PYUSD-USD",
+    "TUSD-USD", "USDD-USD", "RLUSD-USD", "USD1-USD", "BUSD-USD", "USDS-USD",
+    "EURC-USD", "USDP-USD", "GUSD-USD", "FRAX-USD",
+    "STETH-USD", "WSTETH-USD", "WETH-USD", "WBTC-USD", "WEETH-USD",
+    "SUSDS-USD", "CBETH-USD", "CBBTC-USD", "WBNB-USD", "BETH-USD", "RETH-USD",
+}
+
+
+def _format_popular_asset_label(symbol: str, raw_name: str = "") -> str:
+    """Return bilingual institutional label for known assets and clean auto-formatted label for future newcomers."""
+    sym = str(symbol or "").strip().upper()
+    if sym in _POPULAR_ASSET_LABEL_MAP:
+        return _POPULAR_ASSET_LABEL_MAP[sym]
+
+    display_sym = sym[:-3] if sym.endswith(".BK") else sym
+    name = str(raw_name or "").strip()
+    if not name:
+        return display_sym
+
+    # Yahoo SET quotes often arrive as "DELTA_DELTA ELECTRONICS" -> strip "DELTA_" prefix
+    if "_" in name:
+        prefix, rest = name.split("_", 1)
+        if prefix.strip().upper() == display_sym:
+            name = rest.strip()
+
+    # Clean corporate suffixes and trailing USD for crypto
+    name = re.sub(r"\s+USD$", "", name, flags=re.IGNORECASE)
+    name = re.sub(
+        r",?\s*\b(Public Company Limited|Public Co\.?,?\s*Ltd\.?|Corporation|Corp\.?|Incorporated|Inc\.?|Limited|Ltd\.?|Holdings?|PLC|N\.V\.|S\.A\.|AG|Co\.?)\b\.?",
+        "",
+        name,
+        flags=re.IGNORECASE,
+    )
+    name = re.sub(r"\s+", " ", name).strip(" ,.-")
+    if not name or name.upper() == display_sym.upper() or name.upper() == sym.upper():
+        return display_sym
+
+    if name.isupper() and len(name) > 5:
+        name = name.title()
+    if len(name) > 22:
+        name = name[:21].rstrip(" ,.-") + "…"
+    return f"{display_sym} ({name})"
+
+
+def _filter_thai_top_quotes(quotes: List[Dict[str, Any]], limit: int = 18) -> List[Dict[str, str]]:
+    """Filter Yahoo Finance TH screener quotes down to pure active SET common stocks (no DR, NVDR, foreign board, or shells)."""
+    out: List[Dict[str, str]] = []
+    seen = set()
+    for q in quotes or []:
+        sym = str(q.get("symbol") or "").strip().upper()
+        if not sym.endswith(".BK") or sym in seen:
+            continue
+        base = sym[:-3]
+        if not base or "-" in base or "." in base:
+            continue
+        name = str(q.get("shortName") or q.get("longName") or "")
+        name_upper = name.upper()
+        if "_DR" in name_upper or " DR" in name_upper or "#" in name or _THAI_DR_SUFFIX_RE.search(base):
+            continue
+        price = q.get("regularMarketPrice")
+        vol = q.get("regularMarketVolume") or q.get("averageDailyVolume3Month") or 0
+        if (price is not None and float(price) <= 0) or float(vol) <= 0:
+            continue
+        if not _has_sufficient_trading_history(q):
+            continue
+        seen.add(sym)
+        out.append({"symbol": sym, "label": _format_popular_asset_label(sym, name)})
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _filter_us_top_quotes(quotes: List[Dict[str, Any]], limit: int = 18) -> List[Dict[str, str]]:
+    """Filter Yahoo Finance US screener quotes down to public mega-cap equities (no pre-IPO placeholders or dual-class duplicates)."""
+    out: List[Dict[str, str]] = []
+    seen = set()
+    for q in quotes or []:
+        sym = str(q.get("symbol") or "").strip().upper()
+        if not sym or sym in seen or sym in _US_DUAL_CLASS_SKIP:
+            continue
+        exch = str(q.get("exchange") or "").strip().upper()
+        qtype = str(q.get("quoteType") or "EQUITY").strip().upper()
+        if not exch or exch not in _PUBLIC_US_EXCHANGES:
+            continue
+        if qtype != "EQUITY":
+            continue
+        price = q.get("regularMarketPrice")
+        vol = q.get("regularMarketVolume") or q.get("averageDailyVolume3Month") or 0
+        if price is None or float(price) <= 0 or float(vol) <= 0:
+            continue
+        if not _has_sufficient_trading_history(q):
+            continue
+        name = str(q.get("shortName") or q.get("longName") or "")
+        seen.add(sym)
+        out.append({"symbol": sym, "label": _format_popular_asset_label(sym, name)})
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _filter_crypto_top_quotes(quotes: List[Dict[str, Any]], limit: int = 6) -> List[Dict[str, str]]:
+    """Filter Yahoo Finance crypto screener quotes down to major non-stablecoin, non-wrapped digital assets."""
+    out: List[Dict[str, str]] = []
+    seen = set()
+    for q in quotes or []:
+        sym = str(q.get("symbol") or "").strip().upper()
+        if not sym or sym in seen or sym in _CRYPTO_EXCLUDED or not _CRYPTO_SYMBOL_RE.match(sym):
+            continue
+        price = q.get("regularMarketPrice")
+        vol = q.get("regularMarketVolume") or q.get("volume24Hr") or 0
+        if price is not None and float(price) <= 0:
+            continue
+        if vol is not None and float(vol) <= 0:
+            continue
+        name = str(q.get("shortName") or q.get("longName") or "")
+        seen.add(sym)
+        out.append({"symbol": sym, "label": _format_popular_asset_label(sym, name)})
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _fetch_live_thai_top_market_cap(limit: int = 18) -> Optional[List[Dict[str, str]]]:
+    try:
+        from yfinance import EquityQuery
+        q_th = EquityQuery("and", [
+            EquityQuery("eq", ["region", "th"]),
+            EquityQuery("gt", ["intradaymarketcap", 10_000_000_000]),
+        ])
+        res = yf.screen(q_th, sortField="intradaymarketcap", sortAsc=False, size=100)
+        cleaned = _filter_thai_top_quotes((res or {}).get("quotes", []), limit=limit)
+        return cleaned if len(cleaned) >= 8 else None
+    except Exception:
+        return None
+
+
+def _fetch_live_us_top_market_cap(limit: int = 18) -> Optional[List[Dict[str, str]]]:
+    try:
+        from yfinance import EquityQuery
+        q_us = EquityQuery("and", [
+            EquityQuery("eq", ["region", "us"]),
+            EquityQuery("gt", ["intradaymarketcap", 50_000_000_000]),
+        ])
+        res = yf.screen(q_us, sortField="intradaymarketcap", sortAsc=False, size=60)
+        cleaned = _filter_us_top_quotes((res or {}).get("quotes", []), limit=limit)
+        return cleaned if len(cleaned) >= 8 else None
+    except Exception:
+        return None
+
+
+def _fetch_live_crypto_top_market_cap(limit: int = 6) -> Optional[List[Dict[str, str]]]:
+    try:
+        url = "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?scrIds=all_cryptocurrencies_us&count=30"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        }
+        res = requests.get(url, headers=headers, timeout=6)
+        if res.status_code != 200:
+            return None
+        data = res.json()
+        quotes = (data.get("finance", {}).get("result") or [{}])[0].get("quotes", [])
+        cleaned = _filter_crypto_top_quotes(quotes, limit=limit)
+        return cleaned if len(cleaned) >= 3 else None
+    except Exception:
+        return None
+
+
+def _build_popular_assets_payload() -> Dict[str, Any]:
+    """Fetch live Top Market Cap catalogs in parallel with strict timeouts and institutional fallbacks."""
+    live_categories: List[str] = []
+    categories: Dict[str, List[Dict[str, str]]] = {
+        "thai_set50": list(FALLBACK_POPULAR_ASSETS["thai_set50"]),
+        "us_equities": list(FALLBACK_POPULAR_ASSETS["us_equities"]),
+        "etf_gold_bonds": list(FALLBACK_POPULAR_ASSETS["etf_gold_bonds"]),
+        "crypto": list(FALLBACK_POPULAR_ASSETS["crypto"]),
+    }
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
+        futs = {
+            "thai_set50": pool.submit(_fetch_live_thai_top_market_cap, 18),
+            "us_equities": pool.submit(_fetch_live_us_top_market_cap, 18),
+            "crypto": pool.submit(_fetch_live_crypto_top_market_cap, 6),
+        }
+        for key, fut in futs.items():
+            try:
+                items = fut.result(timeout=7.5)
+                if items:
+                    categories[key] = items
+                    live_categories.append(key)
+            except Exception:
+                pass
+
+    now_utc = datetime.now(timezone.utc)
+    if len(live_categories) == 3:
+        source_mode = "live_market_cap"
+    elif len(live_categories) > 0:
+        source_mode = "partial_live"
+    else:
+        source_mode = "curated_fallback"
+
+    return {
+        "source": source_mode,
+        "ranking_method": "Top Market Cap",
+        "updated_at": now_utc.isoformat(),
+        "as_of_date": now_utc.strftime("%Y-%m-%d"),
+        "cache_ttl_sec": POPULAR_ASSETS_CACHE_TTL,
+        "live_categories": live_categories,
+        "categories": categories,
+        "presets": {
+            "thai_set50": [x["symbol"] for x in categories["thai_set50"][:5]],
+            "tech_titans": [x["symbol"] for x in categories["us_equities"][:7]],
+            "all_weather": ["SPY", "QQQ", "GLD", "TLT", "DBC"],
+        },
+    }
+
+
+@app.get("/api/popular-assets")
+def get_popular_assets(refresh: bool = Query(default=False)):
+    """Return auto-updating Top Market Cap popular asset catalog (24h server + CDN cache, zero-downtime fallback)."""
+    global _popular_assets_cache
+    now = time.time()
+    with _popular_assets_lock:
+        if _popular_assets_cache is not None:
+            ts, cached_payload = _popular_assets_cache
+            age = now - ts
+            # Ignore forced refresh if cache is younger than 5 minutes to protect upstream rate limits
+            if age < POPULAR_ASSETS_CACHE_TTL and (not refresh or age < 300):
+                resp_payload = dict(cached_payload)
+                resp_payload["is_cached"] = True
+                resp_payload["cache_age_sec"] = round(age, 1)
+                return JSONResponse(
+                    content=resp_payload,
+                    headers={"Cache-Control": "public, max-age=3600, s-maxage=86400, stale-while-revalidate=86400"},
+                )
+
+    payload = _build_popular_assets_payload()
+    with _popular_assets_lock:
+        _popular_assets_cache = (time.time(), payload)
+
+    resp_payload = dict(payload)
+    resp_payload["is_cached"] = False
+    resp_payload["cache_age_sec"] = 0.0
+    return JSONResponse(
+        content=resp_payload,
+        headers={"Cache-Control": "public, max-age=3600, s-maxage=86400, stale-while-revalidate=86400"},
+    )
 
 
 @app.get("/api/quote")
@@ -836,7 +1224,7 @@ TIER_ENTITLEMENTS: Dict[str, Dict[str, Any]] = {
     "guest": {
         "plan_tier": "guest",
         "label_th": "โหมดทดลองใช้ (Guest)",
-        "badge_text": "GUEST • 5 หุ้น",
+        "badge_text": "GUEST",
         "max_assets": 5,
         "max_saved_portfolios": 1,
         "can_view_news": False,
@@ -848,7 +1236,7 @@ TIER_ENTITLEMENTS: Dict[str, Dict[str, Any]] = {
     "free": {
         "plan_tier": "free",
         "label_th": "สมาชิกทั่วไป (Member ฟรี)",
-        "badge_text": "MEMBER ฟรี • 8 หุ้น",
+        "badge_text": "MEMBER",
         "max_assets": 8,
         "max_saved_portfolios": 3,
         "can_view_news": True,
@@ -860,7 +1248,7 @@ TIER_ENTITLEMENTS: Dict[str, Dict[str, Any]] = {
     "pro": {
         "plan_tier": "pro",
         "label_th": "QuantFolio Pro (นักลงทุนรายย่อย)",
-        "badge_text": "PRO • 15 หุ้น & BL",
+        "badge_text": "PRO",
         "max_assets": 15,
         "max_saved_portfolios": 20,
         "can_view_news": True,
@@ -872,7 +1260,7 @@ TIER_ENTITLEMENTS: Dict[str, Dict[str, Any]] = {
     "advisor": {
         "plan_tier": "advisor",
         "label_th": "Advisor Pro (IC / IP White-label)",
-        "badge_text": "ADVISOR PRO • 25 หุ้น",
+        "badge_text": "ADVISOR PRO",
         "max_assets": 25,
         "max_saved_portfolios": 9999,
         "can_view_news": True,
