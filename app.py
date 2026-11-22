@@ -23,10 +23,21 @@ from typing import List, Optional, Dict, Any, Tuple
 from fastapi import FastAPI, HTTPException, Query, Depends, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 import yfinance as yf
 import optimizer as _opt_module
+from storage_repo import (
+    StorageConfigError,
+    StorageConflictError,
+    StorageNotFoundError,
+    StorageUnavailableError,
+    build_repository,
+    is_production_runtime,
+    normalize_code,
+    normalize_email,
+    resolve_auth_secret_bytes,
+)
 
 from optimizer import (
     run_portfolio_optimization,
@@ -151,9 +162,45 @@ class OptimizeRequest(BaseModel):
     bl_views: Optional[Dict[str, float]] = Field(default=None)
 
 
+@app.exception_handler(StorageConfigError)
+async def _handle_storage_config_error(request: Request, exc: StorageConfigError):
+    return JSONResponse(status_code=503, content={"detail": str(exc)})
+
+
+@app.exception_handler(StorageUnavailableError)
+async def _handle_storage_unavailable_error(request: Request, exc: StorageUnavailableError):
+    return JSONResponse(status_code=503, content={"detail": str(exc)})
+
+
 @app.get("/api/health")
 def health_check():
-    return {"status": "ok", "app": "QuantFolio Wealth Analytics", "version": "4.2.0"}
+    storage_backend = "unconfigured"
+    storage_ready = False
+    try:
+        repo = _get_repo()
+        storage_backend = repo.backend_name
+        _get_auth_secret_key()
+        storage_ready = True
+    except StorageConfigError as exc:
+        if storage_backend == "unconfigured":
+            storage_backend = "misconfigured"
+        return {
+            "status": "degraded",
+            "app": "QuantFolio Wealth Analytics",
+            "version": app.version,
+            "production_runtime": is_production_runtime(),
+            "storage_backend": storage_backend,
+            "storage_ready": False,
+            "detail": str(exc),
+        }
+    return {
+        "status": "ok",
+        "app": "QuantFolio Wealth Analytics",
+        "version": app.version,
+        "production_runtime": is_production_runtime(),
+        "storage_backend": storage_backend,
+        "storage_ready": storage_ready,
+    }
 
 
 @app.get("/api/rf")
@@ -487,6 +534,7 @@ def optimize_portfolio(
                     stat["news"]["articles"] = []
 
         if isinstance(results, dict) and isinstance(results.get("metadata"), dict):
+            results["metadata"]["dropped_tickers"] = list(results["metadata"].get("missing_tickers") or [])
             results["metadata"]["plan_tier"] = entitlements["plan_tier"]
             results["metadata"]["applied_use_news_adjustment"] = bool(effective_use_news)
             results["metadata"]["applied_bl_confidence"] = round(effective_bl_confidence, 4)
@@ -699,38 +747,53 @@ def _save_db(data: Dict[str, Any]) -> None:
                 pass
 
 
+def _get_repo():
+    """Return active storage repository (Supabase on Production/Vercel with fail-fast; Local JSON on local/pytest)."""
+    return build_repository(
+        json_path_resolver=lambda: _get_db_file_path(),
+        json_lock=_db_lock,
+        json_seed_path=os.path.join(BASE_DIR, "quantfolio_users_db.json"),
+    )
+
+
 def _init_auth_secret() -> bytes:
-    env_sec = os.environ.get("QUANTFOLIO_AUTH_SECRET")
-    if env_sec:
-        return env_sec.encode("utf-8")
-    secret_path = os.path.join(tempfile.gettempdir(), ".quantfolio_secret_key")
-    try:
-        if os.path.exists(secret_path):
-            with open(secret_path, "r", encoding="utf-8") as f:
-                val = f.read().strip()
-                if len(val) >= 32:
-                    return val.encode("utf-8")
-        val = secrets.token_hex(32)
-        with open(secret_path, "w", encoding="utf-8") as f:
-            f.write(val)
-        return val.encode("utf-8")
-    except Exception:
-        return secrets.token_hex(32).encode("utf-8")
+    if is_production_runtime():
+        # Defer strict validation until runtime call if env not set at import time
+        env_sec = os.environ.get("QUANTFOLIO_AUTH_SECRET", "").strip()
+        if env_sec:
+            return env_sec.encode("utf-8")
+        return b""
+    return resolve_auth_secret_bytes(allow_temp_fallback=True)
+
 
 _AUTH_SECRET_KEY = _init_auth_secret()
 _AUTH_TOKEN_TTL_SECONDS = 86400 * 7  # 7 days
 
 
+def _get_auth_secret_key() -> bytes:
+    """Return HMAC signing key; fails fast with StorageConfigError (HTTP 503) on Production if missing."""
+    if is_production_runtime():
+        return resolve_auth_secret_bytes(allow_temp_fallback=False)
+    env_sec = os.environ.get("QUANTFOLIO_AUTH_SECRET", "").strip()
+    if env_sec:
+        return env_sec.encode("utf-8")
+    global _AUTH_SECRET_KEY
+    if not _AUTH_SECRET_KEY:
+        _AUTH_SECRET_KEY = resolve_auth_secret_bytes(allow_temp_fallback=True)
+    return _AUTH_SECRET_KEY
+
+
 def _create_auth_token(user_id: str, email: str) -> str:
+    secret_key = _get_auth_secret_key()
     payload = {
         "sub": str(user_id),
-        "email": str(email).strip().lower(),
+        "email": normalize_email(email),
         "exp": int(time.time()) + _AUTH_TOKEN_TTL_SECONDS,
     }
     payload_b64 = base64.urlsafe_b64encode(
         json.dumps(payload, separators=(",", ":")).encode("utf-8")
     ).decode("ascii").rstrip("=")
-    sig = hmac.new(_AUTH_SECRET_KEY, payload_b64.encode("ascii"), hashlib.sha256).hexdigest()
+    sig = hmac.new(secret_key, payload_b64.encode("ascii"), hashlib.sha256).hexdigest()
     return f"{payload_b64}.{sig}"
 
 
@@ -740,8 +803,9 @@ def _get_authenticated_user(authorization: Optional[str] = Header(default=None))
     raw_token = authorization[7:].strip()
     if "." not in raw_token:
         raise HTTPException(status_code=401, detail="เซสชันไม่ถูกต้องหรือหมดอายุ")
+    secret_key = _get_auth_secret_key()
     payload_b64, sig = raw_token.rsplit(".", 1)
-    expected_sig = hmac.new(_AUTH_SECRET_KEY, payload_b64.encode("ascii"), hashlib.sha256).hexdigest()
+    expected_sig = hmac.new(secret_key, payload_b64.encode("ascii"), hashlib.sha256).hexdigest()
     if not hmac.compare_digest(sig, expected_sig):
         raise HTTPException(status_code=401, detail="เซสชันไม่ถูกต้องหรือหมดอายุ")
     try:
@@ -754,15 +818,14 @@ def _get_authenticated_user(authorization: Optional[str] = Header(default=None))
         raise HTTPException(status_code=401, detail="เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่")
 
     user_id = str(payload.get("sub") or "").strip()
-    email = str(payload.get("email") or "").strip().lower()
+    email = normalize_email(payload.get("email"))
     if not user_id or not email:
         raise HTTPException(status_code=401, detail="เซสชันไม่ถูกต้อง")
 
-    with _db_lock:
-        db = _load_db()
-        stored_user = db.get("users", {}).get(email)
-        if not stored_user or str(stored_user.get("id")) != user_id:
-            raise HTTPException(status_code=401, detail="ไม่พบบัญชีผู้ใช้งานของเซสชันนี้")
+    repo = _get_repo()
+    stored_user = repo.get_user_by_email(email)
+    if not stored_user or str(stored_user.get("id")) != user_id:
+        raise HTTPException(status_code=401, detail="ไม่พบบัญชีผู้ใช้งานของเซสชันนี้")
 
     return {"id": user_id, "email": email}
 
@@ -1026,18 +1089,19 @@ def _resolve_request_user_and_entitlements(
         return None, _get_user_entitlements("guest")
     try:
         auth_info = _get_authenticated_user(authorization)
-        with _db_lock:
-            db = _load_db()
-            stored = db.get("users", {}).get(auth_info["email"])
-            if not stored:
-                return None, _get_user_entitlements("guest")
-            user_obj = _build_user_response_obj(
-                stored,
-                auth_info["email"],
-                admin_preview_tier=admin_preview_tier,
-            )
-            return user_obj, user_obj["entitlements"]
-    except HTTPException:
+        repo = _get_repo()
+        stored = repo.get_user_by_email(auth_info["email"])
+        if not stored:
+            return None, _get_user_entitlements("guest")
+        user_obj = _build_user_response_obj(
+            stored,
+            auth_info["email"],
+            admin_preview_tier=admin_preview_tier,
+        )
+        return user_obj, user_obj["entitlements"]
+    except HTTPException as he:
+        if he.status_code >= 500:
+            raise
         return None, _get_user_entitlements("guest")
 
 
@@ -1221,10 +1285,10 @@ def _build_local_svg_avatar(name: str) -> str:
 @app.post("/api/auth/login")
 def backend_auth_login(req: AuthLoginRequest, request: Request):
     """
-    ระบบยืนยันตัวตนสำรองระดับเซิร์ฟเวอร์ (Salted PBKDF2-SHA256 + Rate Limit + Mode Check)
+    ระบบยืนยันตัวตนหลักฝั่งเซิร์ฟเวอร์ (Salted PBKDF2-SHA256 + Rate Limit + Mode Check + Supabase/JSON Repository)
     """
-    email = req.email.strip().lower()
-    password = req.password.strip()
+    email = normalize_email(req.email)
+    password = (req.password or "").strip()
     if not email or "@" not in email:
         raise HTTPException(status_code=400, detail="กรุณากรอกอีเมลให้ถูกต้อง")
     if len(password) < 8:
@@ -1232,70 +1296,82 @@ def backend_auth_login(req: AuthLoginRequest, request: Request):
 
     client_ip = _get_client_ip(request)
     now = time.time()
-    with _db_lock:
-        if _is_rate_limited(client_ip, email, now):
+    if _is_rate_limited(client_ip, email, now):
+        raise HTTPException(
+            status_code=429,
+            detail="พยายามเข้าสู่ระบบผิดพลาดเกินจำนวนครั้งที่กำหนด กรุณารอ 1 นาทีแล้วลองใหม่อีกครั้ง"
+        )
+
+    repo = _get_repo()
+    default_name = (req.full_name or "").strip() or email.split("@")[0]
+    stored = repo.get_user_by_email(email)
+
+    if stored is not None:
+        if (req.mode or "").strip().lower() == "signup":
             raise HTTPException(
-                status_code=429,
-                detail="พยายามเข้าสู่ระบบผิดพลาดเกินจำนวนครั้งที่กำหนด กรุณารอ 1 นาทีแล้วลองใหม่อีกครั้ง"
+                status_code=409,
+                detail="อีเมลนี้ถูกสมัครใช้งานแล้ว กรุณาสลับไปที่แท็บ 'เข้าสู่ระบบ'"
             )
+        is_valid, needs_upgrade = _verify_password(password, stored.get("password_hash", ""))
+        if not is_valid:
+            _record_failed_attempt(client_ip, email, now)
+            raise HTTPException(status_code=401, detail="รหัสผ่านไม่ถูกต้อง กรุณาตรวจสอบรหัสผ่านของคุณอีกครั้ง")
 
-        default_name = (req.full_name or "").strip() or email.split("@")[0]
-        db = _load_db()
-        users = db["users"]
+        _record_successful_attempt(client_ip, email)
+        updates: Dict[str, Any] = {}
+        if needs_upgrade:
+            updates["password_hash"] = _hash_password(password)
+        if (req.mode or "").strip().lower() != "signin" and req.full_name and req.full_name.strip():
+            updates["full_name"] = req.full_name.strip()
+        if not stored.get("avatar_url") or "ui-avatars.com" in str(stored.get("avatar_url", "")):
+            updates["avatar_url"] = _build_local_svg_avatar(updates.get("full_name") or stored.get("full_name") or default_name)
+        if updates:
+            updates["updated_at"] = datetime.now(timezone.utc).isoformat()
+            stored = repo.update_user_by_email(email, updates)
 
-        if email in users:
-            if (req.mode or "").strip().lower() == "signup":
-                raise HTTPException(
-                    status_code=409,
-                    detail="อีเมลนี้ถูกสมัครใช้งานแล้ว กรุณาสลับไปที่แท็บ 'เข้าสู่ระบบ'"
-                )
-            stored = users[email]
-            is_valid, needs_upgrade = _verify_password(password, stored.get("password_hash", ""))
-            if not is_valid:
-                _record_failed_attempt(client_ip, email, now)
-                raise HTTPException(status_code=401, detail="รหัสผ่านไม่ถูกต้อง กรุณาตรวจสอบรหัสผ่านของคุณอีกครั้ง")
-
-            _record_successful_attempt(client_ip, email)
-            db_dirty = False
-            if needs_upgrade:
-                stored["password_hash"] = _hash_password(password)
-                db_dirty = True
-            if (req.mode or "").strip().lower() != "signin" and req.full_name and req.full_name.strip():
-                stored["full_name"] = req.full_name.strip()
-                db_dirty = True
-            if not stored.get("avatar_url") or "ui-avatars.com" in str(stored.get("avatar_url", "")):
-                stored["avatar_url"] = _build_local_svg_avatar(stored.get("full_name") or default_name)
-                db_dirty = True
-            if db_dirty:
-                _save_db(db)
-
-            user_id = str(stored["id"])
-            user_obj = _build_user_response_obj(stored, email, fallback_name=default_name)
-            token = _create_auth_token(user_id, email)
-            return {"status": "ok", "action": "signed_in", "token": token, "user": user_obj}
-        else:
-            if (req.mode or "").strip().lower() == "signin":
-                _record_failed_attempt(client_ip, email, now)
-                raise HTTPException(
-                    status_code=401,
-                    detail="ไม่พบบัญชีผู้ใช้นี้ในระบบ กรุณาตรวจสอบอีเมลหรือสลับไปที่แท็บ 'สมัครสมาชิกใหม่'"
-                )
-            user_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"quantfolio:{email}"))
-            avatar_url = _build_local_svg_avatar(default_name)
-            users[email] = {
-                "id": user_id,
-                "email": email,
-                "full_name": default_name,
-                "avatar_url": avatar_url,
-                "plan_tier": "free",
-                "is_admin": _is_admin_email(email),
-                "password_hash": _hash_password(password),
-                "created_at": datetime.now(timezone.utc).isoformat()
-            }
-            _save_db(db)
-            user_obj = _build_user_response_obj(users[email], email, fallback_name=default_name)
-            token = _create_auth_token(user_id, email)
-            return {"status": "ok", "action": "signed_up", "token": token, "user": user_obj}
+        user_id = str(stored["id"])
+        user_obj = _build_user_response_obj(stored, email, fallback_name=default_name)
+        token = _create_auth_token(user_id, email)
+        return {"status": "ok", "action": "signed_in", "token": token, "user": user_obj}
+    else:
+        if (req.mode or "").strip().lower() == "signin":
+            _record_failed_attempt(client_ip, email, now)
+            raise HTTPException(
+                status_code=401,
+                detail="ไม่พบบัญชีผู้ใช้นี้ในระบบ กรุณาตรวจสอบอีเมลหรือสลับไปที่แท็บ 'สมัครสมาชิกใหม่'"
+            )
+        user_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"quantfolio:{email}"))
+        avatar_url = _build_local_svg_avatar(default_name)
+        new_user_rec = {
+            "id": user_id,
+            "email": email,
+            "full_name": default_name,
+            "avatar_url": avatar_url,
+            "plan_tier": "free",
+            "plan_expires_at": None,
+            "is_admin": _is_admin_email(email),
+            "password_hash": _hash_password(password),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        try:
+            stored = repo.create_user(new_user_rec)
+        except StorageConflictError:
+            raise HTTPException(
+                status_code=409,
+                detail="อีเมลนี้ถูกสมัครใช้งานแล้ว กรุณาสลับไปที่แท็บ 'เข้าสู่ระบบ'"
+            )
+        repo.write_audit_log(
+            action="user_signed_up",
+            actor_user_id=user_id,
+            actor_email=email,
+            target_user_id=user_id,
+            target_email=email,
+            details={"plan_tier": "free"},
+            ip_address=client_ip,
+        )
+        user_obj = _build_user_response_obj(stored, email, fallback_name=default_name)
+        token = _create_auth_token(user_id, email)
+        return {"status": "ok", "action": "signed_up", "token": token, "user": user_obj}
 
 
 @app.get("/api/auth/me")
@@ -1304,17 +1380,16 @@ def get_backend_current_user(
     x_qf_admin_preview_tier: Optional[str] = Header(default=None, alias="X-QF-Admin-Preview-Tier"),
 ):
     """Verify active HMAC session token and return fresh profile metadata + effective plan_tier & entitlements."""
-    auth_email = current_user["email"]
-    with _db_lock:
-        db = _load_db()
-        stored = db.get("users", {}).get(auth_email)
-        if not stored:
-            raise HTTPException(status_code=401, detail="ไม่พบบัญชีผู้ใช้งานนี้ในระบบ")
-        user_obj = _build_user_response_obj(
-            stored,
-            auth_email,
-            admin_preview_tier=x_qf_admin_preview_tier,
-        )
+    auth_email = normalize_email(current_user["email"])
+    repo = _get_repo()
+    stored = repo.get_user_by_email(auth_email)
+    if not stored:
+        raise HTTPException(status_code=401, detail="ไม่พบบัญชีผู้ใช้งานนี้ในระบบ")
+    user_obj = _build_user_response_obj(
+        stored,
+        auth_email,
+        admin_preview_tier=x_qf_admin_preview_tier,
+    )
     return {"status": "ok", "user": user_obj}
 
 
@@ -1328,17 +1403,17 @@ def update_backend_profile(
     if len(new_name) < 1 or len(new_name) > 80:
         raise HTTPException(status_code=400, detail="ชื่อที่ใช้แสดงผลต้องมีความยาวระหว่าง 1–80 ตัวอักษร")
 
-    auth_email = current_user["email"]
-    with _db_lock:
-        db = _load_db()
-        stored = db.get("users", {}).get(auth_email)
-        if not stored:
-            raise HTTPException(status_code=404, detail="ไม่พบบัญชีผู้ใช้งาน")
-        stored["full_name"] = new_name
-        stored["avatar_url"] = _build_local_svg_avatar(new_name)
-        stored["updated_at"] = datetime.now(timezone.utc).isoformat()
-        _save_db(db)
-        user_obj = _build_user_response_obj(stored, auth_email)
+    auth_email = normalize_email(current_user["email"])
+    repo = _get_repo()
+    try:
+        stored = repo.update_user_by_email(auth_email, {
+            "full_name": new_name,
+            "avatar_url": _build_local_svg_avatar(new_name),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        })
+    except StorageNotFoundError:
+        raise HTTPException(status_code=404, detail="ไม่พบบัญชีผู้ใช้งาน")
+    user_obj = _build_user_response_obj(stored, auth_email)
     return {"status": "ok", "user": user_obj}
 
 
@@ -1349,96 +1424,56 @@ def redeem_activation_code(
 ):
     """
     Redeem an Activation Code with strict 4-layer validation, Tier Change Guard, and brute-force rate limit.
-    Enforced identically for ALL authenticated accounts (including Admin) so Admin can test the exact customer flow.
+    Uses atomic PostgreSQL RPC on Supabase (or locked JSON repo in local/pytest).
     """
-    auth_email = current_user["email"]
-    raw_code = (req.code or "").strip().upper()
+    auth_email = normalize_email(current_user["email"])
+    auth_user_id = str(current_user["id"])
+    raw_code = normalize_code(req.code)
     now_ts = time.time()
-    now_utc = datetime.now(timezone.utc)
 
-    with _db_lock:
-        if _is_redeem_rate_limited(auth_email, now_ts):
-            raise HTTPException(
-                status_code=429,
-                detail="คุณกรอกรหัสเปิดใช้งานผิดเกินจำนวนครั้งที่กำหนด (10 ครั้ง / 15 นาที) กรุณารอสักครู่แล้วลองใหม่อีกครั้ง"
-            )
-
-        if not raw_code or len(raw_code) < 4:
-            _record_redeem_failure(auth_email, now_ts)
-            raise HTTPException(status_code=400, detail="กรุณากรอกรหัสเปิดใช้งาน (Activation Code) ให้ครบถ้วน")
-
-        db = _load_db()
-        stored = db.get("users", {}).get(auth_email)
-        if not stored:
-            raise HTTPException(status_code=404, detail="ไม่พบบัญชีผู้ใช้งาน")
-
-        eff_tier, _, _, _ = _resolve_effective_plan_tier(stored, now_utc)
-        codes_list = db.get("activation_codes", [])
-        code_rec = next(
-            (c for c in codes_list if hmac.compare_digest(str(c.get("code") or "").strip().upper(), raw_code)),
-            None,
+    if _is_redeem_rate_limited(auth_email, now_ts):
+        raise HTTPException(
+            status_code=429,
+            detail="คุณกรอกรหัสเปิดใช้งานผิดเกินจำนวนครั้งที่กำหนด (10 ครั้ง / 15 นาที) กรุณารอสักครู่แล้วลองใหม่อีกครั้ง"
         )
 
-        if code_rec is None:
+    if not raw_code or len(raw_code) < 4:
+        _record_redeem_failure(auth_email, now_ts)
+        raise HTTPException(status_code=400, detail="กรุณากรอกรหัสเปิดใช้งาน (Activation Code) ให้ครบถ้วน")
+
+    repo = _get_repo()
+    tier_labels = {k: v["label_th"] for k, v in TIER_ENTITLEMENTS.items()}
+    res = repo.redeem_activation_code_atomic(
+        user_id=auth_user_id,
+        email=auth_email,
+        raw_code=raw_code,
+        tier_rank_map=_TIER_RANK,
+        tier_labels=tier_labels,
+    )
+    if not res.get("ok"):
+        err_code = str(res.get("error_code") or "")
+        if err_code != "TIER_DOWNGRADE_BLOCKED":
             _record_redeem_failure(auth_email, now_ts)
-            raise HTTPException(
-                status_code=403,
-                detail="รหัสเปิดใช้งานไม่ถูกต้อง กรุณาตรวจสอบรหัสอีกครั้งหรือติดต่อผู้ดูแลระบบ"
-            )
+        raise HTTPException(
+            status_code=int(res.get("http_status") or 400),
+            detail=str(res.get("error") or "ไม่สามารถใช้รหัสเปิดใช้งานนี้ได้"),
+        )
 
-        # Layer 1: Not revoked
-        if bool(code_rec.get("revoked", False)):
-            _record_redeem_failure(auth_email, now_ts)
-            raise HTTPException(status_code=403, detail="รหัสเปิดใช้งานนี้ถูกเพิกถอนแล้ว ไม่สามารถใช้งานได้")
-
-        # Layer 2: Code itself not past claim deadline (code_expires_at)
-        code_exp_dt = _parse_iso_utc(code_rec.get("code_expires_at"))
-        if code_exp_dt is not None and code_exp_dt <= now_utc:
-            _record_redeem_failure(auth_email, now_ts)
-            raise HTTPException(status_code=403, detail="รหัสเปิดใช้งานนี้หมดเขตรับสิทธิ์แล้ว")
-
-        # Layer 3: Usage count < max_uses
-        used_by = code_rec.get("used_by") or []
-        max_uses = int(code_rec.get("max_uses", 1))
-        if len(used_by) >= max_uses:
-            _record_redeem_failure(auth_email, now_ts)
-            raise HTTPException(status_code=403, detail="รหัสเปิดใช้งานนี้ถูกใช้งานครบตามจำนวนสิทธิ์แล้ว")
-
-        # Layer 4: Same email cannot redeem the same multi-use code twice
-        used_emails = {
-            str(entry.get("email") if isinstance(entry, dict) else entry).strip().lower()
-            for entry in used_by
-        }
-        if auth_email in used_emails:
-            _record_redeem_failure(auth_email, now_ts)
-            raise HTTPException(status_code=403, detail="บัญชีของคุณเคยใช้รหัสเปิดใช้งานชุดนี้ไปแล้ว ไม่สามารถใช้ซ้ำได้")
-
-        target_tier = str(code_rec.get("plan_tier") or "pro").strip().lower()
-        if target_tier not in ("pro", "advisor"):
-            target_tier = "pro"
-        duration_days = int(code_rec.get("duration_days") or 0)
-
-        # Tier Change Guard: NEVER downgrade an active higher tier (e.g., active Advisor redeeming a Pro code)
-        if _TIER_RANK.get(eff_tier, 0) > _TIER_RANK.get(target_tier, 0):
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"บัญชีของคุณกำลังใช้งานแพ็กเกจที่สูงกว่า ({TIER_ENTITLEMENTS[eff_tier]['label_th']}) อยู่แล้ว "
-                    f"ไม่สามารถนำรหัสของแพ็กเกจ {TIER_ENTITLEMENTS[target_tier]['label_th']} มาลดระดับสิทธิ์ได้ (ไม่ได้หักสิทธิ์รหัสนี้)"
-                ),
-            )
-
-        new_expiry = _compute_extended_expiry(stored, target_tier, duration_days, now_utc)
-        stored["plan_tier"] = target_tier
-        stored["plan_expires_at"] = new_expiry
-        stored["updated_at"] = now_utc.isoformat()
-
-        used_by.append({"email": auth_email, "used_at": now_utc.isoformat()})
-        code_rec["used_by"] = used_by
-
-        _clear_redeem_failures(auth_email)
-        _save_db(db)
-        user_obj = _build_user_response_obj(stored, auth_email)
+    _clear_redeem_failures(auth_email)
+    stored = res.get("user") or repo.get_user_by_email(auth_email) or {}
+    target_tier = str(res.get("plan_tier") or "pro")
+    duration_days = int(res.get("duration_days") or 0)
+    new_expiry = res.get("plan_expires_at")
+    if repo.backend_name == "json":
+        repo.write_audit_log(
+            action="activation_code_redeemed",
+            actor_user_id=auth_user_id,
+            actor_email=auth_email,
+            target_user_id=auth_user_id,
+            target_email=auth_email,
+            details={"code": raw_code, "plan_tier": target_tier, "duration_days": duration_days, "plan_expires_at": new_expiry},
+        )
+    user_obj = _build_user_response_obj(stored, auth_email)
 
     return {
         "status": "ok",
@@ -1463,43 +1498,51 @@ def update_backend_subscription(
     if target_tier not in ("free", "pro", "advisor"):
         raise HTTPException(status_code=400, detail="แพ็กเกจที่ระบุไม่ถูกต้อง (รองรับเฉพาะ free, pro, advisor)")
 
-    auth_email = current_user["email"]
+    auth_email = normalize_email(current_user["email"])
     code_input = (req.activation_code or "").strip()
     now_utc = datetime.now(timezone.utc)
+    repo = _get_repo()
 
-    with _db_lock:
-        db = _load_db()
-        stored = db.get("users", {}).get(auth_email)
-        if not stored:
-            raise HTTPException(status_code=404, detail="ไม่พบบัญชีผู้ใช้งาน")
+    stored = repo.get_user_by_email(auth_email)
+    if not stored:
+        raise HTTPException(status_code=404, detail="ไม่พบบัญชีผู้ใช้งาน")
 
-        is_admin = _is_admin_email(auth_email)
-        duration_days = int(req.duration_days or 0)
-        if target_tier in ("pro", "advisor") and not is_admin:
-            if not code_input:
-                raise HTTPException(
-                    status_code=403,
-                    detail="กรุณากรอกรหัสเปิดใช้งาน (Activation Code) ที่ได้รับจากผู้ดูแลระบบเพื่อปลดล็อกแพ็กเกจนี้"
-                )
-            pro_code = _get_pro_activation_code()
-            adv_code = _get_advisor_activation_code()
-            if target_tier == "pro":
-                valid_code = hmac.compare_digest(code_input, pro_code) or hmac.compare_digest(code_input, adv_code)
-            else:
-                valid_code = hmac.compare_digest(code_input, adv_code)
+    is_admin = _is_admin_email(auth_email)
+    duration_days = int(req.duration_days or 0)
+    if target_tier in ("pro", "advisor") and not is_admin:
+        if not code_input:
+            raise HTTPException(
+                status_code=403,
+                detail="กรุณากรอกรหัสเปิดใช้งาน (Activation Code) ที่ได้รับจากผู้ดูแลระบบเพื่อปลดล็อกแพ็กเกจนี้"
+            )
+        pro_code = _get_pro_activation_code()
+        adv_code = _get_advisor_activation_code()
+        if target_tier == "pro":
+            valid_code = hmac.compare_digest(code_input, pro_code) or hmac.compare_digest(code_input, adv_code)
+        else:
+            valid_code = hmac.compare_digest(code_input, adv_code)
 
-            if not valid_code:
-                raise HTTPException(
-                    status_code=403,
-                    detail="รหัสเปิดใช้งานไม่ถูกต้อง กรุณาตรวจสอบรหัสอีกครั้งหรือติดต่อผู้ดูแลระบบ"
-                )
+        if not valid_code:
+            raise HTTPException(
+                status_code=403,
+                detail="รหัสเปิดใช้งานไม่ถูกต้อง กรุณาตรวจสอบรหัสอีกครั้งหรือติดต่อผู้ดูแลระบบ"
+            )
 
-        new_expiry = _compute_extended_expiry(stored, target_tier, duration_days, now_utc)
-        stored["plan_tier"] = target_tier
-        stored["plan_expires_at"] = new_expiry
-        stored["updated_at"] = now_utc.isoformat()
-        _save_db(db)
-        user_obj = _build_user_response_obj(stored, auth_email)
+    new_expiry = _compute_extended_expiry(stored, target_tier, duration_days, now_utc)
+    updated_stored = repo.update_user_by_email(auth_email, {
+        "plan_tier": target_tier,
+        "plan_expires_at": new_expiry,
+        "updated_at": now_utc.isoformat(),
+    })
+    repo.write_audit_log(
+        action="subscription_updated",
+        actor_user_id=current_user["id"],
+        actor_email=auth_email,
+        target_user_id=current_user["id"],
+        target_email=auth_email,
+        details={"plan_tier": target_tier, "duration_days": duration_days, "plan_expires_at": new_expiry},
+    )
+    user_obj = _build_user_response_obj(updated_stored, auth_email)
     return {"status": "ok", "user": user_obj}
 
 
@@ -1512,9 +1555,9 @@ def create_upgrade_request(
     Submit an upgrade / payment notification request into the Admin approval queue.
     - Authenticated members ONLY (Guest rejected with 401).
     - Email and user_id are strictly bound from the verified session token (NEVER accepted from request body).
-    - Anti-spam: Max 1 'pending' request per account (409 Conflict if one already exists).
+    - Anti-spam: Max 1 'pending' request per account (enforced both in Repo & DB partial unique index -> 409).
     """
-    auth_email = current_user["email"]
+    auth_email = normalize_email(current_user["email"])
     auth_user_id = current_user["id"]
     target_tier = (req.target_tier or "").strip().lower()
     if target_tier not in ("pro", "advisor"):
@@ -1537,59 +1580,51 @@ def create_upgrade_request(
         )
 
     now_iso = datetime.now(timezone.utc).isoformat()
-    with _db_lock:
-        db = _load_db()
-        stored = db.get("users", {}).get(auth_email)
-        if not stored:
-            raise HTTPException(status_code=404, detail="ไม่พบบัญชีผู้ใช้งาน")
+    repo = _get_repo()
+    stored = repo.get_user_by_email(auth_email)
+    if not stored:
+        raise HTTPException(status_code=404, detail="ไม่พบบัญชีผู้ใช้งาน")
 
-        reqs = db.get("upgrade_requests", [])
-        has_pending = any(
-            str(r.get("email", "")).lower() == auth_email and str(r.get("status", "")) == "pending"
-            for r in reqs
-        )
-        if has_pending:
-            raise HTTPException(
-                status_code=409,
-                detail="คุณมีคำขออัปเกรดที่รอการตรวจสอบอยู่แล้ว 1 รายการ กรุณารอผู้ดูแลอนุมัติหรือยกเลิกคำขอเดิมก่อนส่งใหม่"
-            )
+    new_req = {
+        "id": str(uuid.uuid4()),
+        "user_id": auth_user_id,
+        "email": auth_email,
+        "full_name": stored.get("full_name") or auth_email.split("@")[0],
+        "target_tier": target_tier,
+        "duration_days": duration_days,
+        "transfer_amount": transfer_amount,
+        "transfer_datetime": transfer_datetime,
+        "account_last4": account_last4,
+        "slip_ref": slip_ref,
+        "contact_note": contact_note,
+        "status": "pending",
+        "admin_note": "",
+        "created_at": now_iso,
+        "decided_at": None,
+        "decided_by": None,
+    }
+    try:
+        saved_req = repo.create_upgrade_request(new_req)
+    except StorageConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
 
-        new_req = {
-            "id": str(uuid.uuid4()),
-            "user_id": auth_user_id,
-            "email": auth_email,
-            "full_name": stored.get("full_name") or auth_email.split("@")[0],
-            "target_tier": target_tier,
-            "duration_days": duration_days,
-            "transfer_amount": transfer_amount,
-            "transfer_datetime": transfer_datetime,
-            "account_last4": account_last4,
-            "slip_ref": slip_ref,
-            "contact_note": contact_note,
-            "status": "pending",
-            "admin_note": "",
-            "created_at": now_iso,
-            "decided_at": None,
-            "decided_by": None,
-        }
-        reqs.append(new_req)
-        db["upgrade_requests"] = reqs
-        _save_db(db)
-
-    return {"status": "ok", "request": new_req}
+    repo.write_audit_log(
+        action="upgrade_request_created",
+        actor_user_id=auth_user_id,
+        actor_email=auth_email,
+        target_user_id=auth_user_id,
+        target_email=auth_email,
+        details={"request_id": saved_req["id"], "target_tier": target_tier, "duration_days": duration_days},
+    )
+    return {"status": "ok", "request": saved_req}
 
 
 @app.get("/api/upgrade-requests/mine")
 def list_my_upgrade_requests(current_user: Dict[str, str] = Depends(_get_authenticated_user)):
     """Return the authenticated user's own upgrade request history (newest first)."""
-    auth_email = current_user["email"]
-    with _db_lock:
-        db = _load_db()
-        mine = [
-            r for r in db.get("upgrade_requests", [])
-            if str(r.get("email", "")).lower() == auth_email
-        ]
-    mine.sort(key=lambda x: str(x.get("created_at") or ""), reverse=True)
+    auth_email = normalize_email(current_user["email"])
+    repo = _get_repo()
+    mine = repo.list_upgrade_requests(email=auth_email)
     return {"status": "ok", "requests": mine}
 
 
@@ -1599,24 +1634,14 @@ def cancel_my_upgrade_request(
     current_user: Dict[str, str] = Depends(_get_authenticated_user),
 ):
     """Allow an authenticated user to cancel their own still-pending upgrade request."""
-    auth_email = current_user["email"]
-    with _db_lock:
-        db = _load_db()
-        reqs = db.get("upgrade_requests", [])
-        idx = next(
-            (
-                i for i, r in enumerate(reqs)
-                if str(r.get("id")) == str(request_id) and str(r.get("email", "")).lower() == auth_email
-            ),
-            None,
-        )
-        if idx is None:
-            raise HTTPException(status_code=404, detail="ไม่พบคำขออัปเกรดที่ระบุ")
-        if str(reqs[idx].get("status")) != "pending":
-            raise HTTPException(status_code=409, detail="ไม่สามารถยกเลิกคำขอที่ดำเนินการเสร็จสิ้นแล้วได้")
-        reqs.pop(idx)
-        db["upgrade_requests"] = reqs
-        _save_db(db)
+    auth_email = normalize_email(current_user["email"])
+    repo = _get_repo()
+    try:
+        repo.cancel_upgrade_request(request_id, auth_email)
+    except StorageNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except StorageConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
     return {"status": "ok", "cancelled_id": request_id}
 
 
@@ -1625,60 +1650,52 @@ def admin_console_overview(current_user: Dict[str, str] = Depends(_get_authentic
     """Owner/Admin unified console payload: all users, upgrade requests queue, and activation codes."""
     _require_admin_user(current_user)
     now_utc = datetime.now(timezone.utc)
-    with _db_lock:
-        db = _load_db()
-        port_counts: Dict[str, int] = {}
-        for p in db.get("portfolios", []) or []:
-            uid = str(p.get("user_id") or "")
-            if uid:
-                port_counts[uid] = port_counts.get(uid, 0) + 1
+    repo = _get_repo()
 
-        user_list = []
-        for em, u in (db.get("users", {}) or {}).items():
-            eff_tier, exp_iso, days_rem, is_exp = _resolve_effective_plan_tier(u, now_utc)
-            uid = str(u.get("id", ""))
-            user_list.append({
-                "id": uid,
-                "email": em,
-                "full_name": u.get("full_name") or em.split("@")[0],
-                "plan_tier": eff_tier,
-                "stored_plan_tier": str(u.get("plan_tier") or "free").strip().lower(),
-                "plan_expires_at": exp_iso,
-                "days_remaining": days_rem,
-                "is_expired": is_exp,
-                "is_admin": _is_admin_email(em),
-                "portfolio_count": port_counts.get(uid, 0),
-                "created_at": u.get("created_at"),
-                "updated_at": u.get("updated_at"),
-            })
-        user_list.sort(key=lambda x: str(x.get("created_at") or ""), reverse=True)
+    port_counts = repo.count_portfolios_by_user()
+    all_users = repo.list_users()
+    user_list = []
+    for u in all_users:
+        em = normalize_email(u.get("email"))
+        eff_tier, exp_iso, days_rem, is_exp = _resolve_effective_plan_tier(u, now_utc)
+        uid = str(u.get("id", ""))
+        user_list.append({
+            "id": uid,
+            "email": em,
+            "full_name": u.get("full_name") or (em.split("@")[0] if em else "ผู้ใช้งาน"),
+            "plan_tier": eff_tier,
+            "stored_plan_tier": str(u.get("plan_tier") or "free").strip().lower(),
+            "plan_expires_at": exp_iso,
+            "days_remaining": days_rem,
+            "is_expired": is_exp,
+            "is_admin": _is_admin_email(em),
+            "portfolio_count": port_counts.get(uid, 0),
+            "created_at": u.get("created_at"),
+            "updated_at": u.get("updated_at"),
+        })
+    user_list.sort(key=lambda x: str(x.get("created_at") or ""), reverse=True)
 
-        reqs = list(db.get("upgrade_requests", []) or [])
-        reqs.sort(
-            key=lambda x: (0 if str(x.get("status")) == "pending" else 1, str(x.get("created_at") or "")),
-            reverse=False,
-        )
-        # Put newest first within each status bucket
-        pending_reqs = sorted(
-            [r for r in reqs if str(r.get("status")) == "pending"],
-            key=lambda x: str(x.get("created_at") or ""),
-            reverse=True,
-        )
-        other_reqs = sorted(
-            [r for r in reqs if str(r.get("status")) != "pending"],
-            key=lambda x: str(x.get("decided_at") or x.get("created_at") or ""),
-            reverse=True,
-        )
-        ordered_reqs = pending_reqs + other_reqs
+    reqs = repo.list_upgrade_requests()
+    pending_reqs = sorted(
+        [r for r in reqs if str(r.get("status")) == "pending"],
+        key=lambda x: str(x.get("created_at") or ""),
+        reverse=True,
+    )
+    other_reqs = sorted(
+        [r for r in reqs if str(r.get("status")) != "pending"],
+        key=lambda x: str(x.get("decided_at") or x.get("created_at") or ""),
+        reverse=True,
+    )
+    ordered_reqs = pending_reqs + other_reqs
 
-        codes = []
-        for c in (db.get("activation_codes", []) or []):
-            c_copy = dict(c)
-            code_exp_dt = _parse_iso_utc(c.get("code_expires_at"))
-            c_copy["is_code_expired"] = bool(code_exp_dt is not None and code_exp_dt <= now_utc)
-            c_copy["used_count"] = len(c.get("used_by") or [])
-            codes.append(c_copy)
-        codes.sort(key=lambda x: str(x.get("created_at") or ""), reverse=True)
+    codes = []
+    for c in repo.list_activation_codes():
+        c_copy = dict(c)
+        code_exp_dt = _parse_iso_utc(c.get("code_expires_at"))
+        c_copy["is_code_expired"] = bool(code_exp_dt is not None and code_exp_dt <= now_utc)
+        c_copy["used_count"] = len(c.get("used_by") or [])
+        codes.append(c_copy)
+    codes.sort(key=lambda x: str(x.get("created_at") or ""), reverse=True)
 
     return {
         "status": "ok",
@@ -1694,23 +1711,23 @@ def admin_list_users(current_user: Dict[str, str] = Depends(_get_authenticated_u
     """Owner/Admin endpoint to view registered users and their active plan tiers."""
     _require_admin_user(current_user)
     now_utc = datetime.now(timezone.utc)
-    with _db_lock:
-        db = _load_db()
-        user_list = []
-        for em, u in (db.get("users", {}) or {}).items():
-            eff_tier, exp_iso, days_rem, is_exp = _resolve_effective_plan_tier(u, now_utc)
-            user_list.append({
-                "id": str(u.get("id", "")),
-                "email": em,
-                "full_name": u.get("full_name") or em.split("@")[0],
-                "plan_tier": eff_tier,
-                "plan_expires_at": exp_iso,
-                "days_remaining": days_rem,
-                "is_expired": is_exp,
-                "is_admin": _is_admin_email(em),
-                "created_at": u.get("created_at"),
-                "updated_at": u.get("updated_at"),
-            })
+    repo = _get_repo()
+    user_list = []
+    for u in repo.list_users():
+        em = normalize_email(u.get("email"))
+        eff_tier, exp_iso, days_rem, is_exp = _resolve_effective_plan_tier(u, now_utc)
+        user_list.append({
+            "id": str(u.get("id", "")),
+            "email": em,
+            "full_name": u.get("full_name") or (em.split("@")[0] if em else "ผู้ใช้งาน"),
+            "plan_tier": eff_tier,
+            "plan_expires_at": exp_iso,
+            "days_remaining": days_rem,
+            "is_expired": is_exp,
+            "is_admin": _is_admin_email(em),
+            "created_at": u.get("created_at"),
+            "updated_at": u.get("updated_at"),
+        })
     user_list.sort(key=lambda x: str(x.get("created_at") or ""), reverse=True)
     return {"status": "ok", "users": user_list}
 
@@ -1740,8 +1757,8 @@ def admin_set_user_tier(
     current_user: Dict[str, str] = Depends(_get_authenticated_user)
 ):
     """Owner/Admin endpoint to assign 'free', 'pro', or 'advisor' tier + stacked duration OR explicit expiry datetime."""
-    _require_admin_user(current_user)
-    target_email = (req.target_email or "").strip().lower()
+    admin_email = _require_admin_user(current_user)
+    target_email = normalize_email(req.target_email)
     target_tier = (req.plan_tier or "").strip().lower()
     if not target_email or "@" not in target_email:
         raise HTTPException(status_code=400, detail="กรุณาระบุอีเมลของลูกค้าให้ถูกต้อง")
@@ -1752,29 +1769,39 @@ def admin_set_user_tier(
     explicit_exp_raw = (req.expires_at or "").strip()
     explicit_exp_dt = _parse_admin_expiry_to_utc(explicit_exp_raw) if (explicit_exp_raw and target_tier != "free") else None
     now_utc = datetime.now(timezone.utc)
+    repo = _get_repo()
 
-    with _db_lock:
-        db = _load_db()
-        target_stored = db.get("users", {}).get(target_email)
-        if not target_stored:
-            raise HTTPException(status_code=404, detail=f"ไม่พบบัญชีผู้ใช้ {target_email} ในระบบ")
+    target_stored = repo.get_user_by_email(target_email)
+    if not target_stored:
+        raise HTTPException(status_code=404, detail=f"ไม่พบบัญชีผู้ใช้ {target_email} ในระบบ")
 
-        if target_tier == "free":
-            new_expiry = None
-        elif explicit_exp_dt is not None:
-            new_expiry = explicit_exp_dt.isoformat()
-        elif req.reset_expiry:
-            new_expiry = (now_utc + timedelta(days=duration_days)).isoformat() if duration_days > 0 else None
-        else:
-            new_expiry = _compute_extended_expiry(target_stored, target_tier, duration_days, now_utc)
+    if target_tier == "free":
+        new_expiry = None
+    elif explicit_exp_dt is not None:
+        new_expiry = explicit_exp_dt.isoformat()
+    elif req.reset_expiry:
+        new_expiry = (now_utc + timedelta(days=duration_days)).isoformat() if duration_days > 0 else None
+    else:
+        new_expiry = _compute_extended_expiry(target_stored, target_tier, duration_days, now_utc)
 
-        target_stored["plan_tier"] = target_tier
-        target_stored["plan_expires_at"] = new_expiry
-        if isinstance(req.custom_entitlements, dict):
-            target_stored["entitlements"] = req.custom_entitlements
-        target_stored["updated_at"] = now_utc.isoformat()
-        _save_db(db)
-        updated_obj = _build_user_response_obj(target_stored, target_email)
+    updates: Dict[str, Any] = {
+        "plan_tier": target_tier,
+        "plan_expires_at": new_expiry,
+        "updated_at": now_utc.isoformat(),
+    }
+    if isinstance(req.custom_entitlements, dict):
+        updates["entitlements"] = req.custom_entitlements
+
+    updated_stored = repo.update_user_by_email(target_email, updates)
+    repo.write_audit_log(
+        action="admin_set_user_tier",
+        actor_user_id=current_user["id"],
+        actor_email=admin_email,
+        target_user_id=str(updated_stored.get("id") or ""),
+        target_email=target_email,
+        details={"plan_tier": target_tier, "plan_expires_at": new_expiry, "duration_days": duration_days},
+    )
+    updated_obj = _build_user_response_obj(updated_stored, target_email)
     return {"status": "ok", "user": updated_obj, "target_user": updated_obj}
 
 
@@ -1786,7 +1813,7 @@ def admin_decide_upgrade_request(
 ):
     """
     Idempotent Admin Approval/Rejection of a customer upgrade request.
-    Strictly verifies status == 'pending' under _db_lock; returns 409 Conflict if already decided.
+    Uses atomic PostgreSQL RPC (FOR UPDATE) on Supabase or locked JSON repo locally -> 409 Conflict if already decided.
     """
     admin_email = _require_admin_user(current_user)
     decision = (req.decision or "").strip().lower()
@@ -1794,52 +1821,36 @@ def admin_decide_upgrade_request(
         raise HTTPException(status_code=400, detail="คำสั่งตัดสินต้องเป็น approve หรือ reject เท่านั้น")
 
     admin_note = (req.admin_note or "").strip()[:300]
-    now_utc = datetime.now(timezone.utc)
-
-    with _db_lock:
-        db = _load_db()
-        reqs = db.get("upgrade_requests", [])
-        req_rec = next((r for r in reqs if str(r.get("id")) == str(request_id)), None)
-        if req_rec is None:
-            raise HTTPException(status_code=404, detail="ไม่พบคำขออัปเกรดที่ระบุ")
-
-        # Strict Idempotency Guard: prevent double-click approval from double-stacking days
-        if str(req_rec.get("status")) != "pending":
-            raise HTTPException(
-                status_code=409,
-                detail="คำขอนี้ถูกดำเนินการไปแล้ว ไม่สามารถอนุมัติหรือปฏิเสธซ้ำได้"
-            )
-
-        target_email = str(req_rec.get("email") or "").strip().lower()
-        target_tier = str(req_rec.get("target_tier") or "pro").strip().lower()
-        duration_days = (
-            max(0, int(req.duration_days))
-            if req.duration_days is not None
-            else max(0, int(req_rec.get("duration_days") or 30))
+    repo = _get_repo()
+    res = repo.decide_upgrade_request_atomic(
+        request_id=request_id,
+        decision=decision,
+        admin_email=admin_email,
+        admin_note=admin_note,
+        override_duration_days=max(0, int(req.duration_days)) if req.duration_days is not None else None,
+    )
+    if not res.get("ok"):
+        raise HTTPException(
+            status_code=int(res.get("http_status") or 400),
+            detail=str(res.get("error") or "ไม่สามารถดำเนินการคำขอนี้ได้"),
         )
 
-        updated_user_obj = None
-        if decision == "approve":
-            target_stored = db.get("users", {}).get(target_email)
-            if not target_stored:
-                raise HTTPException(status_code=404, detail=f"ไม่พบบัญชีผู้ใช้ {target_email} ในระบบ")
-
-            new_expiry = _compute_extended_expiry(target_stored, target_tier, duration_days, now_utc)
-            target_stored["plan_tier"] = target_tier
-            target_stored["plan_expires_at"] = new_expiry
-            target_stored["updated_at"] = now_utc.isoformat()
-            req_rec["status"] = "approved"
-            req_rec["applied_duration_days"] = duration_days
-            req_rec["applied_expires_at"] = new_expiry
-            updated_user_obj = _build_user_response_obj(target_stored, target_email)
-        else:
-            req_rec["status"] = "rejected"
-
-        req_rec["admin_note"] = admin_note
-        req_rec["decided_at"] = now_utc.isoformat()
-        req_rec["decided_by"] = admin_email
-        _save_db(db)
-
+    req_rec = res.get("request")
+    target_user_row = res.get("user")
+    updated_user_obj = (
+        _build_user_response_obj(target_user_row, normalize_email(target_user_row.get("email")))
+        if isinstance(target_user_row, dict)
+        else None
+    )
+    if repo.backend_name == "json":
+        repo.write_audit_log(
+            action=f"upgrade_request_{decision}d",
+            actor_user_id=current_user["id"],
+            actor_email=admin_email,
+            target_user_id=str((req_rec or {}).get("user_id") or ""),
+            target_email=normalize_email((req_rec or {}).get("email")),
+            details={"request_id": request_id, "admin_note": admin_note},
+        )
     return {
         "status": "ok",
         "request": req_rec,
@@ -1869,46 +1880,48 @@ def admin_create_activation_code(
         else None
     )
 
-    with _db_lock:
-        db = _load_db()
-        codes_list = db.get("activation_codes", [])
-        existing_codes = {str(c.get("code") or "").strip().upper() for c in codes_list}
-
-        if req.custom_code and req.custom_code.strip():
-            clean_custom = req.custom_code.strip().upper()
-            if len(clean_custom) < 8 or len(clean_custom) > 40 or not all(ch.isalnum() or ch in "-_" for ch in clean_custom):
-                raise HTTPException(
-                    status_code=400,
-                    detail="รหัสกำหนดเองต้องมีความยาว 8–40 ตัวอักษร และใช้ได้เฉพาะ A-Z, 0-9, '-' หรือ '_'"
-                )
-            if clean_custom in existing_codes:
-                raise HTTPException(status_code=409, detail="รหัสเปิดใช้งานนี้มีอยู่ในระบบแล้ว กรุณาใช้รหัสอื่น")
-            final_code = clean_custom
-        else:
+    repo = _get_repo()
+    if req.custom_code and req.custom_code.strip():
+        clean_custom = normalize_code(req.custom_code)
+        if len(clean_custom) < 8 or len(clean_custom) > 40 or not all(ch.isalnum() or ch in "-_" for ch in clean_custom):
+            raise HTTPException(
+                status_code=400,
+                detail="รหัสกำหนดเองต้องมีความยาว 8–40 ตัวอักษร และใช้ได้เฉพาะ A-Z, 0-9, '-' หรือ '_'"
+            )
+        final_code = clean_custom
+    else:
+        existing_codes = {normalize_code(c.get("code")) for c in repo.list_activation_codes()}
+        final_code = _generate_secure_activation_code(plan_tier)
+        while final_code in existing_codes:
             final_code = _generate_secure_activation_code(plan_tier)
-            while final_code in existing_codes:
-                final_code = _generate_secure_activation_code(plan_tier)
 
-        code_record = {
-            "id": str(uuid.uuid4()),
-            "code": final_code,
-            "plan_tier": plan_tier,
-            "duration_days": duration_days,
-            "max_uses": max_uses,
-            "code_expires_at": code_expires_at,
-            "used_by": [],
-            "revoked": False,
-            "revoked_at": None,
-            "revoked_by": None,
-            "note": note,
-            "created_by": admin_email,
-            "created_at": now_utc.isoformat(),
-        }
-        codes_list.append(code_record)
-        db["activation_codes"] = codes_list
-        _save_db(db)
+    code_record = {
+        "id": str(uuid.uuid4()),
+        "code": final_code,
+        "plan_tier": plan_tier,
+        "duration_days": duration_days,
+        "max_uses": max_uses,
+        "code_expires_at": code_expires_at,
+        "used_by": [],
+        "revoked": False,
+        "revoked_at": None,
+        "revoked_by": None,
+        "note": note,
+        "created_by": admin_email,
+        "created_at": now_utc.isoformat(),
+    }
+    try:
+        saved_code = repo.create_activation_code(code_record)
+    except StorageConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
 
-    return {"status": "ok", "code": code_record}
+    repo.write_audit_log(
+        action="admin_code_created",
+        actor_user_id=current_user["id"],
+        actor_email=admin_email,
+        details={"code": saved_code["code"], "plan_tier": plan_tier, "duration_days": duration_days, "max_uses": max_uses},
+    )
+    return {"status": "ok", "code": saved_code}
 
 
 @app.post("/api/admin/codes/{code_id}/revoke")
@@ -1918,17 +1931,17 @@ def admin_revoke_activation_code(
 ):
     """Owner/Admin endpoint to immediately revoke an Activation Code."""
     admin_email = _require_admin_user(current_user)
-    now_iso = datetime.now(timezone.utc).isoformat()
-    with _db_lock:
-        db = _load_db()
-        codes_list = db.get("activation_codes", [])
-        code_rec = next((c for c in codes_list if str(c.get("id")) == str(code_id)), None)
-        if code_rec is None:
-            raise HTTPException(status_code=404, detail="ไม่พบรหัสเปิดใช้งานที่ระบุ")
-        code_rec["revoked"] = True
-        code_rec["revoked_at"] = now_iso
-        code_rec["revoked_by"] = admin_email
-        _save_db(db)
+    repo = _get_repo()
+    try:
+        code_rec = repo.revoke_activation_code(code_id, admin_email)
+    except StorageNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    repo.write_audit_log(
+        action="admin_code_revoked",
+        actor_user_id=current_user["id"],
+        actor_email=admin_email,
+        details={"code_id": code_id, "code": code_rec.get("code")},
+    )
     return {"status": "ok", "code": code_rec}
 
 
@@ -1945,19 +1958,26 @@ def change_backend_password(
     if current_pw == new_pw:
         raise HTTPException(status_code=400, detail="รหัสผ่านใหม่ต้องแตกต่างจากรหัสผ่านเดิม")
 
-    auth_email = current_user["email"]
-    with _db_lock:
-        db = _load_db()
-        stored = db.get("users", {}).get(auth_email)
-        if not stored:
-            raise HTTPException(status_code=404, detail="ไม่พบบัญชีผู้ใช้งาน")
-        is_valid, _ = _verify_password(current_pw, stored.get("password_hash", ""))
-        if not is_valid:
-            raise HTTPException(status_code=401, detail="รหัสผ่านปัจจุบันไม่ถูกต้อง")
-        stored["password_hash"] = _hash_password(new_pw)
-        stored["updated_at"] = datetime.now(timezone.utc).isoformat()
-        _save_db(db)
-        new_token = _create_auth_token(str(stored["id"]), auth_email)
+    auth_email = normalize_email(current_user["email"])
+    repo = _get_repo()
+    stored = repo.get_user_by_email(auth_email)
+    if not stored:
+        raise HTTPException(status_code=404, detail="ไม่พบบัญชีผู้ใช้งาน")
+    is_valid, _ = _verify_password(current_pw, stored.get("password_hash", ""))
+    if not is_valid:
+        raise HTTPException(status_code=401, detail="รหัสผ่านปัจจุบันไม่ถูกต้อง")
+    repo.update_user_by_email(auth_email, {
+        "password_hash": _hash_password(new_pw),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    })
+    repo.write_audit_log(
+        action="password_changed",
+        actor_user_id=str(stored["id"]),
+        actor_email=auth_email,
+        target_user_id=str(stored["id"]),
+        target_email=auth_email,
+    )
+    new_token = _create_auth_token(str(stored["id"]), auth_email)
     return {"status": "ok", "token": new_token}
 
 
@@ -1965,46 +1985,31 @@ def change_backend_password(
 def delete_backend_account(current_user: Dict[str, str] = Depends(_get_authenticated_user)):
     """Delete the authenticated user's account and all associated portfolios (PDPA Right to Erasure)."""
     auth_user_id = current_user["id"]
-    auth_email = current_user["email"]
-    with _db_lock:
-        db = _load_db()
-        users = db.get("users", {})
-        users.pop(auth_email, None)
-        before_count = len(db.get("portfolios", []))
-        db["portfolios"] = [
-            p for p in db.get("portfolios", [])
-            if str(p.get("user_id")) != str(auth_user_id) and str(p.get("email", "")).lower() != auth_email
-        ]
-        removed_portfolios = before_count - len(db["portfolios"])
-        _save_db(db)
+    auth_email = normalize_email(current_user["email"])
+    repo = _get_repo()
+    removed_portfolios = repo.delete_user_and_portfolios(auth_user_id, auth_email)
+    repo.write_audit_log(
+        action="account_deleted",
+        actor_user_id=auth_user_id,
+        actor_email=auth_email,
+        target_user_id=auth_user_id,
+        target_email=auth_email,
+        details={"deleted_portfolios": removed_portfolios},
+    )
     return {"status": "ok", "deleted_user": auth_email, "deleted_portfolios": removed_portfolios}
 
 
 @app.get("/api/portfolios")
 def get_backend_portfolios(current_user: Dict[str, str] = Depends(_get_authenticated_user)):
-    auth_user_id = current_user["id"]
-    with _db_lock:
-        db = _load_db()
-        items = [
-            p for p in db.get("portfolios", [])
-            if str(p.get("user_id")) == str(auth_user_id)
-        ]
-    items.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+    repo = _get_repo()
+    items = repo.list_portfolios(current_user["id"])
     return {"portfolios": items}
 
 
 @app.get("/api/portfolios/{portfolio_id}")
 def get_backend_portfolio_by_id(portfolio_id: str, current_user: Dict[str, str] = Depends(_get_authenticated_user)):
-    auth_user_id = current_user["id"]
-    with _db_lock:
-        db = _load_db()
-        item = next(
-            (
-                p for p in db.get("portfolios", [])
-                if str(p.get("id")) == str(portfolio_id) and str(p.get("user_id")) == str(auth_user_id)
-            ),
-            None,
-        )
+    repo = _get_repo()
+    item = repo.get_portfolio(current_user["id"], portfolio_id)
     if item is None:
         raise HTTPException(status_code=404, detail="ไม่พบพอร์ตการลงทุนที่ระบุ")
     return {"portfolio": item}
@@ -2014,7 +2019,7 @@ def _build_portfolio_record(req: PortfolioSaveRequest, item_id: str, current_use
     return {
         "id": item_id,
         "user_id": current_user["id"],
-        "email": current_user["email"],
+        "email": normalize_email(current_user["email"]),
         "portfolio_name": req.portfolio_name.strip(),
         "goal_type": req.goal_type,
         "goal_label": req.goal_label,
@@ -2042,63 +2047,35 @@ def save_backend_portfolio(
     x_qf_admin_preview_tier: Optional[str] = Header(default=None, alias="X-QF-Admin-Preview-Tier"),
 ):
     auth_user_id = current_user["id"]
-    auth_email = current_user["email"]
-    with _db_lock:
-        db = _load_db()
-        if req.id is not None:
-            existing_idx = next(
-                (
-                    idx for idx, p in enumerate(db.get("portfolios", []))
-                    if str(p.get("id")) == str(req.id) and str(p.get("user_id")) == str(auth_user_id)
-                ),
-                None,
-            )
-            if existing_idx is None:
-                raise HTTPException(status_code=404, detail="ไม่พบพอร์ตการลงทุนที่ระบุ")
-            new_item = _build_portfolio_record(req, str(req.id), current_user)
-            db["portfolios"][existing_idx] = new_item
-        else:
-            clean_req_name = (req.portfolio_name or "").strip().lower()
-            existing_same_name_idx = next(
-                (
-                    idx for idx, p in enumerate(db.get("portfolios", []))
-                    if str(p.get("user_id")) == str(auth_user_id)
-                    and clean_req_name
-                    and str(p.get("portfolio_name") or "").strip().lower() == clean_req_name
-                ),
-                None,
-            )
-            if existing_same_name_idx is not None:
-                existing_id = str(db["portfolios"][existing_same_name_idx].get("id") or uuid.uuid4())
-                new_item = _build_portfolio_record(req, existing_id, current_user)
-                db["portfolios"][existing_same_name_idx] = new_item
-            else:
-                stored_user = (db.get("users", {}) or {}).get(auth_email) or {}
-                eff_tier, _, _, _ = _resolve_effective_plan_tier(stored_user)
-                norm_preview = _normalize_admin_preview_tier(x_qf_admin_preview_tier) if _is_admin_email(auth_email) else None
-                active_tier = norm_preview if norm_preview else eff_tier
-                user_ent = _get_user_entitlements(
-                    active_tier,
-                    None if norm_preview else stored_user.get("entitlements")
-                )
-                max_portfolios = int(user_ent.get("max_saved_portfolios", 3))
-                user_existing_count = sum(
-                    1 for p in db.get("portfolios", [])
-                    if str(p.get("user_id")) == str(auth_user_id)
-                )
-                if user_existing_count >= max_portfolios:
-                    raise HTTPException(
-                        status_code=403,
-                        detail=(
-                            f"แพ็กเกจปัจจุบันของคุณ ({user_ent['label_th']}) บันทึกแผนพอร์ตได้สูงสุด {max_portfolios} แผน "
-                            f"กรุณาอัปเกรดเป็น QuantFolio Pro หรือ Advisor Pro เพื่อบันทึกแผนเพิ่มเติม"
-                        ),
-                    )
-                item_id = str(uuid.uuid4())
-                new_item = _build_portfolio_record(req, item_id, current_user)
-                db["portfolios"].append(new_item)
-        _save_db(db)
-    return {"status": "ok", "portfolio": new_item}
+    auth_email = normalize_email(current_user["email"])
+    repo = _get_repo()
+    stored_user = repo.get_user_by_email(auth_email) or {}
+    eff_tier, _, _, _ = _resolve_effective_plan_tier(stored_user)
+    norm_preview = _normalize_admin_preview_tier(x_qf_admin_preview_tier) if _is_admin_email(auth_email) else None
+    active_tier = norm_preview if norm_preview else eff_tier
+    user_ent = _get_user_entitlements(
+        active_tier,
+        None if norm_preview else stored_user.get("entitlements")
+    )
+    max_portfolios = int(user_ent.get("max_saved_portfolios", 3))
+    quota_msg = (
+        f"แพ็กเกจปัจจุบันของคุณ ({user_ent['label_th']}) บันทึกแผนพอร์ตได้สูงสุด {max_portfolios} แผน "
+        f"กรุณาอัปเกรดเป็น QuantFolio Pro หรือ Advisor Pro เพื่อบันทึกแผนเพิ่มเติม"
+    )
+    record = _build_portfolio_record(req, str(req.id) if req.id is not None else str(uuid.uuid4()), current_user)
+    try:
+        saved_item = repo.save_portfolio(
+            user_id=auth_user_id,
+            record=record,
+            explicit_id=str(req.id) if req.id is not None else None,
+            max_portfolios=max_portfolios,
+            quota_error_detail=quota_msg,
+        )
+    except StorageNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    return {"status": "ok", "portfolio": saved_item}
 
 
 @app.put("/api/portfolios/{portfolio_id}")
@@ -2107,40 +2084,25 @@ def update_backend_portfolio(
     req: PortfolioSaveRequest,
     current_user: Dict[str, str] = Depends(_get_authenticated_user),
 ):
-    auth_user_id = current_user["id"]
-    with _db_lock:
-        db = _load_db()
-        existing_idx = next(
-            (
-                idx for idx, p in enumerate(db.get("portfolios", []))
-                if str(p.get("id")) == str(portfolio_id) and str(p.get("user_id")) == str(auth_user_id)
-            ),
-            None,
+    repo = _get_repo()
+    updated_record = _build_portfolio_record(req, str(portfolio_id), current_user)
+    try:
+        updated_item = repo.save_portfolio(
+            user_id=current_user["id"],
+            record=updated_record,
+            explicit_id=str(portfolio_id),
         )
-        if existing_idx is None:
-            raise HTTPException(status_code=404, detail="ไม่พบพอร์ตการลงทุนที่ระบุ")
-        updated_item = _build_portfolio_record(req, str(portfolio_id), current_user)
-        db["portfolios"][existing_idx] = updated_item
-        _save_db(db)
+    except StorageNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
     return {"status": "ok", "portfolio": updated_item}
 
 
 @app.delete("/api/portfolios/{portfolio_id}")
 def delete_backend_portfolio(portfolio_id: str, current_user: Dict[str, str] = Depends(_get_authenticated_user)):
-    auth_user_id = current_user["id"]
-    with _db_lock:
-        db = _load_db()
-        existing_idx = next(
-            (
-                idx for idx, p in enumerate(db.get("portfolios", []))
-                if str(p.get("id")) == str(portfolio_id) and str(p.get("user_id")) == str(auth_user_id)
-            ),
-            None,
-        )
-        if existing_idx is None:
-            raise HTTPException(status_code=404, detail="ไม่พบพอร์ตการลงทุนที่ระบุ")
-        db["portfolios"].pop(existing_idx)
-        _save_db(db)
+    repo = _get_repo()
+    deleted = repo.delete_portfolio(current_user["id"], portfolio_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="ไม่พบพอร์ตการลงทุนที่ระบุ")
     return {"status": "ok", "deleted": 1}
 
 

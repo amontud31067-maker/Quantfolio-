@@ -1,30 +1,29 @@
 /**
  * ============================================================================
- * QuantFolio - ระบบยืนยันตัวตน (Authentication) และจัดการพอร์ตการลงทุน (Portfolio Storage)
- * ทำงานร่วมกันแบบ Dual-Engine: Supabase Cloud (lxnmugciuddpqjhjwxoh.supabase.co) + Server Auth API
- * เพื่อให้เข้าสู่ระบบและบันทึกพอร์ตได้ 100% แม้กรณี Supabase ติด Email Rate Limit (429)
+ * QuantFolio - ระบบยืนยันตัวตน (Authentication) และจัดการพอร์ตการลงทุน (Cloud Vault)
+ * Single Source of Truth ผ่าน Backend API (/api/auth/*, /api/portfolios) -> Supabase PostgreSQL
+ * - เก็บเฉพาะ Session Token (qf_verified_session_token) ใน localStorage สำหรับผู้ใช้ที่ล็อกอิน
+ * - ห้ามเก็บบัญชีหรือพอร์ตของผู้ใช้ที่ล็อกอินไว้แค่ใน localStorage (คง localStorage เฉพาะโหมด Guest ก่อนล็อกอิน)
+ * - บังคับ Normalize อีเมลด้วย .trim().toLowerCase() ทุกจุด
  * ============================================================================
  */
 
-const SUPABASE_URL = 'https://lxnmugciuddpqjhjwxoh.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_BIzSoBWXPoDAkNCsJONajQ_keCu4r5D';
+// Clean up any legacy demo or client-side Supabase keys from older builds
+try {
+  localStorage.removeItem('qf_demo_user');
+  localStorage.removeItem('qf_supabase_url');
+  localStorage.removeItem('qf_supabase_anon_key');
+  localStorage.removeItem('qf_verified_session_user');
+} catch (e) {}
 
-localStorage.removeItem('qf_demo_user');
-localStorage.setItem('qf_supabase_url', SUPABASE_URL);
-localStorage.setItem('qf_supabase_anon_key', SUPABASE_ANON_KEY);
-
-const supabaseClient = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 let currentUser = null;
-let hasSupabaseJwtSession = false;
 let savedPortfoliosList = [];
 let editingSavedPortfolioId = null;
 let authTabMode = 'signin'; // 'signin' | 'signup'
 const GUEST_PORTFOLIOS_STORAGE_KEY = 'quantfolio_portfolios_guest_v1';
 
-function getCurrentLocalPortfoliosKey() {
-  return currentUser && currentUser.id
-    ? `quantfolio_portfolios_${currentUser.id}`
-    : GUEST_PORTFOLIOS_STORAGE_KEY;
+function normalizeEmailInput(raw) {
+  return String(raw || '').trim().toLowerCase();
 }
 
 function readLocalPortfoliosList(storageKey) {
@@ -80,49 +79,39 @@ async function migrateGuestPortfoliosToAuthenticatedUser() {
   const guestArr = readLocalPortfoliosList(GUEST_PORTFOLIOS_STORAGE_KEY);
   if (guestArr.length === 0) return;
 
-  const userLocalKey = `quantfolio_portfolios_${currentUser.id}`;
-  const userArr = readLocalPortfoliosList(userLocalKey);
-  const existingNames = new Set(userArr.map(p => String(p.portfolio_name || '').trim().toLowerCase()));
-
   let migratedCount = 0;
+  const remainingGuest = [];
   for (const item of guestArr) {
     if (!item || !item.portfolio_name) continue;
-    const normName = String(item.portfolio_name).trim().toLowerCase();
-    if (!existingNames.has(normName)) {
-      const { id: _discardLocalId, ...cleanGuestFields } = item;
-      const migratedRecord = {
-        ...cleanGuestFields,
-        storage_origin: 'cloud',
-        updated_at: new Date().toISOString()
-      };
-      try {
-        const res = await fetch('/api/portfolios', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...getBackendAuthHeaders() },
-          body: JSON.stringify(migratedRecord)
-        });
-        if (res.ok) {
-          const resJson = await res.json();
-          if (resJson.portfolio) {
-            userArr.unshift(resJson.portfolio);
-            migratedCount++;
-            existingNames.add(normName);
-            continue;
-          }
-        }
-      } catch (e) {
-        // Fallback: keep in user's local backup
+    const { id: _discardLocalId, ...cleanGuestFields } = item;
+    const migratedRecord = {
+      ...cleanGuestFields,
+      storage_origin: 'cloud',
+      updated_at: new Date().toISOString()
+    };
+    try {
+      const res = await fetch('/api/portfolios', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getBackendAuthHeaders() },
+        body: JSON.stringify(migratedRecord)
+      });
+      if (res.ok) {
+        migratedCount++;
+        continue;
       }
-      userArr.unshift({ ...migratedRecord, id: item.id || `local-${Date.now()}` });
-      migratedCount++;
-      existingNames.add(normName);
+    } catch (e) {
+      // Keep unmigrated draft in guest bucket so user never silently loses unsynced draft
     }
+    remainingGuest.push(item);
   }
 
-  if (migratedCount > 0) {
-    writeLocalPortfoliosList(userLocalKey, userArr);
+  if (remainingGuest.length === 0) {
     localStorage.removeItem(GUEST_PORTFOLIOS_STORAGE_KEY);
-    showPortfolioToast(`ซิงก์พอร์ตจากโหมด Guest เข้าสู่บัญชีของคุณแล้ว (${migratedCount} พอร์ต)`);
+  } else {
+    writeLocalPortfoliosList(GUEST_PORTFOLIOS_STORAGE_KEY, remainingGuest);
+  }
+  if (migratedCount > 0) {
+    showPortfolioToast(`ซิงก์พอร์ตจากโหมด Guest ขึ้น Cloud เรียบร้อยแล้ว (${migratedCount} พอร์ต)`);
   }
 }
 
@@ -252,186 +241,67 @@ function updateAuthPasswordStrength() {
 }
 
 /**
- * ตรวจสอบสถานะการตั้งค่าบนเซิร์ฟเวอร์ Supabase
+ * สถานะผู้ให้บริการล็อกอิน (Single Source of Truth ผ่าน Backend API -> Supabase PostgreSQL)
  */
 async function checkSupabaseAuthSettings() {
-  try {
-    const res = await fetch(`${SUPABASE_URL}/auth/v1/settings`, {
-      headers: { apikey: SUPABASE_ANON_KEY }
-    });
-    if (!res.ok) return { ok: false, googleEnabled: false };
-    const settings = await res.json();
-    return {
-      ok: true,
-      googleEnabled: Boolean(settings?.external?.google),
-      emailEnabled: Boolean(settings?.external?.email),
-      autoconfirm: Boolean(settings?.mailer_autoconfirm)
-    };
-  } catch (err) {
-    return { ok: false, googleEnabled: false };
-  }
+  return { ok: true, googleEnabled: false, emailEnabled: true, autoconfirm: true };
 }
 
 /**
- * โหลดและตรวจสอบ Session ของผู้ใช้เมื่อเปิดหน้าเว็บ (รวมการตรวจ token กับ GET /api/auth/me)
+ * โหลดและตรวจสอบ Session ของผู้ใช้เมื่อเปิดหน้าเว็บผ่าน GET /api/auth/me เท่านั้น
+ * (ใช้ localStorage เก็บเฉพาะ Session Token ไม่เชื่อข้อมูลบัญชีเก่าที่แคชไว้ในเครื่อง)
  */
 async function initSupabaseAuth() {
   try {
-    if (supabaseClient) {
-      const { data: { session }, error } = await supabaseClient.auth.getSession();
-      if (!error && session && session.user) {
-        currentUser = session.user;
-        hasSupabaseJwtSession = true;
-        localStorage.setItem('qf_verified_session_user', JSON.stringify(currentUser));
-        updateAuthUI(currentUser);
-        await fetchUserPortfolios();
-      }
-    }
-
-    // หากยังไม่มี Supabase JWT Session ให้ตรวจสอบ Session ที่ยืนยันผ่าน Backend Server กับ GET /api/auth/me
-    if (!currentUser) {
-      const savedUserJson = localStorage.getItem('qf_verified_session_user');
-      const savedToken = localStorage.getItem('qf_verified_session_token') || '';
-      if (savedUserJson) {
-        try {
-          const parsedUser = JSON.parse(savedUserJson);
-          if (parsedUser && parsedUser.id && parsedUser.email) {
-            const tokenToVerify = parsedUser.token || savedToken;
-            if (tokenToVerify) {
-              try {
-                const initHeaders = { 'Authorization': `Bearer ${tokenToVerify}` };
-                const activePreview = getAdminPreviewTier();
-                if (activePreview) initHeaders['X-QF-Admin-Preview-Tier'] = activePreview;
-                const meRes = await fetch('/api/auth/me', {
-                  headers: initHeaders
-                });
-                if (meRes.ok) {
-                  const meData = await meRes.json();
-                  if (meData && meData.user) {
-                    currentUser = { ...meData.user, token: tokenToVerify };
-                    hasSupabaseJwtSession = false;
-                    localStorage.setItem('qf_verified_session_user', JSON.stringify(currentUser));
-                    updateAuthUI(currentUser);
-                    await fetchUserPortfolios();
-                  }
-                } else if (meRes.status === 401) {
-                  // Token หมดอายุหรือไม่ถูกต้อง -> ล้าง session เงียบๆ เพื่อกลับโหมด Guest
-                  localStorage.removeItem('qf_verified_session_user');
-                  localStorage.removeItem('qf_verified_session_token');
-                  currentUser = null;
-                } else {
-                  currentUser = { ...parsedUser, token: tokenToVerify };
-                  hasSupabaseJwtSession = false;
-                  updateAuthUI(currentUser);
-                  await fetchUserPortfolios();
-                }
-              } catch (netErr) {
-                // กรณีเครือข่ายชั่วคราวไม่พร้อม ให้คง session ที่แคชไว้ก่อน
-                currentUser = { ...parsedUser, token: tokenToVerify };
-                hasSupabaseJwtSession = false;
-                updateAuthUI(currentUser);
-                await fetchUserPortfolios();
-              }
-            } else {
-              localStorage.removeItem('qf_verified_session_user');
-            }
+    localStorage.removeItem('qf_verified_session_user');
+    const savedToken = (localStorage.getItem('qf_verified_session_token') || '').trim();
+    if (savedToken) {
+      const initHeaders = { 'Authorization': `Bearer ${savedToken}` };
+      const activePreview = getAdminPreviewTier();
+      if (activePreview) initHeaders['X-QF-Admin-Preview-Tier'] = activePreview;
+      try {
+        const meRes = await fetch('/api/auth/me', { headers: initHeaders });
+        if (meRes.ok) {
+          const meData = await meRes.json();
+          if (meData && meData.user) {
+            currentUser = { ...meData.user, token: savedToken };
+            updateAuthUI(currentUser);
+            await fetchUserPortfolios();
+            return;
           }
-        } catch (e) {
-          localStorage.removeItem('qf_verified_session_user');
+        }
+        // Invalid/expired token or unverified session -> clear token cleanly & revert to Guest
+        if (meRes.status === 401 || meRes.status === 403) {
           localStorage.removeItem('qf_verified_session_token');
+          sessionStorage.removeItem('qf_admin_preview_tier');
         }
+      } catch (netErr) {
+        console.warn('Session verify notice:', netErr);
       }
     }
 
-    if (!currentUser) {
-      updateAuthUI(null);
-      await fetchUserPortfolios();
-    }
-
-    if (supabaseClient) {
-      supabaseClient.auth.onAuthStateChange(async (event, session) => {
-        if (session && session.user) {
-          currentUser = session.user;
-          hasSupabaseJwtSession = true;
-          localStorage.setItem('qf_verified_session_user', JSON.stringify(currentUser));
-          updateAuthUI(currentUser);
-          await migrateGuestPortfoliosToAuthenticatedUser();
-          await fetchUserPortfolios();
-          if (event === 'SIGNED_IN') {
-            const meta = currentUser.user_metadata || {};
-            const name = meta.full_name || meta.name || currentUser.email;
-            showPortfolioToast(`เข้าสู่ระบบสำเร็จในชื่อ ${name}`);
-          }
-        }
-      });
-    }
+    currentUser = null;
+    updateAuthUI(null);
+    await fetchUserPortfolios();
   } catch (err) {
     console.error('Auth Init Error:', err);
-    if (!currentUser) updateAuthUI(null);
+    currentUser = null;
+    updateAuthUI(null);
   }
 }
 
 /**
- * เมื่อกดปุ่ม Login with Google
+ * เมื่อกดปุ่ม Login with Google (แจ้งให้เข้าสู่ระบบด้วยอีเมลและรหัสผ่าน)
  */
 async function loginWithGoogle() {
-  const status = await checkSupabaseAuthSettings();
-  if (status.googleEnabled && supabaseClient) {
-    const { error } = await supabaseClient.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: window.location.origin + window.location.pathname,
-        queryParams: {
-          access_type: 'offline',
-          prompt: 'consent'
-        }
-      }
-    });
-    if (error) {
-      showAuthAlert('เกิดข้อผิดพลาดในการเชื่อมต่อ Google OAuth: ' + error.message, 'error');
-    }
-    return;
-  }
-
-  openSupabaseConfigModal();
-  showAuthAlert(
-    'ระบบตรวจพบว่าบน Supabase ยังไม่ได้บันทึก Google Client ID จึงยังไม่สามารถเปิดหน้าต่าง Google OAuth ได้ กรุณากรอกอีเมลและรหัสผ่านด้านบนเพื่อเข้าสู่ระบบและใช้งานได้ทันที',
-    'info'
-  );
+  openSupabaseConfigModal('signin');
+  showAuthAlert('กรุณากรอกอีเมลและรหัสผ่านด้านบนเพื่อเข้าสู่ระบบและซิงก์บัญชีบน Cloud ทันที', 'info');
   const emailInput = document.getElementById('real-auth-email');
   if (emailInput) emailInput.focus();
 }
 
-/**
- * ปุ่มกดเชื่อมต่อ Google OAuth ในหน้าต่าง Login
- */
 async function forceGoogleOAuthRedirect() {
-  const status = await checkSupabaseAuthSettings();
-  if (!status.googleEnabled) {
-    showAuthAlert(
-      'บนโปรเจกต์ Supabase ของคุณยังไม่ได้เปิดใช้งาน Google Provider (หรือยังไม่ได้ใส่ Client ID และกด Save) กรุณากรอกอีเมลและรหัสผ่านในช่องด้านบนเพื่อเข้าสู่ระบบทันที',
-      'info'
-    );
-    const emailInput = document.getElementById('real-auth-email');
-    if (emailInput) emailInput.focus();
-    return;
-  }
-
-  if (supabaseClient) {
-    const { error } = await supabaseClient.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: window.location.origin + window.location.pathname,
-        queryParams: {
-          access_type: 'offline',
-          prompt: 'consent'
-        }
-      }
-    });
-    if (error) {
-      showAuthAlert('ไม่สามารถเชื่อมต่อ Google OAuth ได้: ' + error.message, 'error');
-    }
-  }
+  await loginWithGoogle();
 }
 
 function showAuthAlert(message, type = 'info') {
@@ -452,8 +322,7 @@ function showAuthAlert(message, type = 'info') {
 }
 
 /**
- * เข้าสู่ระบบหรือสมัครสมาชิกด้วยอีเมลและรหัสผ่าน
- * ทำงานแบบ Dual-Engine: เชื่อมต่อทั้ง Supabase Auth และ Backend Auth API
+ * เข้าสู่ระบบหรือสมัครสมาชิกด้วยอีเมลและรหัสผ่านผ่าน Backend Auth API -> Supabase PostgreSQL
  */
 async function loginOrSignUpWithRealGmail() {
   const nameInput = document.getElementById('real-auth-name');
@@ -464,7 +333,8 @@ async function loginOrSignUpWithRealGmail() {
   const msgBox = document.getElementById('modal-diagnostic-alert');
   const submitBtn = document.getElementById('btn-real-email-auth');
 
-  const email = (emailInput?.value || '').trim().toLowerCase();
+  const email = normalizeEmailInput(emailInput?.value);
+  if (emailInput && email) emailInput.value = email;
   const password = (passwordInput?.value || '').trim();
   const confirmPassword = (confirmInput?.value || '').trim();
   const fullName = (nameInput?.value || '').trim() || (email ? email.split('@')[0] : 'ผู้ใช้งาน QuantFolio');
@@ -488,7 +358,7 @@ async function loginOrSignUpWithRealGmail() {
     return;
   }
 
-  // บันทึกหรือล้างอีเมลที่จำไว้ในเครื่องตามตัวเลือกของผู้ใช้
+  // บันทึกหรือล้างอีเมลที่จำไว้ในเครื่อง (เฉพาะอีเมลที่ Normalize เป็นตัวพิมพ์เล็กแล้ว)
   try {
     if (!rememberCheckbox || rememberCheckbox.checked) {
       localStorage.setItem('qf_remembered_email', email);
@@ -497,95 +367,12 @@ async function loginOrSignUpWithRealGmail() {
     }
   } catch (e) {}
 
-  const clearAuthSecrets = () => {
-    if (passwordInput) {
-      passwordInput.value = '';
-      passwordInput.type = 'password';
-    }
-    if (confirmInput) {
-      confirmInput.value = '';
-      confirmInput.type = 'password';
-    }
-    updateAuthPasswordStrength();
-  };
-
   try {
     if (submitBtn) {
       submitBtn.disabled = true;
       submitBtn.innerText = authTabMode === 'signup' ? 'กำลังสร้างบัญชีผู้ใช้...' : 'กำลังตรวจสอบและเข้าสู่ระบบ...';
     }
 
-    // ขั้นตอนที่ 1: ลองเชื่อมต่อผ่าน Supabase Auth ก่อน (แยกเส้นทาง Sign In / Sign Up ชัดเจน)
-    if (supabaseClient) {
-      if (authTabMode === 'signin') {
-        const signInRes = await supabaseClient.auth.signInWithPassword({ email, password });
-        if (!signInRes.error && signInRes.data?.session) {
-          currentUser = signInRes.data.session.user;
-          hasSupabaseJwtSession = true;
-          localStorage.setItem('qf_verified_session_user', JSON.stringify(currentUser));
-          try {
-            const syncRes = await fetch('/api/auth/login', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ email, password, full_name: payloadFullName, mode: 'signin' })
-            });
-            if (syncRes.ok) {
-              const syncData = await syncRes.json();
-              if (syncData.token) {
-                currentUser.token = syncData.token;
-                localStorage.setItem('qf_verified_session_token', syncData.token);
-              }
-            }
-          } catch (e) {}
-          clearAuthSecrets();
-          updateAuthUI(currentUser);
-          await migrateGuestPortfoliosToAuthenticatedUser();
-          await fetchUserPortfolios();
-          const signedInName = currentUser.user_metadata?.full_name || currentUser.email;
-          showPortfolioToast(`เข้าสู่ระบบสำเร็จในชื่อ ${signedInName}`);
-          return;
-        }
-      } else if (authTabMode === 'signup') {
-        const avatarUrl = buildLocalAvatarSvg(fullName);
-        const signUpRes = await supabaseClient.auth.signUp({
-          email,
-          password,
-          options: {
-            emailRedirectTo: window.location.origin + window.location.pathname,
-            data: { full_name: fullName, name: fullName, avatar_url: avatarUrl }
-          }
-        });
-
-        if (!signUpRes.error && signUpRes.data?.session) {
-          currentUser = signUpRes.data.session.user;
-          hasSupabaseJwtSession = true;
-          localStorage.setItem('qf_verified_session_user', JSON.stringify(currentUser));
-          try {
-            const syncRes = await fetch('/api/auth/login', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ email, password, full_name: fullName, mode: 'signup' })
-            });
-            if (syncRes.ok) {
-              const syncData = await syncRes.json();
-              if (syncData.token) {
-                currentUser.token = syncData.token;
-                localStorage.setItem('qf_verified_session_token', syncData.token);
-              }
-            }
-          } catch (e) {}
-          clearAuthSecrets();
-          updateAuthUI(currentUser);
-          await migrateGuestPortfoliosToAuthenticatedUser();
-          await fetchUserPortfolios();
-          showPortfolioToast(`สมัครสมาชิกและเข้าสู่ระบบสำเร็จในชื่อ ${fullName}`);
-          return;
-        }
-      }
-    }
-
-    // ขั้นตอนที่ 2: กรณี Supabase ติด Email Rate Limit (429) หรือรอ Confirm Email
-    // ให้ยืนยันตัวตนผ่านระบบ Server Auth API (/api/auth/login) เพื่อให้เข้าใช้งานได้ทันทีโดยไม่ค้างหน้า Login
     const backendRes = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -597,7 +384,7 @@ async function loginOrSignUpWithRealGmail() {
       })
     });
 
-    const backendData = await backendRes.json();
+    const backendData = await backendRes.json().catch(() => ({}));
     if (!backendRes.ok) {
       throw new Error(backendData.detail || 'ไม่สามารถเข้าสู่ระบบได้ กรุณาตรวจสอบอีเมลและรหัสผ่าน');
     }
@@ -607,9 +394,8 @@ async function loginOrSignUpWithRealGmail() {
       currentUser.token = backendData.token;
       localStorage.setItem('qf_verified_session_token', backendData.token);
     }
-    hasSupabaseJwtSession = false;
-    localStorage.setItem('qf_verified_session_user', JSON.stringify(currentUser));
-    clearAuthSecrets();
+    localStorage.removeItem('qf_verified_session_user');
+    clearAllAuthPasswordInputs();
     updateAuthUI(currentUser);
     await migrateGuestPortfoliosToAuthenticatedUser();
     await fetchUserPortfolios();
@@ -691,6 +477,26 @@ function toggleHeaderAccountMenu(forceOpen) {
   }
 }
 
+function clearAllAuthPasswordInputs() {
+  [
+    'real-auth-password',
+    'real-auth-password-confirm',
+    'auth-password',
+    'acct-curr-password',
+    'acct-new-password',
+    'acct-new-password-confirm'
+  ].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.value = '';
+      el.type = 'password';
+    }
+  });
+  if (typeof updateAuthPasswordStrength === 'function') {
+    updateAuthPasswordStrength();
+  }
+}
+
 /**
  * หน้าต่างจัดการโปรไฟล์และเปลี่ยนรหัสผ่าน (#account-settings-modal)
  */
@@ -721,13 +527,7 @@ function openAccountSettingsModal() {
   if (alertBox) alertBox.classList.add('hidden');
   syncMembershipTierBadgesUI();
 
-  ['acct-curr-password', 'acct-new-password', 'acct-new-password-confirm'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) {
-      el.value = '';
-      el.type = 'password';
-    }
-  });
+  clearAllAuthPasswordInputs();
 
   modal.classList.remove('hidden');
   if (window.lucide && typeof window.lucide.createIcons === 'function') {
@@ -736,6 +536,7 @@ function openAccountSettingsModal() {
 }
 
 function closeAccountSettingsModal() {
+  clearAllAuthPasswordInputs();
   const modal = document.getElementById('account-settings-modal');
   if (modal) modal.classList.add('hidden');
 }
@@ -773,40 +574,35 @@ async function updateUserProfileName() {
     }
     let updatedAvatar = buildLocalAvatarSvg(newName);
 
-    if (hasSupabaseJwtSession && supabaseClient) {
-      try {
-        await supabaseClient.auth.updateUser({
-          data: { full_name: newName, name: newName, avatar_url: updatedAvatar }
-        });
-      } catch (e) {}
-    }
-
     const headers = getBackendAuthHeaders();
-    if (headers.Authorization) {
-      const res = await fetch('/api/auth/profile', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...headers },
-        body: JSON.stringify({ full_name: newName })
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.detail || 'ไม่สามารถบันทึกชื่อโปรไฟล์ได้');
-      }
-      if (data.user && data.user.user_metadata) {
-        updatedAvatar = data.user.user_metadata.avatar_url || updatedAvatar;
-      }
+    if (!headers.Authorization) {
+      throw new Error('กรุณาเข้าสู่ระบบใหม่อีกครั้ง');
+    }
+    const res = await fetch('/api/auth/profile', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...headers },
+      body: JSON.stringify({ full_name: newName })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.detail || 'ไม่สามารถบันทึกชื่อโปรไฟล์ได้');
+    }
+    if (data.user && data.user.user_metadata) {
+      updatedAvatar = data.user.user_metadata.avatar_url || updatedAvatar;
     }
 
     currentUser = {
       ...currentUser,
+      ...(data.user || {}),
+      token: currentUser.token || localStorage.getItem('qf_verified_session_token') || '',
       user_metadata: {
         ...(currentUser.user_metadata || {}),
+        ...(data.user?.user_metadata || {}),
         full_name: newName,
         name: newName,
         avatar_url: updatedAvatar
       }
     };
-    localStorage.setItem('qf_verified_session_user', JSON.stringify(currentUser));
     updateAuthUI(currentUser);
 
     const modalAvatar = document.getElementById('acct-modal-avatar');
@@ -863,39 +659,27 @@ async function changeUserPassword() {
     }
 
     const headers = getBackendAuthHeaders();
-    if (headers.Authorization) {
-      const res = await fetch('/api/auth/change-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...headers },
-        body: JSON.stringify({
-          current_password: currentPassword,
-          new_password: newPassword
-        })
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.detail || 'ไม่สามารถเปลี่ยนรหัสผ่านได้');
-      }
-      if (data.token) {
-        currentUser.token = data.token;
-        localStorage.setItem('qf_verified_session_token', data.token);
-        localStorage.setItem('qf_verified_session_user', JSON.stringify(currentUser));
-      }
+    if (!headers.Authorization) {
+      throw new Error('กรุณาเข้าสู่ระบบใหม่อีกครั้ง');
     }
-
-    if (hasSupabaseJwtSession && supabaseClient) {
-      const { error } = await supabaseClient.auth.updateUser({ password: newPassword });
-      if (error) {
-        throw new Error(error.message || 'ไม่สามารถเปลี่ยนรหัสผ่านบน Supabase ได้');
-      }
-    }
-
-    [currEl, newEl, confirmEl].forEach(el => {
-      if (el) {
-        el.value = '';
-        el.type = 'password';
-      }
+    const res = await fetch('/api/auth/change-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...headers },
+      body: JSON.stringify({
+        current_password: currentPassword,
+        new_password: newPassword
+      })
     });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.detail || 'ไม่สามารถเปลี่ยนรหัสผ่านได้');
+    }
+    if (data.token) {
+      currentUser.token = data.token;
+      localStorage.setItem('qf_verified_session_token', data.token);
+    }
+
+    clearAllAuthPasswordInputs();
     showAccountSettingsAlert('เปลี่ยนรหัสผ่านใหม่เรียบร้อยแล้ว (อัปเดตสิทธิ์การเข้าถึงทันที)', 'success');
     showPortfolioToast('เปลี่ยนรหัสผ่านเรียบร้อยแล้ว');
   } catch (err) {
@@ -966,12 +750,6 @@ function continueAsGuest() {
  */
 async function logoutUser(opts = {}) {
   const prevUserId = currentUser?.id || null;
-  try {
-    if (supabaseClient) {
-      await supabaseClient.auth.signOut();
-    }
-  } catch (e) {}
-
   localStorage.removeItem('qf_verified_session_user');
   localStorage.removeItem('qf_verified_session_token');
   try {
@@ -983,20 +761,14 @@ async function logoutUser(opts = {}) {
   sessionStorage.removeItem('qf_guest_mode');
   sessionStorage.removeItem('qf_admin_preview_tier');
   currentUser = null;
-  hasSupabaseJwtSession = false;
   editingSavedPortfolioId = null;
   savedPortfoliosList = [];
 
-  // P1-4 Security Hygiene: Clear all password inputs from DOM upon logout so shared devices never retain credentials
-  ['real-auth-password', 'real-auth-password-confirm', 'acct-pw-current', 'acct-pw-new', 'acct-pw-confirm'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) {
-      el.value = '';
-      el.type = 'password';
-    }
-  });
-  if (typeof updateAuthPasswordStrength === 'function') {
-    updateAuthPasswordStrength();
+  // P0-4 Security Hygiene: Clear ALL password inputs from DOM upon logout so shared devices never retain credentials
+  clearAllAuthPasswordInputs();
+  // P0-5: Immediately unmount any dynamically injected Admin DOM on logout
+  if (typeof syncAdminDynamicDom === 'function') {
+    syncAdminDynamicDom(false);
   }
 
   toggleHeaderAccountMenu(false);
@@ -1036,22 +808,17 @@ async function deleteUserAccount() {
       deleteBtn.innerText = 'กำลังลบบัญชี...';
     }
 
-    if (hasSupabaseJwtSession && supabaseClient) {
-      await supabaseClient
-        .from('user_portfolios')
-        .delete()
-        .eq('user_id', currentUser.id);
-    }
-
     const backendHeaders = getBackendAuthHeaders();
-    if (backendHeaders.Authorization) {
-      const res = await fetch('/api/auth/account', {
-        method: 'DELETE',
-        headers: backendHeaders
-      });
-      if (!res.ok && res.status !== 401) {
-        throw new Error('ไม่สามารถลบบัญชีได้ในขณะนี้');
-      }
+    if (!backendHeaders.Authorization) {
+      throw new Error('กรุณาเข้าสู่ระบบใหม่อีกครั้งก่อนลบบัญชี');
+    }
+    const res = await fetch('/api/auth/account', {
+      method: 'DELETE',
+      headers: backendHeaders
+    });
+    if (!res.ok && res.status !== 401) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.detail || 'ไม่สามารถลบบัญชีได้ในขณะนี้');
     }
 
     closeDeleteAccountModal();
@@ -1098,6 +865,8 @@ function updateAuthUI(user) {
     toggleHeaderAccountMenu(false);
     if (loggedOutBox) loggedOutBox.classList.remove('hidden');
     if (loggedInBox) loggedInBox.classList.add('hidden');
+    if (userEmailEl) userEmailEl.innerText = '';
+    if (accountMenuNameEl) accountMenuNameEl.innerText = '';
     if (savePanelBadge) {
       savePanelBadge.innerText = 'บันทึกในเครื่องได้ทันที (โหมด Guest)';
       savePanelBadge.className = 'text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 self-start sm:self-center shrink-0';
@@ -1287,96 +1056,54 @@ async function saveUserPortfolio(saveMode = 'auto') {
       saveBtn.innerText = isUpdatingExisting ? 'กำลังอัปเดต...' : 'กำลังบันทึก...';
     }
 
-    let savedSuccessfully = false;
     let savedRecord = null;
 
     if (currentUser && currentUser.id) {
-      // 1. Cloud Supabase (เมื่อมี JWT Session)
-      if (hasSupabaseJwtSession && supabaseClient) {
-        if (isUpdatingExisting && !targetId.startsWith('local-')) {
-          const { error } = await supabaseClient
-            .from('user_portfolios')
-            .update({
-              portfolio_name: payload.portfolio_name,
-              target_amount: payload.target_amount,
-              investment_period_years: payload.investment_period_years,
-              asset_weights: payload.asset_weights,
-              strategy_key: payload.strategy_key
-            })
-            .eq('id', targetId)
-            .eq('user_id', currentUser.id);
-          if (!error) savedSuccessfully = true;
-        } else {
-          const { error } = await supabaseClient
-            .from('user_portfolios')
-            .insert([{
-              user_id: currentUser.id,
-              portfolio_name: payload.portfolio_name,
-              target_amount: payload.target_amount,
-              investment_period_years: payload.investment_period_years,
-              asset_weights: payload.asset_weights,
-              strategy_key: payload.strategy_key
-            }]);
-          if (!error) savedSuccessfully = true;
-        }
+      // ผู้ใช้ที่ล็อกอินแล้ว: บันทึกขึ้น Cloud API (Supabase PostgreSQL) เท่านั้น ห้าม fallback ลง localStorage เงียบๆ
+      const usePut = isUpdatingExisting && !targetId.startsWith('local-');
+      const endpoint = usePut ? `/api/portfolios/${encodeURIComponent(targetId)}` : '/api/portfolios';
+      const res = await fetch(endpoint, {
+        method: usePut ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json', ...getBackendAuthHeaders() },
+        body: JSON.stringify(payload)
+      });
+      if (res.status === 403) {
+        const errJson = await res.json().catch(() => ({}));
+        openProUpgradeModal(errJson.detail || 'ถึงเพดานจำนวนแผนพอร์ตของแพ็กเกจปัจจุบัน กรุณาอัปเกรดเป็น QuantFolio Pro', 'pro');
+        return;
       }
-
-      // 2. Server API (POST ใหม่ หรือ PUT อัปเดต)
-      try {
-        const usePut = isUpdatingExisting && !targetId.startsWith('local-');
-        const endpoint = usePut ? `/api/portfolios/${encodeURIComponent(targetId)}` : '/api/portfolios';
-        const res = await fetch(endpoint, {
-          method: usePut ? 'PUT' : 'POST',
-          headers: { 'Content-Type': 'application/json', ...getBackendAuthHeaders() },
-          body: JSON.stringify(payload)
-        });
-        if (res.ok) {
-          const resJson = await res.json();
-          savedRecord = resJson.portfolio || null;
-          if (savedRecord) savedRecord.storage_origin = 'cloud';
-          savedSuccessfully = true;
-        } else if (res.status === 403) {
-          const errJson = await res.json().catch(() => ({}));
-          openProUpgradeModal(errJson.detail || 'ถึงเพดานจำนวนแผนพอร์ตของแพ็กเกจปัจจุบัน กรุณาอัปเกรดเป็น QuantFolio Pro', 'pro');
-          return;
-        }
-      } catch (e) {
-        console.warn('Server portfolio save fallback to local:', e);
+      const resJson = await res.json().catch(() => ({}));
+      if (!res.ok || !resJson.portfolio) {
+        throw new Error(resJson.detail || 'ไม่สามารถบันทึกพอร์ตขึ้นฐานข้อมูล Cloud ได้ กรุณาลองใหม่อีกครั้ง');
       }
+      savedRecord = { ...resJson.portfolio, storage_origin: 'cloud' };
+    } else {
+      // โหมด Guest (ยังไม่ล็อกอิน): บันทึกในเครื่องนี้ได้สูงสุด 1 พอร์ต
+      const localArr = readLocalPortfoliosList(GUEST_PORTFOLIOS_STORAGE_KEY);
+      const existingItem = isUpdatingExisting
+        ? localArr.find(item => String(item.id) === targetId)
+        : null;
+      savedRecord = {
+        ...payload,
+        id: targetId,
+        storage_origin: 'local',
+        created_at: existingItem?.created_at || nowIso,
+        updated_at: nowIso
+      };
+      const filtered = localArr.filter(item => {
+        if (isUpdatingExisting && String(item.id) === targetId) return false;
+        if (!isUpdatingExisting && String(item.portfolio_name || '').trim().toLowerCase() === portfolioName.toLowerCase()) return false;
+        return true;
+      });
+      filtered.unshift(savedRecord);
+      writeLocalPortfoliosList(GUEST_PORTFOLIOS_STORAGE_KEY, filtered);
     }
 
-    // 3. บันทึกลง LocalStorage เสมอ (ใช้ได้ทันทีในโหมด Guest และเป็นสำรองสำหรับผู้ใช้ที่ล็อกอิน)
-    const localKey = getCurrentLocalPortfoliosKey();
-    const localArr = readLocalPortfoliosList(localKey);
-    const existingItem = isUpdatingExisting
-      ? localArr.find(item => String(item.id) === targetId)
-      : null;
-    const recordToStore = savedRecord || {
-      ...payload,
-      id: targetId,
-      storage_origin: currentUser ? 'cloud' : 'local',
-      created_at: existingItem?.created_at || nowIso,
-      updated_at: nowIso
-    };
-
-    const filtered = localArr.filter(item => {
-      if (isUpdatingExisting && String(item.id) === targetId) return false;
-      if (!isUpdatingExisting && String(item.portfolio_name || '').trim().toLowerCase() === portfolioName.toLowerCase()) return false;
-      return true;
-    });
-    filtered.unshift(recordToStore);
-    writeLocalPortfoliosList(localKey, filtered);
-    savedSuccessfully = true;
-
-    if (!savedSuccessfully) {
-      throw new Error('ไม่สามารถบันทึกข้อมูลพอร์ตได้');
-    }
-
-    editingSavedPortfolioId = recordToStore.id || null;
+    editingSavedPortfolioId = savedRecord.id || null;
     await fetchUserPortfolios();
     syncEditingPortfolioBannerUI();
 
-    const modeHint = currentUser ? 'ซิงก์บัญชีแล้ว' : 'บันทึกในเครื่องนี้แล้ว';
+    const modeHint = currentUser ? 'ซิงก์ขึ้น Cloud แล้ว' : 'บันทึกในเครื่องนี้แล้ว';
     showPortfolioToast(
       isUpdatingExisting
         ? `อัปเดตพอร์ต "${portfolioName}" เรียบร้อยแล้ว (${modeHint})`
@@ -1384,6 +1111,7 @@ async function saveUserPortfolio(saveMode = 'auto') {
     );
   } catch (err) {
     console.error('Save portfolio error:', err);
+    showPortfolioToast(err.message || 'ไม่สามารถบันทึกพอร์ตได้');
     alert('เกิดข้อผิดพลาดในการบันทึกพอร์ต: ' + err.message);
   } finally {
     if (saveBtn) {
@@ -1394,7 +1122,9 @@ async function saveUserPortfolio(saveMode = 'auto') {
 }
 
 /**
- * ดึงรายการพอร์ตที่บันทึกไว้ (รองรับทั้งโหมด Guest LocalStorage และผู้ใช้ที่เข้าสู่ระบบ)
+ * ดึงรายการพอร์ตที่บันทึกไว้
+ * - ผู้ใช้ที่ล็อกอิน: ดึงจาก Server API (Supabase PostgreSQL) เท่านั้น ไม่โหลดจาก localStorage
+ * - โหมด Guest: ดึงจาก localStorage ในเครื่อง
  */
 async function fetchUserPortfolios() {
   try {
@@ -1404,10 +1134,8 @@ async function fetchUserPortfolios() {
     const addUniquePortfolio = (p, fallbackOrigin = 'local') => {
       if (!p || !p.portfolio_name) return;
       const key = `${String(p.id || '')}|${p.portfolio_name.trim().toLowerCase()}`;
-      const nameKey = `name:${p.portfolio_name.trim().toLowerCase()}|${Math.round(Number(p.target_amount || 0))}`;
-      if (!seenKeys.has(key) && !seenKeys.has(nameKey)) {
+      if (!seenKeys.has(key)) {
         seenKeys.add(key);
-        seenKeys.add(nameKey);
         combined.push({
           ...p,
           storage_origin: p.storage_origin || fallbackOrigin
@@ -1416,37 +1144,16 @@ async function fetchUserPortfolios() {
     };
 
     if (currentUser && currentUser.id) {
-      // 1. ดึงจาก Server API ก่อนเพราะมีฟิลด์ Goal & DCA ครบถ้วนที่สุด
-      try {
-        const res = await fetch('/api/portfolios', {
-          headers: getBackendAuthHeaders()
-        });
-        if (res.ok) {
-          const serverData = await res.json();
-          if (Array.isArray(serverData.portfolios)) {
-            serverData.portfolios.forEach(item => addUniquePortfolio(item, 'cloud'));
-          }
-        }
-      } catch (e) {
-        console.warn('Server portfolio fetch notice:', e);
-      }
-
-      // 2. ดึงจาก LocalStorage สำรองของบัญชีผู้ใช้นี้
-      readLocalPortfoliosList(`quantfolio_portfolios_${currentUser.id}`).forEach(item => addUniquePortfolio(item, 'cloud'));
-
-      // 3. ดึงจาก Supabase ถ้าระบบมี JWT Session
-      if (hasSupabaseJwtSession && supabaseClient) {
-        const { data, error } = await supabaseClient
-          .from('user_portfolios')
-          .select('id, user_id, portfolio_name, target_amount, investment_period_years, asset_weights, strategy_key, created_at')
-          .eq('user_id', currentUser.id)
-          .order('created_at', { ascending: false });
-        if (!error && Array.isArray(data)) {
-          data.forEach(item => addUniquePortfolio(item, 'cloud'));
+      const res = await fetch('/api/portfolios', {
+        headers: getBackendAuthHeaders()
+      });
+      if (res.ok) {
+        const serverData = await res.json();
+        if (Array.isArray(serverData.portfolios)) {
+          serverData.portfolios.forEach(item => addUniquePortfolio(item, 'cloud'));
         }
       }
     } else {
-      // โหมด Guest: โหลดรายการพอร์ตที่บันทึกไว้ในเครื่องนี้ทันที
       readLocalPortfoliosList(GUEST_PORTFOLIOS_STORAGE_KEY).forEach(item => addUniquePortfolio(item, 'local'));
     }
 
@@ -1462,7 +1169,7 @@ async function fetchUserPortfolios() {
 }
 
 /**
- * ลบพอร์ตที่บันทึกไว้ (รองรับทั้งโหมด Guest ในเครื่อง และ Cloud)
+ * ลบพอร์ตที่บันทึกไว้ (Cloud API สำหรับผู้ใช้ที่ล็อกอิน / localStorage เฉพาะโหมด Guest)
  */
 async function deleteUserPortfolio(portfolioId) {
   const targetItem = savedPortfoliosList.find(p => String(p.id) === String(portfolioId));
@@ -1473,33 +1180,22 @@ async function deleteUserPortfolio(portfolioId) {
 
   try {
     if (currentUser && currentUser.id) {
-      if (hasSupabaseJwtSession && supabaseClient && !String(portfolioId).startsWith('local-')) {
-        await supabaseClient
-          .from('user_portfolios')
-          .delete()
-          .eq('id', portfolioId)
-          .eq('user_id', currentUser.id);
+      const res = await fetch(`/api/portfolios/${encodeURIComponent(portfolioId)}`, {
+        method: 'DELETE',
+        headers: getBackendAuthHeaders()
+      });
+      if (!res.ok && res.status !== 404) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || 'ไม่สามารถลบพอร์ตจากฐานข้อมูล Cloud ได้');
       }
-
-      if (!String(portfolioId).startsWith('local-')) {
-        try {
-          await fetch(`/api/portfolios/${encodeURIComponent(portfolioId)}`, {
-            method: 'DELETE',
-            headers: getBackendAuthHeaders()
-          });
-        } catch (e) {
-          // ignore server delete error if local-only
-        }
-      }
+    } else {
+      const localArr = readLocalPortfoliosList(GUEST_PORTFOLIOS_STORAGE_KEY);
+      const nextLocal = localArr.filter(item =>
+        String(item.id) !== String(portfolioId) &&
+        (!targetItem || item.portfolio_name !== targetItem.portfolio_name)
+      );
+      writeLocalPortfoliosList(GUEST_PORTFOLIOS_STORAGE_KEY, nextLocal);
     }
-
-    const localKey = getCurrentLocalPortfoliosKey();
-    const localArr = readLocalPortfoliosList(localKey);
-    const nextLocal = localArr.filter(item =>
-      String(item.id) !== String(portfolioId) &&
-      (!targetItem || item.portfolio_name !== targetItem.portfolio_name)
-    );
-    writeLocalPortfoliosList(localKey, nextLocal);
 
     if (String(editingSavedPortfolioId) === String(portfolioId)) {
       editingSavedPortfolioId = null;
@@ -1572,32 +1268,50 @@ async function handleImportSavedPortfoliosFile(inputEl) {
       return;
     }
 
-    const localKey = getCurrentLocalPortfoliosKey();
-    const currentArr = readLocalPortfoliosList(localKey);
-    const existingNames = new Set(currentArr.map(p => String(p.portfolio_name || '').trim().toLowerCase()));
     let importedCount = 0;
 
-    for (const raw of items) {
-      if (!raw || typeof raw.portfolio_name !== 'string' || !raw.portfolio_name.trim()) continue;
-      const cleanName = raw.portfolio_name.trim();
-      const rec = {
-        ...raw,
-        id: `local-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
-        portfolio_name: cleanName,
-        storage_origin: currentUser ? 'cloud' : 'local',
-        created_at: raw.created_at || new Date().toISOString()
-      };
-      if (existingNames.has(cleanName.toLowerCase())) {
-        const idx = currentArr.findIndex(p => String(p.portfolio_name || '').trim().toLowerCase() === cleanName.toLowerCase());
-        if (idx >= 0) currentArr[idx] = rec;
-      } else {
-        currentArr.unshift(rec);
-        existingNames.add(cleanName.toLowerCase());
+    if (currentUser && currentUser.id) {
+      for (const raw of items) {
+        if (!raw || typeof raw.portfolio_name !== 'string' || !raw.portfolio_name.trim()) continue;
+        const { id: _discardId, ...rest } = raw;
+        const payload = {
+          ...rest,
+          portfolio_name: raw.portfolio_name.trim(),
+          asset_weights: raw.asset_weights || {},
+          tickers: Array.isArray(raw.tickers) ? raw.tickers : Object.keys(raw.asset_weights || {})
+        };
+        const res = await fetch('/api/portfolios', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...getBackendAuthHeaders() },
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) importedCount++;
       }
-      importedCount++;
+    } else {
+      const currentArr = readLocalPortfoliosList(GUEST_PORTFOLIOS_STORAGE_KEY);
+      const existingNames = new Set(currentArr.map(p => String(p.portfolio_name || '').trim().toLowerCase()));
+      for (const raw of items) {
+        if (!raw || typeof raw.portfolio_name !== 'string' || !raw.portfolio_name.trim()) continue;
+        const cleanName = raw.portfolio_name.trim();
+        const rec = {
+          ...raw,
+          id: `local-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+          portfolio_name: cleanName,
+          storage_origin: 'local',
+          created_at: raw.created_at || new Date().toISOString()
+        };
+        if (existingNames.has(cleanName.toLowerCase())) {
+          const idx = currentArr.findIndex(p => String(p.portfolio_name || '').trim().toLowerCase() === cleanName.toLowerCase());
+          if (idx >= 0) currentArr[idx] = rec;
+        } else {
+          currentArr.unshift(rec);
+          existingNames.add(cleanName.toLowerCase());
+        }
+        importedCount++;
+      }
+      writeLocalPortfoliosList(GUEST_PORTFOLIOS_STORAGE_KEY, currentArr);
     }
 
-    writeLocalPortfoliosList(localKey, currentArr);
     await fetchUserPortfolios();
     showPortfolioToast(`นำเข้าพอร์ตสำเร็จ ${importedCount} รายการ`);
   } catch (err) {
@@ -1854,7 +1568,7 @@ async function openSupabaseConfigModal(defaultMode) {
   const emailInput = document.getElementById('real-auth-email');
   const rememberBox = document.getElementById('auth-remember-email');
   try {
-    const remembered = localStorage.getItem('qf_remembered_email') || '';
+    const remembered = normalizeEmailInput(localStorage.getItem('qf_remembered_email'));
     if (emailInput && !emailInput.value && remembered) {
       emailInput.value = remembered;
     }
@@ -1863,14 +1577,7 @@ async function openSupabaseConfigModal(defaultMode) {
     }
   } catch (e) {}
 
-  ['real-auth-password', 'real-auth-password-confirm'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) {
-      el.value = '';
-      el.type = 'password';
-    }
-  });
-  updateAuthPasswordStrength();
+  clearAllAuthPasswordInputs();
 
   modal.classList.remove('hidden');
   if (window.lucide && typeof window.lucide.createIcons === 'function') {
@@ -2121,8 +1828,8 @@ function getUserTierInfo() {
     };
   }
   const meta = currentUser.user_metadata || {};
-  const email = String(currentUser.email || '').trim().toLowerCase();
-  const isAdmin = Boolean(currentUser.is_admin || meta.is_admin || email === 'amontud31067@gmail.com');
+  // P0-5: Trust ONLY Backend-verified session admin flag (zero hardcoded admin email in public client JS)
+  const isAdmin = Boolean(currentUser.is_admin === true || meta.is_admin === true);
 
   const rawRealTier = String(currentUser.real_plan_tier || meta.real_plan_tier || currentUser.plan_tier || meta.plan_tier || 'free').trim().toLowerCase();
   const realPlanTier = CLIENT_TIER_DEFAULTS[rawRealTier] && rawRealTier !== 'guest' ? rawRealTier : 'free';
@@ -2172,8 +1879,220 @@ function showInlineModalAlert(elId, message, type = 'error') {
   el.classList.remove('hidden');
 }
 
+/**
+ * P0-5: Dynamically construct and mount Admin UI DOM ONLY when Backend confirms is_admin === true.
+ * Non-admin & Guest users never receive Admin HTML markup in the DOM or public index.html.
+ */
+function syncAdminDynamicDom(isAdmin) {
+  const quickMount = document.getElementById('admin-quick-tier-mount');
+  const tabsBar = document.getElementById('pro-modal-tabs-bar');
+  const panelMount = document.getElementById('pro-admin-panel-mount');
+
+  if (!isAdmin) {
+    if (quickMount) quickMount.innerHTML = '';
+    const existingTabBtn = document.getElementById('pro-tab-btn-admin');
+    if (existingTabBtn) existingTabBtn.remove();
+    if (panelMount) panelMount.innerHTML = '';
+    return;
+  }
+
+  if (quickMount && !document.getElementById('admin-quick-tier-panel')) {
+    quickMount.innerHTML = `
+      <div id="admin-quick-tier-panel" class="p-2.5 rounded-xl bg-slate-900 text-white space-y-2 my-1 border border-[#00D084]/35">
+        <div class="flex items-center justify-between text-[10px] font-bold text-[#34F5A8]">
+          <span>🛠️ โหมดทดสอบ Admin (ไม่แก้ DB)</span>
+          <span class="font-mono">ADMIN</span>
+        </div>
+        <div class="grid grid-cols-2 gap-1">
+          <button type="button" id="admin-switch-btn-real" onclick="adminSetPreviewTier('real')" class="px-1.5 py-1 rounded-lg bg-[#00D084] text-[#0A0D12] text-[10px] font-extrabold transition cursor-pointer">
+            สิทธิ์จริง
+          </button>
+          <button type="button" id="admin-switch-btn-guest" onclick="adminSetPreviewTier('guest')" class="px-1.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[10px] font-semibold text-slate-200 transition cursor-pointer">
+            ทดสอบ Guest
+          </button>
+          <button type="button" id="admin-switch-btn-free" onclick="adminSetPreviewTier('free')" class="px-1.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[10px] font-semibold text-slate-200 transition cursor-pointer">
+            ทดสอบ Member
+          </button>
+          <button type="button" id="admin-switch-btn-pro" onclick="adminSetPreviewTier('pro')" class="px-1.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[10px] font-semibold text-emerald-300 transition cursor-pointer">
+            ทดสอบ Pro
+          </button>
+          <button type="button" id="admin-switch-btn-advisor" onclick="adminSetPreviewTier('advisor')" class="col-span-2 px-1.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[10px] font-semibold text-amber-300 transition cursor-pointer">
+            ทดสอบ Advisor (25 หุ้น)
+          </button>
+        </div>
+        <button type="button" onclick="openProUpgradeModal('', 'pro', 'admin'); toggleHeaderAccountMenu(false);" class="w-full py-1.5 px-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[10.5px] font-bold text-white transition cursor-pointer flex items-center justify-between">
+          <span>เปิดแผงจัดการสมาชิก &amp; โค้ด</span>
+          <span class="text-[#34F5A8]">➔</span>
+        </button>
+      </div>
+    `;
+  }
+
+  if (tabsBar && !document.getElementById('pro-tab-btn-admin')) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.id = 'pro-tab-btn-admin';
+    btn.setAttribute('role', 'tab');
+    btn.setAttribute('aria-selected', 'false');
+    btn.setAttribute('onclick', "switchProModalTab('admin')");
+    btn.className = 'qf-pro-tab-btn flex-1 sm:flex-none px-3.5 py-2 rounded-lg font-semibold transition cursor-pointer whitespace-nowrap inline-flex items-center justify-center gap-1.5';
+    btn.innerHTML = '<span>จัดการระบบ (Admin)</span><span id="admin-pending-badge" class="hidden px-1.5 py-0.2 rounded-full bg-rose-500 text-white text-[10px] font-mono font-extrabold">0</span>';
+    tabsBar.appendChild(btn);
+  }
+
+  if (panelMount && !document.getElementById('pro-tab-panel-admin')) {
+    panelMount.innerHTML = `
+      <div id="pro-tab-panel-admin" class="hidden space-y-4 text-xs">
+        <div id="admin-upgrade-control-box" class="p-3.5 rounded-2xl bg-slate-900 text-white border border-[#00D084]/40 space-y-2.5">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <span class="px-2 py-0.5 rounded bg-[#00D084] text-[#0A0D12] font-mono text-[10px] font-extrabold">SAFE PREVIEW</span>
+              <span class="font-bold text-slate-100">สลับมุมมองทดสอบ 1 คลิก</span>
+              <span class="text-[11px] text-slate-400">(จำลองเฉพาะ Session • ไม่แก้สิทธิ์จริงใน DB • ไม่หลุดหน้า Admin)</span>
+            </div>
+          </div>
+          <div class="flex flex-wrap gap-1.5">
+            <button type="button" id="admin-preview-btn-real" onclick="adminSetPreviewTier('real')" class="px-3 py-1.5 rounded-lg bg-[#00D084] text-[#0A0D12] font-extrabold text-[11px] transition cursor-pointer">
+              ✓ สิทธิ์จริงของฉัน
+            </button>
+            <button type="button" id="admin-preview-btn-guest" onclick="adminSetPreviewTier('guest')" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-[11px] transition cursor-pointer">
+              Guest (5 หุ้น)
+            </button>
+            <button type="button" id="admin-preview-btn-free" onclick="adminSetPreviewTier('free')" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-[11px] transition cursor-pointer">
+              Member ฟรี (8 หุ้น)
+            </button>
+            <button type="button" id="admin-preview-btn-pro" onclick="adminSetPreviewTier('pro')" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-emerald-300 font-semibold text-[11px] transition cursor-pointer">
+              QuantFolio Pro (15 หุ้น)
+            </button>
+            <button type="button" id="admin-preview-btn-advisor" onclick="adminSetPreviewTier('advisor')" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 font-semibold text-[11px] transition cursor-pointer">
+              Advisor Pro (25 หุ้น)
+            </button>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-2">
+          <div class="inline-flex flex-wrap items-center gap-1.5">
+            <button type="button" id="admin-subtab-btn-requests" onclick="switchAdminSubTab('requests')" class="qf-admin-subtab active px-3 py-1.5 rounded-lg font-bold transition cursor-pointer inline-flex items-center gap-1.5">
+              <span>คิวแจ้งโอน / คำขอ</span>
+              <span id="admin-subtab-req-count" class="px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-900 text-[10px] font-mono font-bold">0</span>
+            </button>
+            <button type="button" id="admin-subtab-btn-users" onclick="switchAdminSubTab('users')" class="qf-admin-subtab px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer inline-flex items-center gap-1.5">
+              <span>สมาชิกทั้งหมด</span>
+              <span id="admin-subtab-users-count" class="px-1.5 py-0.2 rounded-full bg-slate-200 text-slate-700 text-[10px] font-mono font-bold">0</span>
+            </button>
+            <button type="button" id="admin-subtab-btn-codes" onclick="switchAdminSubTab('codes')" class="qf-admin-subtab px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer inline-flex items-center gap-1.5">
+              <span>รหัสเปิดใช้งาน (Codes)</span>
+              <span id="admin-subtab-codes-count" class="px-1.5 py-0.2 rounded-full bg-slate-200 text-slate-700 text-[10px] font-mono font-bold">0</span>
+            </button>
+          </div>
+          <button type="button" onclick="loadAdminConsoleOverview()" class="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-[11px] transition cursor-pointer">
+            ↻ รีเฟรชข้อมูล
+          </button>
+        </div>
+
+        <div id="admin-console-alert" class="hidden p-2.5 rounded-xl border text-xs font-semibold" role="alert"></div>
+
+        <div id="admin-subpanel-requests" class="space-y-2.5">
+          <div id="admin-requests-container" class="space-y-2.5">
+            <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 text-center text-slate-500">กำลังโหลดคิวคำขออัปเกรด...</div>
+          </div>
+        </div>
+
+        <div id="admin-subpanel-users" class="hidden space-y-3">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <input type="text" id="admin-users-search-input" oninput="adminFilterUsersTable()" placeholder="ค้นหาด้วยอีเมลหรือชื่อสมาชิก..." class="w-full sm:max-w-xs px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl text-slate-900 focus:outline-none focus:border-[#00D084]" />
+            <span class="text-[11px] text-slate-500">เปลี่ยนแพ็กเกจ + ระยะเวลาแล้วกด "บันทึก" (ต่ออายุแพ็กเกจเดิมจะทบวันเพิ่มให้อัตโนมัติ)</span>
+          </div>
+          <div class="overflow-x-auto rounded-xl border border-slate-200">
+            <table class="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr class="bg-slate-50 border-b border-slate-200 text-[11px] text-slate-600">
+                  <th class="py-2.5 px-3 font-bold">สมาชิก / อีเมล</th>
+                  <th class="py-2.5 px-3 font-bold whitespace-nowrap">แพ็กเกจปัจจุบัน</th>
+                  <th class="py-2.5 px-3 font-bold whitespace-nowrap">วันหมดอายุ</th>
+                  <th class="py-2.5 px-3 font-bold text-center whitespace-nowrap">พอร์ต</th>
+                  <th class="py-2.5 px-3 font-bold whitespace-nowrap">จัดการสิทธิ์ &amp; ระยะเวลา</th>
+                </tr>
+              </thead>
+              <tbody id="admin-users-table-body" class="divide-y divide-slate-100">
+                <tr><td colspan="5" class="py-4 text-center text-slate-500">กำลังโหลดรายชื่อสมาชิก...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="admin-subpanel-codes" class="hidden space-y-3">
+          <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5">
+            <div class="font-bold text-slate-800">🔑 สร้างรหัสเปิดใช้งานใหม่ (สุ่มปลอดภัยด้วย secrets 8 หลัก)</div>
+            <div class="grid grid-cols-2 sm:grid-cols-5 gap-2">
+              <div>
+                <label for="admin-code-tier" class="block text-[11px] font-semibold text-slate-600 mb-1">แพ็กเกจ</label>
+                <select id="admin-code-tier" class="w-full px-2.5 py-2 text-xs font-bold bg-white border border-slate-300 rounded-xl text-slate-900">
+                  <option value="pro">QuantFolio Pro</option>
+                  <option value="advisor">Advisor Pro (IC/IP)</option>
+                </select>
+              </div>
+              <div>
+                <label for="admin-code-duration" class="block text-[11px] font-semibold text-slate-600 mb-1">ระยะเวลาสิทธิ์</label>
+                <select id="admin-code-duration" class="w-full px-2.5 py-2 text-xs font-bold bg-white border border-slate-300 rounded-xl text-slate-900">
+                  <option value="30">30 วัน</option>
+                  <option value="90">90 วัน</option>
+                  <option value="365">365 วัน</option>
+                  <option value="0">ถาวร (Lifetime)</option>
+                </select>
+              </div>
+              <div>
+                <label for="admin-code-max-uses" class="block text-[11px] font-semibold text-slate-600 mb-1">จำนวนครั้งที่ใช้ได้</label>
+                <select id="admin-code-max-uses" class="w-full px-2.5 py-2 text-xs font-bold bg-white border border-slate-300 rounded-xl text-slate-900">
+                  <option value="1">1 ครั้ง (เฉพาะคนเดียว)</option>
+                  <option value="5">5 ครั้ง</option>
+                  <option value="50">50 ครั้ง</option>
+                  <option value="999">ไม่จำกัด (999)</option>
+                </select>
+              </div>
+              <div>
+                <label for="admin-code-valid-days" class="block text-[11px] font-semibold text-slate-600 mb-1">อายุการรับสิทธิ์ของรหัส</label>
+                <select id="admin-code-valid-days" class="w-full px-2.5 py-2 text-xs font-bold bg-white border border-slate-300 rounded-xl text-slate-900">
+                  <option value="7">หมดอายุใน 7 วัน</option>
+                  <option value="30" selected>หมดอายุใน 30 วัน</option>
+                  <option value="0">ไม่จำกัดวันกรอก</option>
+                </select>
+              </div>
+              <div class="col-span-2 sm:col-span-1 flex items-end">
+                <button type="button" id="btn-admin-gen-code" onclick="adminGenerateActivationCode()" class="w-full min-h-[38px] px-3 py-2 rounded-xl bg-[#00D084] hover:bg-[#00B873] text-[#0A0D12] font-extrabold text-xs transition cursor-pointer whitespace-nowrap">
+                  + สร้างรหัสใหม่
+                </button>
+              </div>
+            </div>
+            <input type="text" id="admin-code-note" placeholder="หมายเหตุรหัส (ไม่บังคับ) เช่น สำหรับลูกค้าคุณสมชาย หรือโปรเปิดตัว" class="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-xl text-slate-900 focus:outline-none focus:border-[#00D084]" />
+          </div>
+
+          <div class="overflow-x-auto rounded-xl border border-slate-200">
+            <table class="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr class="bg-slate-50 border-b border-slate-200 text-[11px] text-slate-600">
+                  <th class="py-2.5 px-3 font-bold">รหัสเปิดใช้งาน (Code)</th>
+                  <th class="py-2.5 px-3 font-bold whitespace-nowrap">แพ็กเกจ / สิทธิ์</th>
+                  <th class="py-2.5 px-3 font-bold text-center whitespace-nowrap">ใช้งานแล้ว</th>
+                  <th class="py-2.5 px-3 font-bold whitespace-nowrap">สถานะ</th>
+                  <th class="py-2.5 px-3 font-bold text-right whitespace-nowrap">จัดการ</th>
+                </tr>
+              </thead>
+              <tbody id="admin-codes-table-body" class="divide-y divide-slate-100">
+                <tr><td colspan="5" class="py-4 text-center text-slate-500">ยังไม่มีรหัสที่สร้างไว้ — กด "+ สร้างรหัสใหม่" ด้านบนเพื่อเริ่มต้น</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+}
+
 function syncMembershipTierBadgesUI() {
   const info = getUserTierInfo();
+  syncAdminDynamicDom(info.isAdmin);
+
   const hdrBadge = document.getElementById('header-tier-badge');
   const hdrBadgeTxt = document.getElementById('header-tier-badge-text');
   const hdrBadgeTxtShort = document.getElementById('header-tier-badge-text-short');
@@ -2194,9 +2113,9 @@ function syncMembershipTierBadgesUI() {
     hdrBadgeTxt.textContent = info.badgeText;
   }
   if (hdrBadgeTxtShort) {
-    const shortTierMap = { guest: 'GUEST', free: 'FREE', pro: '★ PRO', advisor: '★ ADVISOR' };
-    const baseShort = shortTierMap[info.planTier] || 'FREE';
-    hdrBadgeTxtShort.textContent = info.previewTier ? `🧪 ${baseShort.replace(/^★\s*/, '')}` : baseShort;
+    // P0-1: Strictly compact & emoji-free on < 640px (GUEST / FREE / PRO / ADVISOR); preview mode distinguished by amber color
+    const shortTierMap = { guest: 'GUEST', free: 'FREE', pro: 'PRO', advisor: 'ADVISOR' };
+    hdrBadgeTxtShort.textContent = shortTierMap[info.planTier] || 'FREE';
   }
   if (hdrBadge) {
     const basePillCls = 'inline-flex items-center gap-1 px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-xl text-[10.5px] sm:text-[11px] whitespace-nowrap transition cursor-pointer shrink-0';
@@ -2693,7 +2612,7 @@ async function submitActivationCodeUpgrade() {
         ...data.user,
         token: currentUser.token || localStorage.getItem('qf_verified_session_token')
       };
-      localStorage.setItem('qf_verified_session_user', JSON.stringify(currentUser));
+      // Session user kept strictly in memory; only session token is persisted in localStorage
       updateAuthUI(currentUser);
     }
     if (codeInp) codeInp.value = '';
@@ -2872,7 +2791,7 @@ async function adminSetPreviewTier(targetTier) {
           ...data.user,
           token: currentUser.token || localStorage.getItem('qf_verified_session_token')
         };
-        localStorage.setItem('qf_verified_session_user', JSON.stringify(currentUser));
+        // Session user kept strictly in memory; only session token is persisted in localStorage
       }
     }
   } catch (e) {}
@@ -3163,7 +3082,7 @@ async function adminDecideUpgradeRequest(reqId, decision) {
 
     if (data.target_user && String(currentUser.email || '').toLowerCase() === String(data.target_user.email || '').toLowerCase()) {
       currentUser = { ...currentUser, ...data.target_user, token: currentUser.token || localStorage.getItem('qf_verified_session_token') };
-      localStorage.setItem('qf_verified_session_user', JSON.stringify(currentUser));
+      // Session user kept strictly in memory; only session token is persisted in localStorage
       updateAuthUI(currentUser);
     }
     await loadAdminConsoleOverview();
@@ -3233,7 +3152,7 @@ async function adminUpdateUserRowTier(btnEl) {
 
     if (data.user && String(currentUser.email || '').toLowerCase() === targetEmail) {
       currentUser = { ...currentUser, ...data.user, token: currentUser.token || localStorage.getItem('qf_verified_session_token') };
-      localStorage.setItem('qf_verified_session_user', JSON.stringify(currentUser));
+      // Session user kept strictly in memory; only session token is persisted in localStorage
       updateAuthUI(currentUser);
     }
     await loadAdminConsoleOverview({ silent: true });

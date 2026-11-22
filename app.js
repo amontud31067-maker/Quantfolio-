@@ -2475,6 +2475,41 @@ async function runOptimization(shouldSwitchTab = false) {
       if (res.status === 403 && typeof window.openProUpgradeModal === 'function') {
         window.openProUpgradeModal(data.detail || 'เกินสิทธิ์ของแพ็กเกจปัจจุบัน กรุณาอัปเกรดเป็น QuantFolio Pro', 'pro');
       }
+      // P0-2 Edge Case: Backend returns HTTP 400 when < 2 valid tickers remain after dropping invalid tickers
+      const rawDetail = String(data.detail || '');
+      if (res.status === 400 && rawDetail.includes('ไม่พบข้อมูล:')) {
+        const parsePyList = (label) => {
+          const m = rawDetail.match(new RegExp(`${label}:\\s*\\[([^\\]]*)\\]`));
+          if (!m || !m[1]) return [];
+          return m[1]
+            .split(',')
+            .map(s => s.replace(/['"\s]/g, '').trim().toUpperCase())
+            .filter(Boolean);
+        };
+        const foundList = parsePyList('พบข้อมูล');
+        const missingList = parsePyList('ไม่พบข้อมูล');
+        if (missingList.length > 0) {
+          const missSet = new Set(missingList);
+          state.tickers = state.tickers.filter(t => !missSet.has(String(t || '').trim().toUpperCase()));
+          missingList.forEach(dt => {
+            delete state.customHoldings[dt];
+            delete state.customCost[dt];
+            delete state.customPnl[dt];
+            delete state.customShares[dt];
+            if (state.blViews && typeof state.blViews === 'object') {
+              delete state.blViews[dt];
+            }
+          });
+          renderTickersList();
+          updateMaxWeightLabel(document.getElementById('max-weight-slider')?.value || 100);
+          updateSetupReadinessUI();
+          showDroppedTickersBanner(missingList, state.tickers.length);
+          const needMore = Math.max(1, 2 - state.tickers.length);
+          const friendlyMsg = `ไม่พบข้อมูลตลาดสำหรับ ${missingList.join(', ')} ระบบจึงตัดออกจากรายการแล้ว — ตอนนี้เหลือสินทรัพย์ที่มีข้อมูล ${state.tickers.length} รายการ กรุณาเพิ่มสินทรัพย์ที่ถูกต้องอีกอย่างน้อย ${needMore} ตัว (หากเป็นหุ้นไทยกรุณาเติม .BK เช่น PTT.BK)`;
+          showPortfolioToastApp(friendlyMsg);
+          throw new Error(friendlyMsg);
+        }
+      }
       throw new Error(data.detail || 'ไม่สามารถคำนวณข้อมูลพอร์ตได้ กรุณาตรวจสอบช่วงเวลาและชื่อหุ้น');
     }
 
@@ -2502,12 +2537,12 @@ async function runOptimization(shouldSwitchTab = false) {
     }
 
     // P0-2: Sync state.tickers cleanly with validTickers & warn clearly when invalid tickers were dropped
-    // Check backend metadata.missing_tickers (primary key from optimizer.py), metadata.dropped_tickers, AND diff vs requested payload
-    const validTickers = data.metadata.tickers || [];
+    // Check backend metadata.dropped_tickers, metadata.missing_tickers, AND diff vs requested payload
+    const validTickers = Array.isArray(data.metadata?.tickers) ? data.metadata.tickers : [];
     const validSet = new Set(validTickers.map(t => String(t || '').trim().toUpperCase()));
     const rawMissing = [
-      ...(Array.isArray(data.metadata?.missing_tickers) ? data.metadata.missing_tickers : []),
       ...(Array.isArray(data.metadata?.dropped_tickers) ? data.metadata.dropped_tickers : []),
+      ...(Array.isArray(data.metadata?.missing_tickers) ? data.metadata.missing_tickers : []),
       ...(Array.isArray(payload?.tickers) ? payload.tickers.filter(t => !validSet.has(String(t || '').trim().toUpperCase())) : [])
     ];
     const droppedTickers = [...new Set(rawMissing.map(t => String(t || '').trim().toUpperCase()).filter(Boolean))];
@@ -2525,7 +2560,14 @@ async function runOptimization(shouldSwitchTab = false) {
       renderTickersList();
       updateMaxWeightLabel(document.getElementById('max-weight-slider')?.value || 100);
       showDroppedTickersBanner(droppedTickers, validTickers.length);
-      showPortfolioToastApp(`ไม่พบข้อมูลตลาดสำหรับ ${droppedTickers.join(', ')} ระบบจึงตัดออกจากการคำนวณ (หากเป็นหุ้นไทยกรุณาเติม .BK)`);
+      if (validTickers.length < 2) {
+        updateSetupReadinessUI();
+        const needMore = Math.max(1, 2 - validTickers.length);
+        const underMinMsg = `ไม่พบข้อมูลตลาดสำหรับ ${droppedTickers.join(', ')} ระบบจึงตัดออก — เหลือสินทรัพย์เพียง ${validTickers.length} ตัว กรุณาเพิ่มสินทรัพย์ที่ถูกต้องอีกอย่างน้อย ${needMore} ตัว (หากเป็นหุ้นไทยกรุณาเติม .BK)`;
+        showPortfolioToastApp(underMinMsg);
+        throw new Error(underMinMsg);
+      }
+      showPortfolioToastApp(`ไม่พบข้อมูลตลาดสำหรับ ${droppedTickers.join(', ')} ระบบจึงตัดออกจากการคำนวณ — หากเป็นหุ้นไทยกรุณาเติม .BK`);
     } else {
       dismissDroppedTickersBanner();
     }
@@ -8048,9 +8090,17 @@ function syncPdfReportModeFields() {
   if (reqStar) reqStar.classList.toggle('hidden', !isAdvisor);
   if (alertEl) alertEl.classList.add('hidden');
 
+  // P0-3 Strict Gate: In non-Advisor (Simulation) mode reset & ignore any stale 6-group / suitability selections
+  const segSelectEl = document.getElementById('pdf-cfg-client-segment');
+  const suitSelectEl = document.getElementById('pdf-cfg-client-suitability');
+  if (!isAdvisor) {
+    if (segSelectEl) segSelectEl.value = 'general';
+    if (suitSelectEl) suitSelectEl.value = 'auto';
+  }
+
   const licenseType = licenseTypeEl ? licenseTypeEl.value : 'ic_plain';
-  const clientSegment = document.getElementById('pdf-cfg-client-segment')?.value || 'general';
-  const clientSuitability = document.getElementById('pdf-cfg-client-suitability')?.value || 'auto';
+  const clientSegment = isAdvisor ? (segSelectEl?.value || 'general') : 'general';
+  const clientSuitability = isAdvisor ? (suitSelectEl?.value || 'auto') : 'auto';
   const savedItem = state.pendingPdfPortfolioId && Array.isArray(window.savedPortfoliosList)
     ? window.savedPortfoliosList.find(p => String(p.id) === String(state.pendingPdfPortfolioId))
     : null;
@@ -8555,17 +8605,23 @@ function openPrintableGoalReport(options = {}) {
     ? window.savedPortfoliosList.find(p => String(p.id) === String(savedPortfolioId))
     : null;
 
+  // P0-3 Defense-in-Depth: Always re-verify Advisor Pro entitlement before allowing Advisor mode, 6-group Client Grouping, or Suitability overrides
+  const activeTierInfo = getActiveUserTierInfo();
+  const effectiveReportMode = (reportMode === 'advisor' && activeTierInfo.canWhitelabelAdvisorPdf) ? 'advisor' : 'simulation';
+  const effectiveClientSegment = effectiveReportMode === 'advisor' ? clientSegment : 'general';
+  const effectiveClientSuitability = effectiveReportMode === 'advisor' ? clientSuitability : 'auto';
+
   const m = computeGoalProjectionMetrics(savedItem);
   const comp = evaluatePdfFairDealingCompliance(m, {
-    reportMode,
-    licenseType,
-    clientSegment,
-    clientSuitability,
+    reportMode: effectiveReportMode,
+    licenseType: effectiveReportMode === 'advisor' ? licenseType : 'ic_plain',
+    clientSegment: effectiveClientSegment,
+    clientSuitability: effectiveClientSuitability,
     chkFactsheet,
     chkKnowledge,
     chkNoforce,
-    advisorName,
-    licenseNo
+    advisorName: effectiveReportMode === 'advisor' ? advisorName : '',
+    licenseNo: effectiveReportMode === 'advisor' ? licenseNo : ''
   });
 
   const isAdvisorMode = comp.isAdvisorMode;

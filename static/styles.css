@@ -2433,24 +2433,26 @@ html body.theme-dark #loading-card .qf-load-step:not(.active) {
     font-size: 1.05rem !important;
     white-space: nowrap;
   }
+
+  #header-tier-badge {
+    max-width: 96px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 }
 
-/* Mobile Header De-collision & Declutter (< 480px): prevents logo/badge overlap and off-screen account button */
+/* Mobile Header De-collision & Declutter: prevents logo/badge overlap and off-screen account button */
 @media (max-width: 479px) {
-  body.qf-view-workspace #header-brand-wordmark {
-    display: none !important;
-  }
-
   /* Both Privacy Eye & Theme Toggle are already available inside the Settings Gear menu (#header-utility-menu) */
   #header-quick-privacy-btn,
   #header-workspace-theme-btn {
     display: none !important;
   }
+}
 
-  #header-tier-badge {
-    max-width: 112px;
-    overflow: hidden;
-    text-overflow: ellipsis;
+@media (max-width: 419px) {
+  body.qf-view-workspace #header-brand-wordmark {
+    display: none !important;
   }
 }
 

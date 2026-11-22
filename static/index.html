@@ -32,9 +32,7 @@
   <script src="https://unpkg.com/lucide@latest"></script>
   <!-- Plotly.js -->
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
-  <!-- Supabase JS SDK v2 -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <link rel="stylesheet" href="/static/styles.css?v=6.30">
+  <link rel="stylesheet" href="/static/styles.css?v=6.32">
 </head>
 <body class="min-h-screen flex flex-col text-[#1E293B] leading-[1.65]">
 
@@ -312,7 +310,7 @@
               />
               <div class="min-w-0 flex-1">
                 <div id="account-menu-name" class="text-xs font-bold text-slate-900 truncate">ผู้ใช้งาน</div>
-                <div id="user-profile-email" class="text-[11px] text-slate-500 truncate">user@gmail.com</div>
+                <div id="user-profile-email" class="text-[11px] text-slate-500 truncate"></div>
                 <span class="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-semibold">
                   <span class="w-1.5 h-1.5 rounded-full bg-[#00D084]"></span>
                   <span>ซิงก์บัญชีพร้อมใช้งาน</span>
@@ -339,34 +337,8 @@
                 </div>
               </button>
 
-              <!-- Owner / Admin Safe Preview Switcher & Console Shortcut (Visible ONLY for Real Admin Email) -->
-              <div id="admin-quick-tier-panel" class="hidden p-2.5 rounded-xl bg-slate-900 text-white space-y-2 my-1 border border-[#00D084]/35">
-                <div class="flex items-center justify-between text-[10px] font-bold text-[#34F5A8]">
-                  <span>🛠️ โหมดทดสอบ Admin (ไม่แก้ DB)</span>
-                  <span class="font-mono">ADMIN</span>
-                </div>
-                <div class="grid grid-cols-2 gap-1">
-                  <button type="button" id="admin-switch-btn-real" onclick="adminSetPreviewTier('real')" class="px-1.5 py-1 rounded-lg bg-[#00D084] text-[#0A0D12] text-[10px] font-extrabold transition cursor-pointer">
-                    สิทธิ์จริง
-                  </button>
-                  <button type="button" id="admin-switch-btn-guest" onclick="adminSetPreviewTier('guest')" class="px-1.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[10px] font-semibold text-slate-200 transition cursor-pointer">
-                    ทดสอบ Guest
-                  </button>
-                  <button type="button" id="admin-switch-btn-free" onclick="adminSetPreviewTier('free')" class="px-1.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[10px] font-semibold text-slate-200 transition cursor-pointer">
-                    ทดสอบ Member
-                  </button>
-                  <button type="button" id="admin-switch-btn-pro" onclick="adminSetPreviewTier('pro')" class="px-1.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[10px] font-semibold text-emerald-300 transition cursor-pointer">
-                    ทดสอบ Pro
-                  </button>
-                  <button type="button" id="admin-switch-btn-advisor" onclick="adminSetPreviewTier('advisor')" class="col-span-2 px-1.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[10px] font-semibold text-amber-300 transition cursor-pointer">
-                    ทดสอบ Advisor (25 หุ้น)
-                  </button>
-                </div>
-                <button type="button" onclick="openProUpgradeModal('', 'pro', 'admin'); toggleHeaderAccountMenu(false);" class="w-full py-1.5 px-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[10.5px] font-bold text-white transition cursor-pointer flex items-center justify-between">
-                  <span>เปิดแผงจัดการสมาชิก &amp; โค้ด</span>
-                  <span class="text-[#34F5A8]">➔</span>
-                </button>
-              </div>
+              <!-- Dynamic Admin Quick Panel Mount (Constructed via JS ONLY after Backend confirms is_admin === true) -->
+              <div id="admin-quick-tier-mount"></div>
 
               <button
                 type="button"
@@ -3154,17 +3126,13 @@
         </button>
       </div>
 
-      <!-- Clean 3-Tab Navigation Bar -->
-      <div class="qf-pro-tab-tray inline-flex flex-wrap items-center gap-1 p-1 rounded-xl bg-slate-100 border border-slate-200/90 text-xs w-full sm:w-auto" role="tablist">
+      <!-- Clean Tab Navigation Bar (Admin tab button injected dynamically via JS ONLY when Backend confirms is_admin === true) -->
+      <div id="pro-modal-tabs-bar" class="qf-pro-tab-tray inline-flex flex-wrap items-center gap-1 p-1 rounded-xl bg-slate-100 border border-slate-200/90 text-xs w-full sm:w-auto" role="tablist">
         <button type="button" id="pro-tab-btn-plans" role="tab" aria-selected="true" onclick="switchProModalTab('plans')" class="qf-pro-tab-btn active flex-1 sm:flex-none px-3.5 py-2 rounded-lg font-bold transition cursor-pointer whitespace-nowrap">
           แพ็กเกจสมาชิก
         </button>
         <button type="button" id="pro-tab-btn-activate" role="tab" aria-selected="false" onclick="switchProModalTab('activate')" class="qf-pro-tab-btn flex-1 sm:flex-none px-3.5 py-2 rounded-lg font-semibold transition cursor-pointer whitespace-nowrap">
           กรอกรหัส / แจ้งโอน
-        </button>
-        <button type="button" id="pro-tab-btn-admin" role="tab" aria-selected="false" onclick="switchProModalTab('admin')" class="hidden qf-pro-tab-btn flex-1 sm:flex-none px-3.5 py-2 rounded-lg font-semibold transition cursor-pointer whitespace-nowrap inline-flex items-center justify-center gap-1.5">
-          <span>จัดการระบบ (Admin)</span>
-          <span id="admin-pending-badge" class="hidden px-1.5 py-0.2 rounded-full bg-rose-500 text-white text-[10px] font-mono font-extrabold">0</span>
         </button>
       </div>
 
@@ -3578,157 +3546,8 @@
         </div>
       </div>
 
-      <!-- =================================================================== -->
-      <!-- TAB 3: OWNER / ADMIN CONSOLE (REAL ADMIN ONLY — NEVER LOCKED OUT)   -->
-      <!-- =================================================================== -->
-      <div id="pro-tab-panel-admin" class="hidden space-y-4 text-xs">
-        <!-- Compact Safe Preview Mode Bar (Session-only Header, Never Modifies DB or Admin Role) -->
-        <div id="admin-upgrade-control-box" class="p-3.5 rounded-2xl bg-slate-900 text-white border border-[#00D084]/40 space-y-2.5">
-          <div class="flex flex-wrap items-center justify-between gap-2">
-            <div class="flex items-center gap-2">
-              <span class="px-2 py-0.5 rounded bg-[#00D084] text-[#0A0D12] font-mono text-[10px] font-extrabold">SAFE PREVIEW</span>
-              <span class="font-bold text-slate-100">สลับมุมมองทดสอบ 1 คลิก</span>
-              <span class="text-[11px] text-slate-400">(จำลองเฉพาะ Session • ไม่แก้สิทธิ์จริงใน DB • ไม่หลุดหน้า Admin)</span>
-            </div>
-          </div>
-          <div class="flex flex-wrap gap-1.5">
-            <button type="button" id="admin-preview-btn-real" onclick="adminSetPreviewTier('real')" class="px-3 py-1.5 rounded-lg bg-[#00D084] text-[#0A0D12] font-extrabold text-[11px] transition cursor-pointer">
-              ✓ สิทธิ์จริงของฉัน
-            </button>
-            <button type="button" id="admin-preview-btn-guest" onclick="adminSetPreviewTier('guest')" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-[11px] transition cursor-pointer">
-              Guest (5 หุ้น)
-            </button>
-            <button type="button" id="admin-preview-btn-free" onclick="adminSetPreviewTier('free')" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-[11px] transition cursor-pointer">
-              Member ฟรี (8 หุ้น)
-            </button>
-            <button type="button" id="admin-preview-btn-pro" onclick="adminSetPreviewTier('pro')" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-emerald-300 font-semibold text-[11px] transition cursor-pointer">
-              QuantFolio Pro (15 หุ้น)
-            </button>
-            <button type="button" id="admin-preview-btn-advisor" onclick="adminSetPreviewTier('advisor')" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 font-semibold text-[11px] transition cursor-pointer">
-              Advisor Pro (25 หุ้น)
-            </button>
-          </div>
-        </div>
-
-        <!-- Admin Console Sub-Tabs -->
-        <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-2">
-          <div class="inline-flex flex-wrap items-center gap-1.5">
-            <button type="button" id="admin-subtab-btn-requests" onclick="switchAdminSubTab('requests')" class="qf-admin-subtab active px-3 py-1.5 rounded-lg font-bold transition cursor-pointer inline-flex items-center gap-1.5">
-              <span>คิวแจ้งโอน / คำขอ</span>
-              <span id="admin-subtab-req-count" class="px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-900 text-[10px] font-mono font-bold">0</span>
-            </button>
-            <button type="button" id="admin-subtab-btn-users" onclick="switchAdminSubTab('users')" class="qf-admin-subtab px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer inline-flex items-center gap-1.5">
-              <span>สมาชิกทั้งหมด</span>
-              <span id="admin-subtab-users-count" class="px-1.5 py-0.2 rounded-full bg-slate-200 text-slate-700 text-[10px] font-mono font-bold">0</span>
-            </button>
-            <button type="button" id="admin-subtab-btn-codes" onclick="switchAdminSubTab('codes')" class="qf-admin-subtab px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer inline-flex items-center gap-1.5">
-              <span>รหัสเปิดใช้งาน (Codes)</span>
-              <span id="admin-subtab-codes-count" class="px-1.5 py-0.2 rounded-full bg-slate-200 text-slate-700 text-[10px] font-mono font-bold">0</span>
-            </button>
-          </div>
-          <button type="button" onclick="loadAdminConsoleOverview()" class="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-[11px] transition cursor-pointer">
-            ↻ รีเฟรชข้อมูล
-          </button>
-        </div>
-
-        <div id="admin-console-alert" class="hidden p-2.5 rounded-xl border text-xs font-semibold" role="alert"></div>
-
-        <!-- Admin Sub-Panel 1: Upgrade Requests Queue -->
-        <div id="admin-subpanel-requests" class="space-y-2.5">
-          <div id="admin-requests-container" class="space-y-2.5">
-            <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 text-center text-slate-500">กำลังโหลดคิวคำขออัปเกรด...</div>
-          </div>
-        </div>
-
-        <!-- Admin Sub-Panel 2: All Registered Members Table -->
-        <div id="admin-subpanel-users" class="hidden space-y-3">
-          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <input type="text" id="admin-users-search-input" oninput="adminFilterUsersTable()" placeholder="ค้นหาด้วยอีเมลหรือชื่อสมาชิก..." class="w-full sm:max-w-xs px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl text-slate-900 focus:outline-none focus:border-[#00D084]" />
-            <span class="text-[11px] text-slate-500">เปลี่ยนแพ็กเกจ + ระยะเวลาแล้วกด "บันทึก" (ต่ออายุแพ็กเกจเดิมจะทบวันเพิ่มให้อัตโนมัติ)</span>
-          </div>
-          <div class="overflow-x-auto rounded-xl border border-slate-200">
-            <table class="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr class="bg-slate-50 border-b border-slate-200 text-[11px] text-slate-600">
-                  <th class="py-2.5 px-3 font-bold">สมาชิก / อีเมล</th>
-                  <th class="py-2.5 px-3 font-bold whitespace-nowrap">แพ็กเกจปัจจุบัน</th>
-                  <th class="py-2.5 px-3 font-bold whitespace-nowrap">วันหมดอายุ</th>
-                  <th class="py-2.5 px-3 font-bold text-center whitespace-nowrap">พอร์ต</th>
-                  <th class="py-2.5 px-3 font-bold whitespace-nowrap">จัดการสิทธิ์ &amp; ระยะเวลา</th>
-                </tr>
-              </thead>
-              <tbody id="admin-users-table-body" class="divide-y divide-slate-100">
-                <tr><td colspan="5" class="py-4 text-center text-slate-500">กำลังโหลดรายชื่อสมาชิก...</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <!-- Admin Sub-Panel 3: Real DB Activation Code Generator & Revocation -->
-        <div id="admin-subpanel-codes" class="hidden space-y-3">
-          <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5">
-            <div class="font-bold text-slate-800">🔑 สร้างรหัสเปิดใช้งานใหม่ (สุ่มปลอดภัยด้วย secrets 8 หลัก)</div>
-            <div class="grid grid-cols-2 sm:grid-cols-5 gap-2">
-              <div>
-                <label for="admin-code-tier" class="block text-[11px] font-semibold text-slate-600 mb-1">แพ็กเกจ</label>
-                <select id="admin-code-tier" class="w-full px-2.5 py-2 text-xs font-bold bg-white border border-slate-300 rounded-xl text-slate-900">
-                  <option value="pro">QuantFolio Pro</option>
-                  <option value="advisor">Advisor Pro (IC/IP)</option>
-                </select>
-              </div>
-              <div>
-                <label for="admin-code-duration" class="block text-[11px] font-semibold text-slate-600 mb-1">ระยะเวลาสิทธิ์</label>
-                <select id="admin-code-duration" class="w-full px-2.5 py-2 text-xs font-bold bg-white border border-slate-300 rounded-xl text-slate-900">
-                  <option value="30">30 วัน</option>
-                  <option value="90">90 วัน</option>
-                  <option value="365">365 วัน</option>
-                  <option value="0">ถาวร (Lifetime)</option>
-                </select>
-              </div>
-              <div>
-                <label for="admin-code-max-uses" class="block text-[11px] font-semibold text-slate-600 mb-1">จำนวนครั้งที่ใช้ได้</label>
-                <select id="admin-code-max-uses" class="w-full px-2.5 py-2 text-xs font-bold bg-white border border-slate-300 rounded-xl text-slate-900">
-                  <option value="1">1 ครั้ง (เฉพาะคนเดียว)</option>
-                  <option value="5">5 ครั้ง</option>
-                  <option value="50">50 ครั้ง</option>
-                  <option value="999">ไม่จำกัด (999)</option>
-                </select>
-              </div>
-              <div>
-                <label for="admin-code-valid-days" class="block text-[11px] font-semibold text-slate-600 mb-1">อายุการรับสิทธิ์ของรหัส</label>
-                <select id="admin-code-valid-days" class="w-full px-2.5 py-2 text-xs font-bold bg-white border border-slate-300 rounded-xl text-slate-900">
-                  <option value="7">หมดอายุใน 7 วัน</option>
-                  <option value="30" selected>หมดอายุใน 30 วัน</option>
-                  <option value="0">ไม่จำกัดวันกรอก</option>
-                </select>
-              </div>
-              <div class="col-span-2 sm:col-span-1 flex items-end">
-                <button type="button" id="btn-admin-gen-code" onclick="adminGenerateActivationCode()" class="w-full min-h-[38px] px-3 py-2 rounded-xl bg-[#00D084] hover:bg-[#00B873] text-[#0A0D12] font-extrabold text-xs transition cursor-pointer whitespace-nowrap">
-                  + สร้างรหัสใหม่
-                </button>
-              </div>
-            </div>
-            <input type="text" id="admin-code-note" placeholder="หมายเหตุรหัส (ไม่บังคับ) เช่น สำหรับลูกค้าคุณสมชาย หรือโปรเปิดตัว" class="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-xl text-slate-900 focus:outline-none focus:border-[#00D084]" />
-          </div>
-
-          <div class="overflow-x-auto rounded-xl border border-slate-200">
-            <table class="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr class="bg-slate-50 border-b border-slate-200 text-[11px] text-slate-600">
-                  <th class="py-2.5 px-3 font-bold">รหัสเปิดใช้งาน (Code)</th>
-                  <th class="py-2.5 px-3 font-bold whitespace-nowrap">แพ็กเกจ / สิทธิ์</th>
-                  <th class="py-2.5 px-3 font-bold text-center whitespace-nowrap">ใช้งานแล้ว</th>
-                  <th class="py-2.5 px-3 font-bold whitespace-nowrap">สถานะ</th>
-                  <th class="py-2.5 px-3 font-bold text-right whitespace-nowrap">จัดการ</th>
-                </tr>
-              </thead>
-              <tbody id="admin-codes-table-body" class="divide-y divide-slate-100">
-                <tr><td colspan="5" class="py-4 text-center text-slate-500">ยังไม่มีรหัสที่สร้างไว้ — กด "+ สร้างรหัสใหม่" ด้านบนเพื่อเริ่มต้น</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
+      <!-- Dynamic Admin Console Panel Mount (Constructed via JS ONLY after Backend confirms is_admin === true) -->
+      <div id="pro-admin-panel-mount"></div>
     </div>
   </div>
 
@@ -4043,7 +3862,7 @@
     })();
   </script>
 
-  <script src="/static/app.js?v=6.30"></script>
-  <script src="/static/supabase_auth.js?v=6.30"></script>
+  <script src="/static/app.js?v=6.32"></script>
+  <script src="/static/supabase_auth.js?v=6.32"></script>
 </body>
 </html>
