@@ -4,19 +4,35 @@
 :root {
   --font-sans: 'Plus Jakarta Sans', 'Anuphan', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono: 'Plus Jakarta Sans', 'Anuphan', monospace;
-  --text-primary: #1E293B;
-  --text-secondary: #64748B;
-  --dime-mint: #00D084;
+  /* [5.0] Unified Institutional Fintech Semantic Design Tokens (Light Mode) */
+  --background: #F8FAFC;
+  --foreground: #0F172A;
+  --card: #FFFFFF;
+  --card-foreground: #0F172A;
+  --muted: #F1F5F9;
+  --muted-foreground: #475569;
+  --border: #E2E8F0;
+  --primary: #059669;
+  --primary-hover: #047857;
+  --primary-foreground: #FFFFFF;
+  --primary-soft: #ECFDF5;
+  --primary-border: #A7F3D0;
+  --primary-text: #047857;
+  --surface-inverse: #0F172A;
+  --surface-inverse-fg: #FFFFFF;
+  --text-primary: var(--foreground);
+  --text-secondary: var(--muted-foreground);
+  --dime-mint: var(--primary);
   --dime-coral: #FF5A5F;
 }
 
 /* ==========================================================================
-   1. BASE THEME: HUMAN-CENTRIC FINTECH LIGHT MODE (#F8F9FA bg + #FFFFFF Cards)
+   1. BASE THEME: INSTITUTIONAL FINTECH LIGHT MODE (var(--background) + var(--card))
    ========================================================================== */
 body {
   font-family: var(--font-sans);
-  background-color: #F8F9FA;
-  color: #1E293B;
+  background-color: var(--background);
+  color: var(--foreground);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   font-feature-settings: "tnum" 1, "cv02" 1, "cv03" 1, "cv04" 1, "cv11" 1;
@@ -24,20 +40,19 @@ body {
   position: relative;
   overflow-x: hidden;
   line-height: 1.65;
-  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
-/* Light Mode Text Color Mapping (#1E293B Primary / #64748B Secondary) */
+/* Light Mode Semantic Text Mapping (var(--foreground) / var(--muted-foreground) #475569) */
 body:not(.theme-dark) .text-slate-900,
 body:not(.theme-dark) .text-slate-800,
 body:not(.theme-dark) .text-\[\#1A1D1F\] {
-  color: #1E293B !important;
+  color: var(--foreground) !important;
 }
 
 body:not(.theme-dark) .text-slate-600,
 body:not(.theme-dark) .text-slate-500,
 body:not(.theme-dark) .text-\[\#6C757D\] {
-  color: #64748B !important;
+  color: var(--muted-foreground) !important;
 }
 
 p,
@@ -136,8 +151,8 @@ h1, h2, h3 {
 }
 
 .dime-holding-row:hover {
-  border-color: #00D084;
-  box-shadow: 0 6px 18px -6px rgba(0, 208, 132, 0.16);
+  border-color: #CBD5E1;
+  box-shadow: 0 4px 12px -4px rgba(15, 23, 42, 0.08);
 }
 
 .dime-brand-logo {
@@ -156,7 +171,7 @@ h1, h2, h3 {
 /* Tab 2 Strategy Comparison Bars & Complete Holdings Rows */
 .qf-compare-tab.active {
   background: #0F172A;
-  color: #00D084;
+  color: #FFFFFF;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.14);
 }
 
@@ -185,9 +200,9 @@ h1, h2, h3 {
 
 .qf-compare-row.active {
   border-style: solid;
-  border-color: #00D084;
-  background: linear-gradient(135deg, rgba(230, 251, 243, 0.72) 0%, #FFFFFF 100%);
-  box-shadow: 0 6px 18px -8px rgba(0, 208, 132, 0.35), 0 0 0 1px rgba(0, 208, 132, 0.45);
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  box-shadow: none;
 }
 
 .qf-compare-track {
@@ -261,8 +276,7 @@ h1, h2, h3 {
 }
 
 .qf-stock-logo-wrap {
-  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08), inset 0 0 0 1px rgba(15, 23, 42, 0.08);
-  transition: transform 0.16s ease, box-shadow 0.16s ease;
+  transition: border-color 0.16s ease;
 }
 
 .qf-stock-logo-wrap.has-loaded-logo .qf-stock-logo-monogram {
@@ -271,119 +285,82 @@ h1, h2, h3 {
 
 .qf-stock-logo-img {
   background-color: #FFFFFF !important;
-  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.08);
 }
 
 html body.theme-dark .qf-stock-logo-wrap {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45), 0 0 0 1.5px #2A3448;
+  background-color: #1E293B !important;
+  border-color: #334155 !important;
+  color: #E2E8F0 !important;
+}
+
+html body.theme-dark .qf-stock-logo-monogram {
+  color: #E2E8F0 !important;
 }
 
 html body.theme-dark .qf-stock-logo-img:not([data-custom-svg="1"]) {
   background-color: #F8FAFC !important;
-  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.14);
 }
 
-/* Light Ambient Background */
+/* [Type A] Calm Institutional Background: Hero-Masked Subtle Blueprint Grid on Landing -> Pure Solid Calm Canvas in Workspace */
 .qf-ambient-bg {
   position: fixed;
   inset: 0;
   z-index: 0;
   overflow: hidden;
   pointer-events: none;
-  background: linear-gradient(135deg, #F4F7FA 0%, #F8F9FA 50%, #EEF6F3 100%);
-  transition: background 0.25s ease;
-}
-
-.qf-grid-motion {
-  position: absolute;
-  inset: -100px;
+  background-color: var(--background);
   background-image:
-    linear-gradient(to right, rgba(37, 99, 235, 0.05) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(37, 99, 235, 0.05) 1px, transparent 1px);
-  background-size: 52px 52px;
-  animation: qfGridDrift 28s linear infinite;
+    linear-gradient(to right, rgba(15, 23, 42, 0.032) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(15, 23, 42, 0.032) 1px, transparent 1px);
+  background-size: 48px 48px;
+  -webkit-mask-image: radial-gradient(ellipse 85% 65% at 50% 0%, #000000 18%, transparent 80%);
+  mask-image: radial-gradient(ellipse 85% 65% at 50% 0%, #000000 18%, transparent 80%);
 }
 
-@keyframes qfGridDrift {
-  0% { transform: translate3d(0, 0, 0); }
-  100% { transform: translate3d(52px, 52px, 0); }
+/* Workspace Pure Solid Calm Canvas (Zero Graph-Paper Grid Behind Data Tables & Charts) */
+body.qf-view-workspace:not(.theme-dark) {
+  --background: #F3F5F8;
+  background-color: #F3F5F8;
 }
 
-.qf-orb {
-  position: absolute;
-  border-radius: 9999px;
-  filter: blur(80px);
-  will-change: transform;
-  pointer-events: none;
+body.qf-view-workspace .qf-ambient-bg,
+html body.theme-dark.qf-view-workspace .qf-ambient-bg {
+  background-image: none !important;
+  -webkit-mask-image: none !important;
+  mask-image: none !important;
+  background-color: var(--background) !important;
 }
 
-.qf-orb-1 {
-  width: 620px;
-  height: 620px;
-  top: -160px;
-  left: -120px;
-  background: radial-gradient(circle, rgba(0, 208, 132, 0.16) 0%, rgba(0, 208, 132, 0.01) 70%);
-  animation: qfFloatOrb1 18s ease-in-out infinite alternate;
+.qf-login-ambient {
+  background: rgba(9, 11, 16, 0.68);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
 }
 
-.qf-orb-2 {
-  width: 640px;
-  height: 640px;
-  top: 22%;
-  right: -180px;
-  background: radial-gradient(circle, rgba(56, 189, 248, 0.14) 0%, rgba(56, 189, 248, 0.01) 70%);
-  animation: qfFloatOrb2 22s ease-in-out infinite alternate;
-}
-
-.qf-orb-3 {
-  width: 580px;
-  height: 580px;
-  bottom: -180px;
-  left: 24%;
-  background: radial-gradient(circle, rgba(99, 102, 241, 0.12) 0%, rgba(0, 208, 132, 0.01) 70%);
-  animation: qfFloatOrb3 20s ease-in-out infinite alternate;
-}
-
-@keyframes qfFloatOrb1 {
-  0% { transform: translate3d(0px, 0px, 0) scale(1); }
-  50% { transform: translate3d(90px, 55px, 0) scale(1.08); }
-  100% { transform: translate3d(-45px, 100px, 0) scale(0.95); }
-}
-
-@keyframes qfFloatOrb2 {
-  0% { transform: translate3d(0px, 0px, 0) scale(1); }
-  50% { transform: translate3d(-95px, 65px, 0) scale(1.07); }
-  100% { transform: translate3d(55px, -85px, 0) scale(0.94); }
-}
-
-@keyframes qfFloatOrb3 {
-  0% { transform: translate3d(0px, 0px, 0) scale(1); }
-  50% { transform: translate3d(75px, -65px, 0) scale(1.06); }
-  100% { transform: translate3d(-75px, 45px, 0) scale(0.96); }
-}
-
-/* Modular Cards (Light Mode Default) */
+/* Modular Cards (Light Mode Elevated White over Calm Slate Canvas) */
 .fin-card {
   position: relative;
   z-index: 1;
-  background: #FFFFFF;
-  border: 1px solid #ECEEF1;
-  border-radius: 20px;
-  box-shadow: 0 4px 20px -2px rgba(26, 29, 31, 0.045), 0 1px 3px rgba(26, 29, 31, 0.02);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 4px 14px -4px rgba(15, 23, 42, 0.04);
   overflow: hidden;
-  transition: background-color 0.2s ease, border-color 0.2s ease;
 }
 
 .fin-card-header {
-  border-bottom: 1px solid #F1F3F5;
-  padding: 18px 24px;
+  border-bottom: 1px solid var(--border);
+  padding: 16px 20px;
 }
 
-.step-accent-blue { border-top: 3px solid #2563eb; }
-.step-accent-indigo { border-top: 3px solid #4f46e5; }
-.step-accent-emerald { border-top: 3px solid #00D084; }
-.step-accent-rose { border-top: 3px solid #FF5A5F; }
-.step-accent-slate { border-top: 3px solid #1A1D1F; }
+/* Neutralize thick rainbow top accent strips on secondary cards — reserve 3px Emerald rail exclusively for #global-result-strip */
+.step-accent-blue,
+.step-accent-indigo,
+.step-accent-emerald,
+.step-accent-rose,
+.step-accent-slate {
+  border-top: 1px solid var(--border);
+}
 
 /* Hero KPI & Balance Figures across Tabs 1-5 */
 #kpi-return,
@@ -397,38 +374,71 @@ html body.theme-dark .qf-stock-logo-img:not([data-custom-svg="1"]) {
   font-variant-numeric: tabular-nums;
 }
 
-/* Premium Dark Hero Result Strip (#global-result-strip) — #1 Focal Point in Light & Dark Mode */
+/* Two-Tone Executive Institutional Portfolio Summary Card (#global-result-strip) — Full Light & Dark Theme Parity */
 #global-result-strip.qf-hero-result-strip {
-  background:
-    radial-gradient(circle at 8% 0%, rgba(0, 208, 132, 0.22) 0%, rgba(0, 208, 132, 0) 44%),
-    radial-gradient(circle at 92% 100%, rgba(59, 130, 246, 0.14) 0%, rgba(59, 130, 246, 0) 42%),
-    linear-gradient(135deg, #0B1220 0%, #0F172A 56%, #111C30 100%) !important;
-  border: 1.5px solid rgba(0, 208, 132, 0.36) !important;
-  box-shadow: 0 18px 42px -14px rgba(15, 23, 42, 0.36), 0 0 0 1px rgba(255, 255, 255, 0.05) inset !important;
-  color: #F8FAFC;
+  background: var(--card) !important;
+  border: 1px solid #CBD5E1 !important;
+  border-top: 3px solid var(--primary) !important;
+  box-shadow: 0 10px 28px -10px rgba(15, 23, 42, 0.14), 0 4px 10px -4px rgba(15, 23, 42, 0.06) !important;
+  color: var(--foreground);
 }
 
 html body.theme-dark #global-result-strip.qf-hero-result-strip {
-  background:
-    radial-gradient(circle at 8% 0%, rgba(0, 208, 132, 0.26) 0%, rgba(0, 208, 132, 0) 46%),
-    radial-gradient(circle at 92% 100%, rgba(59, 130, 246, 0.16) 0%, rgba(59, 130, 246, 0) 44%),
-    linear-gradient(135deg, #09131E 0%, #0E1729 58%, #102033 100%) !important;
-  border-color: rgba(0, 208, 132, 0.5) !important;
-  box-shadow: 0 20px 44px -14px rgba(0, 0, 0, 0.62), 0 0 24px -8px rgba(0, 208, 132, 0.22) !important;
+  background: var(--card) !important;
+  border-color: #2D374B !important;
+  border-top: 3px solid var(--primary) !important;
+  box-shadow: 0 14px 36px -12px rgba(0, 0, 0, 0.65) !important;
+  color: var(--foreground);
 }
 
-#global-result-strip .qf-hero-strip-header {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+/* Executive Dark Slate Header Band (Light Mode #0F172A / Dark Mode Elevated #172033) */
+#global-result-strip .qf-hero-strip-header,
+#global-result-strip #global-result-strip-compact-bar {
+  background-color: #0F172A !important;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18) !important;
+  color: #F8FAFC !important;
+}
+
+html body.theme-dark #global-result-strip .qf-hero-strip-header,
+html body.theme-dark #global-result-strip #global-result-strip-compact-bar {
+  background-color: #172033 !important;
+  border-bottom: 1px solid #28354D !important;
+  color: #F8FAFC !important;
+}
+
+#global-result-strip .qf-hero-strip-header #active-goal-title,
+#global-result-strip #global-result-strip-compact-bar #strip-compact-title {
+  color: #FFFFFF !important;
+}
+
+#global-result-strip .qf-hero-strip-header .qf-primary-text,
+#global-result-strip #global-result-strip-compact-bar .qf-primary-text,
+#global-result-strip .qf-hero-strip-header #strip-curr-symbol {
+  color: #34D399 !important;
+}
+
+#global-result-strip .qf-hero-strip-header .qf-primary-dot,
+#global-result-strip #global-result-strip-compact-bar .qf-primary-dot {
+  background-color: #10B981 !important;
+}
+
+#global-result-strip .qf-hero-strip-header #analysis-period-badge,
+#global-result-strip .qf-hero-strip-header .dark-divider {
+  color: #94A3B8 !important;
 }
 
 #global-result-strip .qf-hero-budget-box {
-  background: rgba(255, 255, 255, 0.08) !important;
-  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+  background: #1E293B !important;
+  border: 1px solid #334155 !important;
+}
+
+#global-result-strip .qf-hero-budget-box > span {
+  color: #CBD5E1 !important;
 }
 
 #global-result-strip .qf-hero-budget-box:focus-within {
-  border-color: #00D084 !important;
-  background: rgba(255, 255, 255, 0.12) !important;
+  border-color: #10B981 !important;
+  background: #0B1220 !important;
 }
 
 #global-result-strip #strip-budget-input {
@@ -437,25 +447,51 @@ html body.theme-dark #global-result-strip.qf-hero-result-strip {
   border: none !important;
 }
 
-#global-result-strip .qf-hero-pill-group {
-  background: rgba(255, 255, 255, 0.07) !important;
-  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+/* Executive Header Segmented Control: Crisp White Active Pill on Dark Slate Track */
+#global-result-strip .qf-hero-pill-group,
+html body.theme-dark #global-result-strip .qf-hero-pill-group {
+  background: #1E293B !important;
+  border: 1px solid #334155 !important;
 }
 
-#global-result-strip .qf-hero-edit-btn {
-  background: rgba(255, 255, 255, 0.1) !important;
-  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+#global-result-strip .qf-hero-pill-group .top-goal-pill.qf-seg-active,
+html body.theme-dark #global-result-strip .qf-hero-pill-group .top-goal-pill.qf-seg-active {
+  background-color: #FFFFFF !important;
+  color: #0F172A !important;
+  border: 1px solid #FFFFFF !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28) !important;
+}
+
+#global-result-strip .qf-hero-pill-group .top-goal-pill.qf-seg-inactive,
+html body.theme-dark #global-result-strip .qf-hero-pill-group .top-goal-pill.qf-seg-inactive {
+  background-color: transparent !important;
+  color: #CBD5E1 !important;
+  border: 1px solid transparent !important;
+}
+
+#global-result-strip .qf-hero-pill-group .top-goal-pill.qf-seg-inactive:hover,
+html body.theme-dark #global-result-strip .qf-hero-pill-group .top-goal-pill.qf-seg-inactive:hover {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+  color: #FFFFFF !important;
+}
+
+#global-result-strip .qf-hero-edit-btn,
+html body.theme-dark #global-result-strip .qf-hero-edit-btn {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid rgba(148, 163, 184, 0.34) !important;
   color: #F8FAFC !important;
 }
 
-#global-result-strip .qf-hero-edit-btn:hover {
-  background: rgba(255, 255, 255, 0.18) !important;
-  border-color: rgba(0, 208, 132, 0.5) !important;
+#global-result-strip .qf-hero-edit-btn:hover,
+html body.theme-dark #global-result-strip .qf-hero-edit-btn:hover {
+  background: rgba(255, 255, 255, 0.14) !important;
+  border-color: rgba(203, 213, 225, 0.58) !important;
+  color: #FFFFFF !important;
 }
 
 #global-result-strip .qf-hero-kpi-cell {
-  border-right: 1px solid rgba(255, 255, 255, 0.08);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
 }
 
 @media (min-width: 1024px) {
@@ -467,30 +503,72 @@ html body.theme-dark #global-result-strip.qf-hero-result-strip {
   }
 }
 
-#global-result-strip .qf-hero-kpi-emerald {
-  background: linear-gradient(180deg, rgba(0, 208, 132, 0.13) 0%, rgba(0, 208, 132, 0.03) 100%);
-}
-
-#global-result-strip .qf-hero-kpi-rose {
-  background: linear-gradient(180deg, rgba(255, 90, 95, 0.10) 0%, rgba(255, 90, 95, 0.02) 100%);
-}
-
 #global-result-strip .qf-hero-strip-footer {
-  background: rgba(0, 0, 0, 0.26);
-  border-top: 1px solid rgba(255, 255, 255, 0.09);
+  background: var(--muted);
+  border-top: 1px solid var(--border);
 }
 
-#global-result-strip .qf-tip.qf-tip-dark {
-  background: rgba(255, 255, 255, 0.16) !important;
-  color: #E2E8F0 !important;
+/* Institutional Semantic KPI Colors & Subtle Tags (Light & Dark Parity) */
+.qf-kpi-rose-text {
+  color: #E11D48 !important;
 }
 
-#global-result-strip .text-blue-600 {
-  color: #60A5FA !important;
+html body.theme-dark .qf-kpi-rose-text {
+  color: #FB7185 !important;
 }
 
-#global-result-strip .text-amber-500 {
-  color: #FBBF24 !important;
+.qf-kpi-tag-emerald {
+  background-color: var(--primary-soft) !important;
+  border-color: var(--primary-border) !important;
+  color: var(--primary-text) !important;
+}
+
+.qf-kpi-tag-amber {
+  background-color: #FEF3C7 !important;
+  border-color: #FDE68A !important;
+  color: #92400E !important;
+}
+
+.qf-kpi-tag-rose {
+  background-color: #FFF1F2 !important;
+  border-color: #FECDD3 !important;
+  color: #BE123C !important;
+}
+
+.qf-kpi-tag-blue {
+  background-color: #EFF6FF !important;
+  border-color: #BFDBFE !important;
+  color: #1D4ED8 !important;
+}
+
+.qf-kpi-tag-neutral {
+  background-color: var(--muted) !important;
+  border-color: var(--border) !important;
+  color: var(--muted-foreground) !important;
+}
+
+html body.theme-dark .qf-kpi-tag-amber {
+  background-color: rgba(245, 158, 11, 0.14) !important;
+  border-color: rgba(251, 191, 36, 0.35) !important;
+  color: #FDE68A !important;
+}
+
+html body.theme-dark .qf-kpi-tag-rose {
+  background-color: rgba(244, 63, 94, 0.14) !important;
+  border-color: rgba(251, 113, 133, 0.35) !important;
+  color: #FDA4AF !important;
+}
+
+html body.theme-dark .qf-kpi-tag-blue {
+  background-color: rgba(59, 130, 246, 0.14) !important;
+  border-color: rgba(96, 165, 250, 0.35) !important;
+  color: #93C5FD !important;
+}
+
+/* Minimal Institutional Loading Spinner */
+.qf-loading-spinner {
+  border-color: var(--border);
+  border-top-color: var(--primary);
 }
 
 /* Backtest Stress & Goal Projection 4-Col Tiles: compact overflow-safe clamp */
@@ -519,31 +597,31 @@ html body.theme-dark #global-result-strip.qf-hero-result-strip {
 }
 
 .goal-preset-card:hover {
-  border-color: #00D084;
+  border-color: #94A3B8;
   transform: translateY(-1px);
 }
 
 .goal-preset-card.active {
-  border-color: #00D084 !important;
-  background: linear-gradient(180deg, #E6FBF3 0%, #FFFFFF 100%) !important;
-  box-shadow: 0 6px 16px -6px rgba(0, 208, 132, 0.22), 0 0 0 1px #00D084 !important;
+  border-color: var(--primary) !important;
+  background: var(--primary-soft) !important;
+  box-shadow: inset 0 0 0 1px var(--primary) !important;
 }
 
 html body.theme-dark .goal-preset-card {
-  background: #1B2230 !important;
+  background: #161C28 !important;
   border-color: #2A3448 !important;
   color: #F8FAFC !important;
 }
 
 html body.theme-dark .goal-preset-card:hover {
-  border-color: #00D084 !important;
-  background: #20293A !important;
+  border-color: #475569 !important;
+  background: #1C2434 !important;
 }
 
 html body.theme-dark .goal-preset-card.active {
-  border-color: #00D084 !important;
-  background: linear-gradient(180deg, rgba(0, 208, 132, 0.18) 0%, #1B2230 100%) !important;
-  box-shadow: 0 8px 20px -6px rgba(0, 208, 132, 0.28), 0 0 0 1px #00D084 !important;
+  border-color: var(--primary) !important;
+  background: rgba(16, 185, 129, 0.12) !important;
+  box-shadow: inset 0 0 0 1px var(--primary) !important;
 }
 
 #budget-input {
@@ -571,31 +649,30 @@ html body.theme-dark .goal-preset-card.active {
   letter-spacing: -0.015em;
 }
 
-/* Strategy Radio Cards (Light Mode Default) */
+/* Strategy Radio Cards (Institutional Hairline — Zero Glow) */
 .goal-option {
-  border: 1.5px solid #ECEEF1;
-  border-radius: 16px;
+  border: 1px solid #E2E8F0;
+  border-radius: 12px;
   background: #FFFFFF;
   min-height: 44px;
-  transition: all 0.18s ease;
+  transition: border-color 0.16s ease, background-color 0.16s ease;
   cursor: pointer;
 }
 
 .goal-option:hover {
-  border-color: #00D084;
-  background: #F8F9FA;
-  transform: translateY(-1px);
+  border-color: #94A3B8;
+  background: #F8FAFC;
 }
 
 .goal-option.active {
-  border-color: #00D084;
-  background: linear-gradient(180deg, #E6FBF3 0%, #FFFFFF 100%);
-  box-shadow: 0 6px 16px -6px rgba(0, 208, 132, 0.22), 0 0 0 1px #00D084;
+  border-color: #059669;
+  background: #F0FDF4;
+  box-shadow: inset 0 0 0 1px #059669;
 }
 
 .qf-goal-check {
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   border-radius: 9999px;
   border: 1.5px solid #CBD5E1;
   background: #FFFFFF;
@@ -603,17 +680,16 @@ html body.theme-dark .goal-preset-card.active {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
-  font-weight: 800;
+  font-size: 11px;
+  font-weight: 700;
   flex-shrink: 0;
   transition: all 0.16s ease;
 }
 
 .goal-option.active .qf-goal-check {
-  border-color: #00D084;
-  background: #00D084;
-  color: #0A0D12;
-  box-shadow: 0 2px 8px -2px rgba(0, 208, 132, 0.45);
+  border-color: #059669;
+  background: #059669;
+  color: #FFFFFF;
 }
 
 html body.theme-dark .qf-goal-check {
@@ -622,14 +698,14 @@ html body.theme-dark .qf-goal-check {
 }
 
 html body.theme-dark .goal-option.active .qf-goal-check {
-  border-color: #00D084;
-  background: #00D084;
-  color: #0A0D12 !important;
+  border-color: #10B981;
+  background: #10B981;
+  color: #052E16 !important;
 }
 
 html body.theme-dark .qf-source-tab[aria-selected="true"] {
-  background-color: #00D084 !important;
-  color: #0A0D12 !important;
+  background-color: #243046 !important;
+  color: #F8FAFC !important;
 }
 
 /* Rebalance Mode Buttons */
@@ -642,16 +718,23 @@ html body.theme-dark .qf-source-tab[aria-selected="true"] {
 }
 
 .rebal-mode-btn:hover {
-  background: #F8F9FA;
-  border-color: #00D084;
+  background: #F8FAFC;
+  border-color: #94A3B8;
 }
 
 .rebal-mode-btn.active {
-  background: #00D084 !important;
-  color: #0A0D12 !important;
+  background: #0F172A !important;
+  color: #FFFFFF !important;
   font-weight: 700 !important;
-  border-color: #00D084 !important;
-  box-shadow: 0 4px 12px -2px rgba(0, 208, 132, 0.35);
+  border-color: #0F172A !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
+}
+
+html body.theme-dark .rebal-mode-btn.active {
+  background: #232E42 !important;
+  color: #F8FAFC !important;
+  border-color: #3B4963 !important;
+  box-shadow: none !important;
 }
 
 /* Financial Table Styling (Regular/Medium 500 Table Headers + #64748B + 1.65 Line Height) */
@@ -705,9 +788,9 @@ thead th {
 }
 
 .flow-pair-card {
-  background: linear-gradient(90deg, #FFF0F0 0%, #FFFFFF 48%, #E6FBF3 100%);
-  border: 1px solid #ECEEF1;
-  border-radius: 16px;
+  background: #F8FAFC;
+  border: 1px solid var(--border);
+  border-radius: 14px;
 }
 
 /* Order Execution Checkbox & Table Done State */
@@ -715,63 +798,63 @@ thead th {
   width: 20px;
   height: 20px;
   border-radius: 6px;
-  accent-color: #00D084;
+  accent-color: var(--primary);
   cursor: pointer;
 }
 
 tr.order-row-done td {
   opacity: 0.65;
-  background-color: #E6FBF3;
+  background-color: var(--primary-soft);
 }
 
-/* 5-Tab Clean Navigation Pills */
+/* 5-Tab Clean Flat Institutional Navigation */
 .qf-tab-btn {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  min-height: 44px;
-  padding: 10px 16px;
-  border-radius: 14px;
-  font-size: 13.5px;
-  font-weight: 600;
-  color: #6C757D;
+  gap: 7px;
+  min-height: 38px;
+  padding: 7px 13px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #64748B;
   background: transparent;
   border: 1px solid transparent;
-  transition: all 0.18s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
   white-space: nowrap;
   cursor: pointer;
 }
 
 .qf-tab-btn:hover {
-  color: #1A1D1F;
+  color: #0F172A;
   background: #F1F5F9;
 }
 
 .qf-tab-btn.active {
-  color: #0A0D12 !important;
-  background: #00D084 !important;
-  border-color: #00D084 !important;
-  font-weight: 800;
-  box-shadow: 0 6px 18px -4px rgba(0, 208, 132, 0.35);
+  color: #FFFFFF !important;
+  background: #0F172A !important;
+  border-color: #0F172A !important;
+  font-weight: 600;
+  box-shadow: none !important;
 }
 
 .qf-tab-step {
-  width: 22px;
-  height: 22px;
-  border-radius: 9999px;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   font-size: 11px;
-  font-weight: 800;
-  background: #ECEEF1;
-  color: #1A1D1F;
+  font-weight: 700;
+  background: #F1F5F9;
+  color: #475569;
   flex-shrink: 0;
 }
 
 .qf-tab-btn.active .qf-tab-step {
-  background: #0A0D12;
-  color: #00D084;
+  background: rgba(255, 255, 255, 0.16);
+  color: #FFFFFF;
 }
 
 /* Order Ticket Checklist Card */
@@ -785,18 +868,18 @@ tr.order-row-done td {
 }
 
 .qf-ticket-card:hover {
-  border-color: #00D084;
-  box-shadow: 0 8px 22px -6px rgba(26, 29, 31, 0.08);
+  border-color: #CBD5E1;
+  box-shadow: 0 6px 16px -6px rgba(15, 23, 42, 0.08);
 }
 
-.qf-ticket-card.is-buy { border-left: 5px solid #00D084 !important; }
-.qf-ticket-card.is-sell { border-left: 5px solid #FF5A5F !important; }
-.qf-ticket-card.is-hold { border-left: 5px solid #94A3B8 !important; }
+.qf-ticket-card.is-buy { border-left: 3px solid var(--primary) !important; }
+.qf-ticket-card.is-sell { border-left: 3px solid #E11D48 !important; }
+.qf-ticket-card.is-hold { border-left: 3px solid #94A3B8 !important; }
 
 .qf-ticket-card.executed {
   opacity: 0.68;
-  background: #E6FBF3;
-  border-color: #00D084;
+  background: var(--primary-soft);
+  border-color: var(--primary-border);
 }
 
 /* Tooltips */
@@ -877,31 +960,44 @@ tr.order-row-done td {
    2. OBSIDIAN DARK MODE (body.theme-dark: #0A0D12 -> #131822 -> #1B2230)
    ========================================================================== */
 html body.theme-dark {
-  background-color: #0A0D12 !important;
-  color: #F8FAFC !important;
+  --background: #090B10;
+  --foreground: #F8FAFC;
+  --card: #111620;
+  --card-foreground: #F8FAFC;
+  --muted: #181F2C;
+  --muted-foreground: #CBD5E1;
+  --border: #232B3A;
+  --primary: #10B981;
+  --primary-hover: #34D399;
+  --primary-foreground: #052E16;
+  --primary-soft: rgba(16, 185, 129, 0.14);
+  --primary-border: rgba(16, 185, 129, 0.35);
+  --primary-text: #34D399;
+  --surface-inverse: #F1F5F9;
+  --surface-inverse-fg: #0F172A;
+  background-color: var(--background) !important;
+  color: var(--foreground) !important;
   color-scheme: dark;
 }
 
 html body.theme-dark .qf-ambient-bg {
-  background: radial-gradient(ellipse at 20% 0%, #0E1724 0%, #0A0D12 58%, #07090D 100%) !important;
-}
-
-html body.theme-dark .qf-grid-motion {
+  background-color: var(--background) !important;
   background-image:
-    linear-gradient(to right, rgba(0, 208, 132, 0.035) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(56, 189, 248, 0.03) 1px, transparent 1px);
+    linear-gradient(to right, rgba(148, 163, 184, 0.04) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(148, 163, 184, 0.04) 1px, transparent 1px) !important;
+  background-size: 48px 48px !important;
 }
 
 html body.theme-dark header {
   background: rgba(13, 17, 24, 0.92) !important;
-  border-bottom: 1px solid #1F2736 !important;
+  border-bottom: 1px solid var(--border) !important;
 }
 
 html body.theme-dark .fin-card {
-  background: #131822 !important;
-  border: 1px solid #232B3A !important;
+  background: var(--card) !important;
+  border: 1px solid var(--border) !important;
   box-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.35);
-  color: #F8FAFC;
+  color: var(--card-foreground);
 }
 
 html body.theme-dark .fin-card-header {
@@ -950,9 +1046,9 @@ html body.theme-dark .rebal-mode-btn.active:hover {
 }
 
 html body.theme-dark .goal-option.active {
-  border-color: #00D084 !important;
-  background: linear-gradient(180deg, rgba(0, 208, 132, 0.18) 0%, #1B2230 100%) !important;
-  box-shadow: 0 8px 20px -6px rgba(0, 208, 132, 0.28), 0 0 0 1px #00D084 !important;
+  border-color: #10B981 !important;
+  background: rgba(16, 185, 129, 0.08) !important;
+  box-shadow: inset 0 0 0 1px #10B981 !important;
 }
 
 html body.theme-dark .qf-compare-tab.active {
@@ -978,9 +1074,9 @@ html body.theme-dark .qf-compare-row.is-baseline {
 
 html body.theme-dark .qf-compare-row.active {
   border-style: solid !important;
-  border-color: #00D084 !important;
-  background: linear-gradient(135deg, rgba(0, 208, 132, 0.16) 0%, #1B2230 100%) !important;
-  box-shadow: 0 6px 18px -6px rgba(0, 208, 132, 0.25), 0 0 0 1px rgba(0, 208, 132, 0.55) !important;
+  border-color: var(--primary) !important;
+  background: rgba(16, 185, 129, 0.10) !important;
+  box-shadow: none !important;
 }
 
 html body.theme-dark .qf-compare-track {
@@ -1082,7 +1178,7 @@ html body.theme-dark .fin-table tbody tr:hover {
 }
 
 html body.theme-dark .flow-pair-card {
-  background: linear-gradient(90deg, rgba(255, 90, 95, 0.12) 0%, #1B2230 48%, rgba(0, 208, 132, 0.12) 100%) !important;
+  background: #161D2B !important;
   border-color: #2D374B !important;
 }
 
@@ -1100,9 +1196,15 @@ html body.theme-dark .qf-tab-step {
   color: #CBD5E1;
 }
 
+html body.theme-dark .qf-tab-btn.active {
+  background: #1E293B !important;
+  border-color: #475569 !important;
+  color: #F8FAFC !important;
+}
+
 html body.theme-dark .qf-tab-btn.active .qf-tab-step {
-  background: #0A0D12 !important;
-  color: #00D084 !important;
+  background: #10B981 !important;
+  color: #052E16 !important;
 }
 
 html body.theme-dark .qf-tip {
@@ -1122,6 +1224,7 @@ html body.theme-dark .fin-card .bg-white,
 html body.theme-dark .fin-card .bg-slate-50,
 html body.theme-dark .fin-card .bg-slate-50\/50,
 html body.theme-dark .fin-card .bg-slate-50\/60,
+html body.theme-dark .fin-card .bg-slate-50\/70,
 html body.theme-dark .fin-card .bg-slate-50\/80,
 html body.theme-dark .fin-card .bg-slate-50\/90,
 html body.theme-dark .fin-card .bg-\[\#F8F9FA\],
@@ -1598,30 +1701,71 @@ html body.theme-dark .text-\[\#1A1D1F\] {
   color: #F8FAFC !important;
 }
 
-/* Keep dark text inside bright #00D084 Mint buttons/pills in both themes (preserve bright step number) */
-.bg-\[\#00D084\],
+/* Unify legacy #00D084 / #E6FBF3 / #008A57 / #00A86B classes directly onto --primary tokens */
+.bg-\[\#00D084\] {
+  background-color: var(--primary) !important;
+  color: var(--primary-foreground) !important;
+}
+
 .bg-\[\#00D084\] span,
-.bg-\[\#00D084\] i,
-.qf-tab-btn.active,
-.qf-tab-btn.active > span:not(.qf-tab-step),
+.bg-\[\#00D084\] i {
+  color: var(--primary-foreground) !important;
+}
+
+.hover\:bg-\[\#00B873\]:hover,
+.hover\:bg-\[\#00B874\]:hover {
+  background-color: var(--primary-hover) !important;
+}
+
+.bg-\[\#E6FBF3\] {
+  background-color: var(--primary-soft) !important;
+}
+
+.text-\[\#008A57\],
+.text-\[\#00A86B\] {
+  color: var(--primary-text) !important;
+}
+
+.border-\[\#00D084\],
+.border-\[\#00D084\]\/40 {
+  border-color: var(--primary-border) !important;
+}
+
 .rebal-mode-btn.active,
 .rebal-mode-btn.active span {
-  color: #0A0D12 !important;
+  background-color: var(--primary) !important;
+  border-color: var(--primary) !important;
+  color: var(--primary-foreground) !important;
+}
+
+.qf-tab-btn.active,
+.qf-tab-btn.active > span:not(.qf-tab-step) {
+  color: #FFFFFF !important;
 }
 
 .qf-tab-btn.active .qf-tab-step {
-  background: #0A0D12 !important;
-  color: #00D084 !important;
+  background: rgba(255, 255, 255, 0.18) !important;
+  color: #FFFFFF !important;
+}
+
+html body.theme-dark .qf-tab-btn.active,
+html body.theme-dark .qf-tab-btn.active > span:not(.qf-tab-step) {
+  color: #F8FAFC !important;
+}
+
+html body.theme-dark .qf-tab-btn.active .qf-tab-step {
+  background: var(--primary) !important;
+  color: var(--primary-foreground) !important;
 }
 
 html body.theme-dark .text-slate-700,
-html body.theme-dark .text-slate-600 {
-  color: #CBD5E1 !important;
+html body.theme-dark .text-slate-600,
+html body.theme-dark .text-slate-500,
+html body.theme-dark .text-\[\#6C757D\] {
+  color: var(--muted-foreground) !important;
 }
 
-html body.theme-dark .text-slate-500,
-html body.theme-dark .text-slate-400,
-html body.theme-dark .text-\[\#6C757D\] {
+html body.theme-dark .text-slate-400 {
   color: #94A3B8 !important;
 }
 
@@ -1821,44 +1965,34 @@ html body.theme-dark #account-settings-modal #btn-change-password:hover {
   background-color: #293548 !important;
 }
 
-/* Landing Showcase Polish (Light & Dark Mode) */
+/* Landing Showcase Polish (Clean Vector — Zero Neon Drop-Shadow Glows) */
 .qf-brand-logo {
   display: block;
-  filter: drop-shadow(0 4px 10px rgba(0, 208, 132, 0.22));
 }
 
 html body.theme-dark .qf-brand-logo {
-  filter: drop-shadow(0 4px 12px rgba(0, 208, 132, 0.28));
+  filter: none;
 }
 
 .qf-hero-emblem-img {
   display: block;
-  filter: drop-shadow(0 10px 22px rgba(0, 208, 132, 0.30)) drop-shadow(0 4px 10px rgba(15, 23, 42, 0.22));
-  transition: transform 0.22s ease, filter 0.22s ease;
 }
 
 .qf-hero-emblem-img:hover {
-  transform: translateY(-2px) scale(1.03);
-  filter: drop-shadow(0 14px 28px rgba(0, 208, 132, 0.40)) drop-shadow(0 6px 14px rgba(15, 23, 42, 0.26));
+  transform: none;
 }
 
 html body.theme-dark .qf-hero-emblem-img {
-  filter: drop-shadow(0 10px 24px rgba(0, 208, 132, 0.34)) drop-shadow(0 6px 16px rgba(0, 0, 0, 0.65));
+  filter: none;
 }
 
 .qf-hero-emblem {
-  background: linear-gradient(135deg, rgba(0, 208, 132, 0.55) 0%, rgba(56, 189, 248, 0.25) 55%, rgba(15, 23, 42, 0.4) 100%);
-  box-shadow:
-    0 16px 36px -10px rgba(0, 208, 132, 0.36),
-    0 8px 18px -6px rgba(15, 23, 42, 0.22);
-  transition: transform 0.22s ease, box-shadow 0.22s ease;
+  background: #F8FAFC;
+  border: 1px solid #E2E8F0;
 }
 
 .qf-hero-emblem:hover {
-  transform: translateY(-2px) scale(1.02);
-  box-shadow:
-    0 20px 42px -10px rgba(0, 208, 132, 0.45),
-    0 10px 20px -6px rgba(15, 23, 42, 0.26);
+  transform: none;
 }
 
 html body.theme-dark .qf-hero-emblem {
@@ -2201,13 +2335,13 @@ html body.theme-dark #landing-showcase-view svg text {
   height: 3px;
   z-index: 120;
   pointer-events: none;
-  background: rgba(0, 208, 132, 0.14);
+  background: rgba(15, 23, 42, 0.08);
 }
 
 .qf-top-progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, #00D084 0%, #38BDF8 100%);
-  box-shadow: 0 0 10px rgba(0, 208, 132, 0.55);
+  background: var(--primary);
+  box-shadow: none;
   transition: width 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -2228,7 +2362,7 @@ html body.theme-dark #landing-showcase-view svg text {
   position: absolute;
   inset: 0;
   z-index: 25;
-  background: linear-gradient(90deg, transparent 0%, rgba(0, 208, 132, 0.10) 50%, transparent 100%);
+  background: linear-gradient(90deg, transparent 0%, rgba(148, 163, 184, 0.12) 50%, transparent 100%);
   animation: qfSkeletonShimmer 1.35s infinite ease-in-out;
   pointer-events: none;
 }
@@ -2258,8 +2392,8 @@ html body.theme-dark .qf-inline-shimmer::after {
 }
 
 html body.theme-dark #loading-card .qf-loading-overlay-card {
-  background-color: #131822 !important;
-  border-color: rgba(0, 208, 132, 0.42) !important;
+  background-color: #111620 !important;
+  border-color: var(--border) !important;
   color: #F8FAFC !important;
 }
 
@@ -2310,17 +2444,12 @@ html body.theme-dark #loading-card .qf-load-step:not(.active) {
 }
 
 @media (max-width: 767px) {
-  /* Disable heavy blurred orbs & grid motion on mobile for buttery 60-120 FPS scroll */
-  .qf-orb,
-  #qf-quant-canvas {
-    display: none !important;
+  /* Bottom clearance so fixed 5-tab mobile nav never overlaps cards/inputs */
+  #main-app-workspace {
+    padding-bottom: calc(92px + env(safe-area-inset-bottom, 0px)) !important;
   }
 
-  .qf-grid-motion {
-    animation: none !important;
-  }
-
-  /* Fixed Dime!-style 5-Tab Bottom Navigation Bar */
+  /* Fixed Compact 5-Tab Bottom Navigation Bar */
   #main-nav-tabs {
     position: fixed !important;
     bottom: 0 !important;
@@ -2456,8 +2585,8 @@ html body.theme-dark #loading-card .qf-load-step:not(.active) {
   }
 }
 
-/* Collapsible Hero Result Strip on Mobile Tabs 3-5 */
-@media (max-width: 767px) {
+/* [3.5] Collapsible Hero Result Strip on Mobile (<640px) Tabs 3-5 */
+@media (max-width: 639px) {
   #global-result-strip.qf-strip-mobile-collapsed #global-result-strip-details {
     display: none !important;
   }
@@ -2465,6 +2594,478 @@ html body.theme-dark #loading-card .qf-load-step:not(.active) {
   #global-result-strip.qf-strip-mobile-collapsed #global-result-strip-compact-bar {
     display: flex !important;
   }
+}
+
+@media (max-width: 419px) {
+  #step-1-config-card h2 {
+    font-size: 1rem !important;
+    line-height: 1.4 !important;
+  }
+}
+
+/* [3.6] Tab 1 Quick Sample Portfolio Shortcut Pills (Light & Dark Mode) */
+.qf-quick-sample-pill.active {
+  background-color: #E6FBF3 !important;
+  border-color: #00D084 !important;
+  color: #065F46 !important;
+  font-weight: 700;
+}
+
+html body.theme-dark .qf-quick-sample-pill {
+  background-color: #141B26 !important;
+  border-color: #2A3446 !important;
+  color: #CBD5E1 !important;
+}
+
+html body.theme-dark .qf-quick-sample-pill:hover,
+html body.theme-dark .qf-quick-sample-pill.active {
+  background-color: rgba(0, 208, 132, 0.16) !important;
+  border-color: #00D084 !important;
+  color: #34F5A8 !important;
+}
+
+html body.theme-dark #ticker-search-bk-hint {
+  color: #94A3B8 !important;
+}
+
+html body.theme-dark #ticker-search-bk-hint code {
+  color: #E2E8F0 !important;
+}
+
+/* [4.4] Non-Recurring Payment Reassurance Banners (Dark Mode High Contrast) */
+html body.theme-dark #pro-modal-billing-reassurance,
+html body.theme-dark #pro-activate-billing-reassurance,
+html body.theme-dark #account-menu-billing-reassurance,
+html body.theme-dark #acct-modal-billing-reassurance {
+  background-color: rgba(0, 208, 132, 0.10) !important;
+  border-color: rgba(0, 208, 132, 0.30) !important;
+  color: #D1FAE5 !important;
+}
+
+html body.theme-dark #pro-modal-billing-reassurance strong,
+html body.theme-dark #pro-activate-billing-reassurance strong,
+html body.theme-dark #account-menu-billing-reassurance strong,
+html body.theme-dark #acct-modal-billing-reassurance strong {
+  color: #34F5A8 !important;
+}
+
+/* [4.5] Formal Institutional Icon Containers, CTAs & Status Pills (Light & Dark Mode) */
+.qf-formal-icon-box {
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+}
+
+html body.theme-dark #pro-upgrade-modal .qf-formal-icon-box {
+  background-color: #1E293B !important;
+  border-color: #334155 !important;
+  color: #CBD5E1 !important;
+  box-shadow: none;
+}
+
+html body.theme-dark #pro-upgrade-modal .qf-formal-icon-box.qf-formal-icon-emerald {
+  color: #34D399 !important;
+  border-color: rgba(52, 211, 153, 0.35) !important;
+  background-color: rgba(16, 185, 129, 0.12) !important;
+}
+
+html body.theme-dark #pro-upgrade-modal #btn-submit-activation-code {
+  background-color: #059669 !important;
+  color: #FFFFFF !important;
+}
+
+html body.theme-dark #pro-upgrade-modal #btn-submit-activation-code:hover {
+  background-color: #10B981 !important;
+}
+
+html body.theme-dark #pro-upgrade-modal #btn-submit-upgrade-request {
+  background-color: #F1F5F9 !important;
+  color: #0F172A !important;
+}
+
+html body.theme-dark #pro-upgrade-modal #btn-submit-upgrade-request:hover {
+  background-color: #FFFFFF !important;
+}
+
+html body.theme-dark #pro-upgrade-modal .qf-status-pill-approved {
+  background-color: rgba(16, 185, 129, 0.16) !important;
+  border-color: rgba(52, 211, 153, 0.38) !important;
+  color: #6EE7B7 !important;
+}
+
+html body.theme-dark #pro-upgrade-modal .qf-status-pill-pending {
+  background-color: rgba(245, 158, 11, 0.16) !important;
+  border-color: rgba(251, 191, 36, 0.38) !important;
+  color: #FDE68A !important;
+}
+
+html body.theme-dark #pro-upgrade-modal .qf-status-pill-rejected {
+  background-color: rgba(244, 63, 94, 0.16) !important;
+  border-color: rgba(251, 113, 133, 0.38) !important;
+  color: #FDA4AF !important;
+}
+
+/* ==========================================================================
+   [4.6] INSTITUTIONAL FINTECH DE-SLOP SYSTEM (Light & Dark Parity + Flat Workbench)
+   ========================================================================== */
+.font-mono {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Neutral Segmented Controls (Replaces neon #00D084 on THB/USD, Simple/Detailed, 3 Modes, Theme, Catalog) */
+.qf-seg-btn.qf-seg-active {
+  background-color: #FFFFFF;
+  color: #0F172A;
+  border: 1px solid #E2E8F0;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+.qf-seg-btn.qf-seg-inactive {
+  background-color: transparent;
+  color: #64748B;
+  border: 1px solid transparent;
+}
+
+.qf-seg-btn.qf-seg-inactive:hover {
+  color: #0F172A;
+}
+
+html body.theme-dark .qf-seg-tray {
+  background-color: #0F1521 !important;
+  border-color: #263044 !important;
+}
+
+html body.theme-dark .qf-seg-btn.qf-seg-active {
+  background-color: #232E42 !important;
+  color: #F8FAFC !important;
+  border-color: #3B4963 !important;
+  box-shadow: none !important;
+}
+
+html body.theme-dark .qf-seg-btn.qf-seg-inactive {
+  color: #94A3B8 !important;
+  border-color: transparent !important;
+}
+
+html body.theme-dark .qf-seg-btn.qf-seg-inactive:hover {
+  color: #F8FAFC !important;
+}
+
+/* Institutional Emerald Sole Primary CTA — Driven strictly by var(--primary) */
+.qf-primary-cta {
+  background-color: var(--primary) !important;
+  color: var(--primary-foreground) !important;
+  box-shadow: none !important;
+}
+
+.qf-primary-cta:hover {
+  background-color: var(--primary-hover) !important;
+}
+
+.qf-primary-cta span,
+.qf-primary-cta svg,
+.qf-primary-cta i {
+  color: var(--primary-foreground) !important;
+}
+
+.qf-primary-text {
+  color: var(--primary) !important;
+}
+
+.qf-primary-dot {
+  background-color: var(--primary) !important;
+}
+
+.qf-primary-soft {
+  background-color: var(--primary-soft) !important;
+  color: var(--primary-text) !important;
+  border-color: var(--primary-border) !important;
+}
+
+/* [5.0] Elevated Light Mode Cards Over #F8FAFC Canvas */
+body:not(.theme-dark) .qf-hero-showcase-card,
+body:not(.theme-dark) .qf-methodology-card,
+body:not(.theme-dark) .qf-landing-card,
+body:not(.theme-dark) #model-limitations-box {
+  background-color: var(--card) !important;
+  border-color: var(--border) !important;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 4px 12px -4px rgba(15, 23, 42, 0.04);
+}
+
+/* [5.0] Subtle Emerald Accent for Landing 01 / 02 / 03 Step Badges */
+.qf-methodology-step .qf-step-num {
+  background-color: var(--primary-soft) !important;
+  border-color: var(--primary-border) !important;
+  color: var(--primary-text) !important;
+}
+
+/* [5.0] Hero Bar Chart Secondary Slate Bars & Illustrative Figures (Light & Dark Parity) */
+.qf-svg-bar-secondary {
+  fill: #CBD5E1;
+}
+
+.qf-svg-bar-value {
+  fill: #334155;
+  font-variant-numeric: tabular-nums;
+}
+
+html body.theme-dark .qf-svg-bar-secondary {
+  fill: #3B4963;
+}
+
+html body.theme-dark .qf-svg-bar-value {
+  fill: #CBD5E1;
+}
+
+/* [5.0] ADVISOR PRO Tier Pill & IC/IP Badge — Soft Amber in Light Mode, Obsidian-Gold in Dark Mode */
+.qf-tier-advisor {
+  background-color: #FEF3C7 !important;
+  border-color: #FDE68A !important;
+  color: #92400E !important;
+}
+
+.qf-tier-advisor:hover {
+  background-color: #FDE68A !important;
+}
+
+html body.theme-dark .qf-tier-advisor,
+html body.theme-dark #header-tier-badge.qf-tier-advisor {
+  background-color: #0F172A !important;
+  border-color: rgba(251, 191, 36, 0.65) !important;
+  color: #FCD34D !important;
+}
+
+html body.theme-dark #header-tier-badge.qf-tier-advisor:hover {
+  background-color: #1E293B !important;
+}
+
+/* [5.0] Global CSS-Variable Sweep for Inverse Dark Buttons & Hardcoded Surfaces across All Tabs & Modals */
+html body.theme-dark button.bg-slate-900:not(.qf-tier-advisor):not(.qf-advisor-cta),
+html body.theme-dark #pro-upgrade-modal button.bg-slate-900:not(.qf-advisor-cta),
+html body.theme-dark #help-guide-modal button.bg-slate-900,
+html body.theme-dark #account-settings-modal button.bg-slate-900,
+html body.theme-dark #system-verify-panel button.bg-slate-900 {
+  background-color: var(--surface-inverse) !important;
+  color: var(--surface-inverse-fg) !important;
+}
+
+html body.theme-dark button.bg-slate-900:not(.qf-tier-advisor):not(.qf-advisor-cta):hover {
+  background-color: #FFFFFF !important;
+}
+
+html body.theme-dark button.bg-slate-900:not(.qf-tier-advisor):not(.qf-advisor-cta) span,
+html body.theme-dark button.bg-slate-900:not(.qf-tier-advisor):not(.qf-advisor-cta) svg,
+html body.theme-dark button.bg-slate-900:not(.qf-tier-advisor):not(.qf-advisor-cta) i {
+  color: var(--surface-inverse-fg) !important;
+}
+
+html body.theme-dark .border-slate-200,
+html body.theme-dark .border-slate-200\/70,
+html body.theme-dark .border-slate-200\/75,
+html body.theme-dark .border-slate-200\/80,
+html body.theme-dark .border-slate-200\/90,
+html body.theme-dark .border-slate-200\/95 {
+  border-color: var(--border) !important;
+}
+
+html body.theme-dark .bg-slate-50,
+html body.theme-dark .bg-slate-50\/70,
+html body.theme-dark .bg-slate-50\/75,
+html body.theme-dark .bg-slate-50\/80,
+html body.theme-dark .bg-slate-50\/90 {
+  background-color: var(--muted) !important;
+}
+
+html body.theme-dark .bg-slate-100,
+html body.theme-dark .bg-slate-100\/80,
+html body.theme-dark .bg-slate-100\/90 {
+  background-color: var(--muted) !important;
+}
+
+html body.theme-dark #account-menu-tier-pill {
+  background-color: var(--surface-inverse) !important;
+  color: var(--surface-inverse-fg) !important;
+}
+
+html body.theme-dark #pro-upgrade-modal #btn-submit-activation-code {
+  background-color: var(--primary) !important;
+  color: var(--primary-foreground) !important;
+}
+
+html body.theme-dark #pro-upgrade-modal #btn-submit-activation-code:hover {
+  background-color: var(--primary-hover) !important;
+}
+
+/* Crisp Secondary Solid CTA & Active Quick-Budget Chips */
+html body.theme-dark .qf-secondary-solid-cta,
+html body.theme-dark .qf-budget-active {
+  background-color: #F1F5F9 !important;
+  border-color: #F1F5F9 !important;
+  color: #0F172A !important;
+}
+
+html body.theme-dark .qf-secondary-solid-cta:hover {
+  background-color: #FFFFFF !important;
+}
+
+html body.theme-dark .qf-quick-budget-btn:not(.qf-budget-active) {
+  background-color: #161D2B !important;
+  border-color: #2A3448 !important;
+  color: #CBD5E1 !important;
+}
+
+html body.theme-dark .qf-quick-budget-btn:not(.qf-budget-active):hover {
+  border-color: #475569 !important;
+  color: #F8FAFC !important;
+}
+
+/* Flat Workspace Nav & Inline Sub-Header Dark Mode */
+html body.theme-dark .qf-workspace-nav {
+  background-color: rgba(15, 21, 33, 0.94) !important;
+  border-color: #232B3A !important;
+}
+
+html body.theme-dark .qf-workbench-subheader {
+  border-color: #232B3A !important;
+}
+
+html body.theme-dark header .dark-divider {
+  background-color: #263044 !important;
+}
+
+/* Landing Methodology Section & Monochrome Step / Trust Icons (Full Light & Dark Parity) */
+html body.theme-dark .qf-methodology-card {
+  background-color: #111620 !important;
+  border-color: #232B3A !important;
+  color: #F8FAFC !important;
+}
+
+html body.theme-dark .qf-methodology-step {
+  background-color: #161D2B !important;
+  border-color: #263044 !important;
+}
+
+html body.theme-dark .qf-step-num,
+html body.theme-dark .qf-trust-icon {
+  background-color: #1E293B !important;
+  border-color: #334155 !important;
+  color: #CBD5E1 !important;
+}
+
+html body.theme-dark .qf-methodology-step .qf-step-num {
+  background-color: var(--primary-soft) !important;
+  border-color: var(--primary-border) !important;
+  color: var(--primary-text) !important;
+}
+
+/* Hero Bar Chart Selected Pill & Yearly Discount Tag (Dark Mode) */
+html body.theme-dark .qf-svg-selected-pill {
+  fill: rgba(16, 185, 129, 0.16) !important;
+  stroke: rgba(52, 211, 153, 0.45) !important;
+}
+
+html body.theme-dark .qf-svg-selected-text {
+  fill: #6EE7B7 !important;
+}
+
+html body.theme-dark .qf-yearly-save-tag {
+  background-color: rgba(16, 185, 129, 0.16) !important;
+  border-color: rgba(52, 211, 153, 0.35) !important;
+  color: #6EE7B7 !important;
+}
+
+/* Dark Mode Crisp P&L Delta Chips (.bg-emerald-50/80 & .bg-rose-50/80) */
+html body.theme-dark .bg-emerald-50\/80 {
+  background-color: rgba(16, 185, 129, 0.14) !important;
+  border-color: rgba(52, 211, 153, 0.30) !important;
+  color: #6EE7B7 !important;
+}
+
+html body.theme-dark .bg-rose-50\/80 {
+  background-color: rgba(244, 63, 94, 0.14) !important;
+  border-color: rgba(251, 113, 133, 0.30) !important;
+  color: #FDA4AF !important;
+}
+
+html body.theme-dark #stock-picker-drawer-btn:hover {
+  background-color: #1F293B !important;
+}
+
+/* Advisor Pro Card — Full Light & Dark Theme Parity */
+html body.theme-dark #pro-upgrade-modal .qf-advisor-plan-card {
+  background-color: #0E1523 !important;
+  border-color: rgba(251, 191, 36, 0.65) !important;
+  color: #F8FAFC !important;
+}
+
+html body.theme-dark #pro-upgrade-modal .qf-advisor-plan-card .qf-adv-title,
+html body.theme-dark #pro-upgrade-modal .qf-advisor-plan-card .qf-adv-accent,
+html body.theme-dark #pro-upgrade-modal .qf-advisor-plan-card .qf-adv-check {
+  color: #FCD34D !important;
+}
+
+html body.theme-dark #pro-upgrade-modal .qf-advisor-plan-card .qf-adv-price {
+  color: #FFFFFF !important;
+}
+
+html body.theme-dark #pro-upgrade-modal .qf-advisor-plan-card .qf-adv-muted {
+  color: #94A3B8 !important;
+}
+
+html body.theme-dark #pro-upgrade-modal .qf-advisor-plan-card .qf-adv-list {
+  color: #E2E8F0 !important;
+}
+
+html body.theme-dark #pro-upgrade-modal .qf-advisor-plan-card .qf-adv-divider {
+  border-color: #263044 !important;
+}
+
+html body.theme-dark #pro-upgrade-modal .qf-advisor-plan-card .qf-adv-badge {
+  background-color: rgba(251, 191, 36, 0.18) !important;
+  border-color: rgba(251, 191, 36, 0.48) !important;
+  color: #FDE68A !important;
+}
+
+html body.theme-dark #pro-upgrade-modal .qf-advisor-cta {
+  background-color: #FBBF24 !important;
+  color: #0F172A !important;
+}
+
+html body.theme-dark #pro-upgrade-modal .qf-advisor-cta:hover {
+  background-color: #FCD34D !important;
+}
+
+html body.theme-dark #pro-upgrade-modal .qf-advisor-active-btn {
+  background-color: rgba(251, 191, 36, 0.16) !important;
+  border-color: rgba(251, 191, 36, 0.5) !important;
+  color: #FDE68A !important;
+}
+
+/* Subtle Institutional Dark Mode Scrollbars (6px) */
+html body.theme-dark,
+html body.theme-dark * {
+  scrollbar-width: thin;
+  scrollbar-color: #334155 #0F1521;
+}
+
+html body.theme-dark::-webkit-scrollbar,
+html body.theme-dark *::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+html body.theme-dark::-webkit-scrollbar-track,
+html body.theme-dark *::-webkit-scrollbar-track {
+  background: #0F1521;
+}
+
+html body.theme-dark::-webkit-scrollbar-thumb,
+html body.theme-dark *::-webkit-scrollbar-thumb {
+  background-color: #334155;
+  border-radius: 9999px;
+}
+
+html body.theme-dark::-webkit-scrollbar-thumb:hover,
+html body.theme-dark *::-webkit-scrollbar-thumb:hover {
+  background-color: #475569;
 }
 
 @media (prefers-reduced-motion: reduce) {
