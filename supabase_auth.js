@@ -19,6 +19,7 @@ try {
 let currentUser = null;
 let savedPortfoliosList = [];
 let editingSavedPortfolioId = null;
+let isExplicitPortfolioEditMode = false;
 let authTabMode = 'signin'; // 'signin' | 'signup'
 const GUEST_PORTFOLIOS_STORAGE_KEY = 'quantfolio_portfolios_guest_v1';
 
@@ -71,7 +72,12 @@ function syncEditingPortfolioBannerUI() {
 
 function cancelEditingSavedPortfolio() {
   editingSavedPortfolioId = null;
+  isExplicitPortfolioEditMode = false;
   syncEditingPortfolioBannerUI();
+}
+
+function isExplicitPortfolioEditing() {
+  return Boolean(editingSavedPortfolioId && isExplicitPortfolioEditMode);
 }
 
 async function migrateGuestPortfoliosToAuthenticatedUser() {
@@ -428,7 +434,7 @@ function escapeHtml(raw) {
 function buildLocalAvatarSvg(name) {
   const clean = String(name || 'QF').trim();
   const initials = escapeHtml((clean.slice(0, 2) || 'QF').toUpperCase());
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" rx="32" fill="#00A86B"/><text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" fill="#ffffff" font-family="sans-serif" font-size="24" font-weight="bold">${initials}</text></svg>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" rx="32" fill="#059669"/><text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" fill="#ffffff" font-family="sans-serif" font-size="24" font-weight="bold">${initials}</text></svg>`;
   return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
 }
 
@@ -762,6 +768,7 @@ async function logoutUser(opts = {}) {
   sessionStorage.removeItem('qf_admin_preview_tier');
   currentUser = null;
   editingSavedPortfolioId = null;
+  isExplicitPortfolioEditMode = false;
   savedPortfoliosList = [];
 
   // P0-4 Security Hygiene: Clear ALL password inputs from DOM upon logout so shared devices never retain credentials
@@ -1213,6 +1220,7 @@ function editSavedPortfolioInForm(portfolioId) {
   if (!item) return;
 
   editingSavedPortfolioId = item.id;
+  isExplicitPortfolioEditMode = true;
   loadSavedPortfolioToDashboard(portfolioId, { triggerRun: false, keepEditing: true });
   syncEditingPortfolioBannerUI();
 
@@ -1327,7 +1335,8 @@ function loadSavedPortfolioToDashboard(portfolioId, opts = {}) {
   if (!item) return;
 
   const { triggerRun = true, keepEditing = false } = opts;
-  editingSavedPortfolioId = keepEditing ? item.id : item.id;
+  editingSavedPortfolioId = keepEditing ? item.id : null;
+  isExplicitPortfolioEditMode = Boolean(keepEditing);
 
   const appState = window.state || (typeof state !== 'undefined' ? state : null);
   const weightsObj = item.asset_weights || {};
@@ -1353,6 +1362,9 @@ function loadSavedPortfolioToDashboard(portfolioId, opts = {}) {
   const catEl = document.getElementById('save-goal-category');
   if (catEl && item.goal_type) catEl.value = item.goal_type;
 
+  const loadedCurr = (item.currency === 'USD' || item.currency === 'THB')
+    ? item.currency
+    : (appState?.currency || 'THB');
   const initBudget = Number(item.initial_budget || 100000);
   const formattedInit = initBudget.toLocaleString('en-US', { maximumFractionDigits: 0 });
   const budgetEl = document.getElementById('budget-input');
@@ -1361,17 +1373,28 @@ function loadSavedPortfolioToDashboard(portfolioId, opts = {}) {
   if (budgetEl) budgetEl.value = formattedInit;
   if (stripBudgetEl) stripBudgetEl.value = formattedInit;
   if (goalInitEl) goalInitEl.value = formattedInit;
+  if (typeof window.setCanonicalFxField === 'function') {
+    window.setCanonicalFxField('budget', initBudget, loadedCurr);
+  }
 
   if (item.target_amount) {
-    const formattedTarget = Number(item.target_amount).toLocaleString('en-US', { maximumFractionDigits: 0 });
+    const targetNum = Number(item.target_amount);
+    const formattedTarget = targetNum.toLocaleString('en-US', { maximumFractionDigits: 0 });
     const saveTargetEl = document.getElementById('save-target-amount');
     if (saveTargetEl) saveTargetEl.value = formattedTarget;
+    if (typeof window.setCanonicalFxField === 'function') {
+      window.setCanonicalFxField('target', targetNum, loadedCurr);
+    }
   }
 
   if (item.monthly_dca !== undefined) {
-    const formattedDca = Number(item.monthly_dca).toLocaleString('en-US', { maximumFractionDigits: 0 });
+    const dcaNum = Number(item.monthly_dca);
+    const formattedDca = dcaNum.toLocaleString('en-US', { maximumFractionDigits: 0 });
     const saveDcaEl = document.getElementById('save-monthly-dca');
     if (saveDcaEl) saveDcaEl.value = formattedDca;
+    if (typeof window.setCanonicalFxField === 'function') {
+      window.setCanonicalFxField('dca', dcaNum, loadedCurr);
+    }
   }
 
   if (item.investment_period_years) {
@@ -1632,7 +1655,7 @@ const CLIENT_TIER_DEFAULTS = {
   guest: {
     planTier: 'guest',
     labelTh: 'โหมดทดลองใช้ (Guest)',
-    badgeText: 'GUEST • 5 หุ้น',
+    badgeText: 'GUEST',
     maxAssets: 5,
     maxSavedPortfolios: 1,
     canViewNews: false,
@@ -1644,7 +1667,7 @@ const CLIENT_TIER_DEFAULTS = {
   free: {
     planTier: 'free',
     labelTh: 'สมาชิกทั่วไป (Member ฟรี)',
-    badgeText: 'MEMBER ฟรี • 8 หุ้น',
+    badgeText: 'MEMBER',
     maxAssets: 8,
     maxSavedPortfolios: 3,
     canViewNews: true,
@@ -1656,7 +1679,7 @@ const CLIENT_TIER_DEFAULTS = {
   pro: {
     planTier: 'pro',
     labelTh: 'QuantFolio Pro (นักลงทุนรายย่อย)',
-    badgeText: '✦ PRO • 15 หุ้น & BL',
+    badgeText: 'PRO',
     maxAssets: 15,
     maxSavedPortfolios: 20,
     canViewNews: true,
@@ -1668,7 +1691,7 @@ const CLIENT_TIER_DEFAULTS = {
   advisor: {
     planTier: 'advisor',
     labelTh: 'Advisor Pro (IC / IP White-label)',
-    badgeText: '★ ADVISOR PRO • 25 หุ้น',
+    badgeText: 'ADVISOR PRO',
     maxAssets: 25,
     maxSavedPortfolios: 9999,
     canViewNews: true,
@@ -1849,7 +1872,7 @@ function getUserTierInfo() {
     isExpired: Boolean(currentUser.is_expired ?? meta.is_expired ?? false),
     isAdmin,
     labelTh: srvEnt.label_th || base.labelTh,
-    badgeText: previewTier ? `🧪 ${base.badgeText}` : (srvEnt.badge_text || base.badgeText),
+    badgeText: previewTier ? `PREVIEW: ${base.badgeText}` : (srvEnt.badge_text || base.badgeText),
     maxAssets: Number(srvEnt.max_assets ?? base.maxAssets),
     maxSavedPortfolios: Number(srvEnt.max_saved_portfolios ?? base.maxSavedPortfolios),
     canViewNews: Boolean(srvEnt.can_view_news ?? base.canViewNews),
@@ -1900,7 +1923,7 @@ function syncAdminDynamicDom(isAdmin) {
     quickMount.innerHTML = `
       <div id="admin-quick-tier-panel" class="p-2.5 rounded-xl bg-slate-900 text-white space-y-2 my-1 border border-[#00D084]/35">
         <div class="flex items-center justify-between text-[10px] font-bold text-[#34F5A8]">
-          <span>🛠️ โหมดทดสอบ Admin (ไม่แก้ DB)</span>
+          <span class="inline-flex items-center gap-1.5"><svg class="w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="21" y1="4" x2="14" y2="4"/><line x1="10" y1="4" x2="3" y2="4"/><line x1="21" y1="12" x2="12" y2="12"/><line x1="8" y1="12" x2="3" y2="12"/><line x1="21" y1="20" x2="16" y2="20"/><line x1="12" y1="20" x2="3" y2="20"/><line x1="14" y1="2" x2="14" y2="6"/><line x1="8" y1="10" x2="8" y2="14"/><line x1="16" y1="18" x2="16" y2="22"/></svg><span>โหมดทดสอบ Admin (ไม่แก้ DB)</span></span>
           <span class="font-mono">ADMIN</span>
         </div>
         <div class="grid grid-cols-2 gap-1">
@@ -1973,7 +1996,7 @@ function syncAdminDynamicDom(isAdmin) {
         <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-2">
           <div class="inline-flex flex-wrap items-center gap-1.5">
             <button type="button" id="admin-subtab-btn-requests" onclick="switchAdminSubTab('requests')" class="qf-admin-subtab active px-3 py-1.5 rounded-lg font-bold transition cursor-pointer inline-flex items-center gap-1.5">
-              <span>คิวแจ้งโอน / คำขอ</span>
+              <span>คิวแจ้งชำระเงิน / คำขอ</span>
               <span id="admin-subtab-req-count" class="px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-900 text-[10px] font-mono font-bold">0</span>
             </button>
             <button type="button" id="admin-subtab-btn-users" onclick="switchAdminSubTab('users')" class="qf-admin-subtab px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer inline-flex items-center gap-1.5">
@@ -2023,7 +2046,10 @@ function syncAdminDynamicDom(isAdmin) {
 
         <div id="admin-subpanel-codes" class="hidden space-y-3">
           <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5">
-            <div class="font-bold text-slate-800">🔑 สร้างรหัสเปิดใช้งานใหม่ (สุ่มปลอดภัยด้วย secrets 8 หลัก)</div>
+            <div class="font-bold text-slate-800 inline-flex items-center gap-2">
+              <svg class="w-4 h-4 text-emerald-700 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg>
+              <span>สร้างรหัสเปิดใช้งานใหม่ (สุ่มปลอดภัยด้วย secrets 8 หลัก)</span>
+            </div>
             <div class="grid grid-cols-2 sm:grid-cols-5 gap-2">
               <div>
                 <label for="admin-code-tier" class="block text-[11px] font-semibold text-slate-600 mb-1">แพ็กเกจ</label>
@@ -2118,17 +2144,30 @@ function syncMembershipTierBadgesUI() {
     hdrBadgeTxtShort.textContent = shortTierMap[info.planTier] || 'FREE';
   }
   if (hdrBadge) {
+    const hdrBadgeIcon = document.getElementById('header-tier-badge-icon');
     const basePillCls = 'inline-flex items-center gap-1 px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-xl text-[10.5px] sm:text-[11px] whitespace-nowrap transition cursor-pointer shrink-0';
+    let iconName = 'shield';
     if (info.previewTier) {
       hdrBadge.className = `${basePillCls} bg-amber-100 hover:bg-amber-200 text-amber-950 border border-amber-400 font-extrabold`;
+      iconName = 'flask-conical';
     } else if (info.planTier === 'advisor') {
-      hdrBadge.className = `${basePillCls} bg-slate-900 hover:bg-slate-800 text-amber-300 border border-amber-400/70 font-extrabold`;
+      hdrBadge.className = `${basePillCls} qf-tier-advisor bg-[#FEF3C7] hover:bg-[#FDE68A] text-[#92400E] border border-[#FDE68A] font-bold`;
+      iconName = 'award';
     } else if (info.planTier === 'pro') {
-      hdrBadge.className = `${basePillCls} bg-[#E6FBF3] hover:bg-[#00D084]/25 text-[#008A57] border border-[#00D084] font-extrabold`;
+      hdrBadge.className = `${basePillCls} bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold`;
+      iconName = 'badge-check';
     } else if (info.planTier === 'free') {
       hdrBadge.className = `${basePillCls} bg-emerald-50 hover:bg-[#E6FBF3] text-emerald-800 border border-emerald-200 font-bold`;
+      iconName = 'user-check';
     } else {
       hdrBadge.className = `${basePillCls} bg-slate-100 hover:bg-[#E6FBF3] text-slate-700 hover:text-[#008A57] border border-slate-200/90 font-bold`;
+      iconName = 'shield';
+    }
+    if (hdrBadgeIcon) {
+      hdrBadgeIcon.setAttribute('data-lucide', iconName);
+      if (window.lucide && typeof window.lucide.createIcons === 'function') {
+        window.lucide.createIcons();
+      }
     }
   }
 
@@ -2147,16 +2186,19 @@ function syncMembershipTierBadgesUI() {
       : info.planTier.toUpperCase();
   }
 
+  const warnAlertSvg = '<svg class="w-3.5 h-3.5 inline-block align-[-2px] mr-1 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>';
+  const clockSvg = '<svg class="w-3.5 h-3.5 inline-block align-[-2px] mr-1 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
+
   // Touchpoint 1: Header Account Menu Expiry Line
   if (menuExpiryLine) {
     if (info.previewTier) {
-      menuExpiryLine.textContent = `🧪 กำลังจำลองมุมมอง ${info.labelTh}`;
+      menuExpiryLine.textContent = `กำลังจำลองมุมมอง ${info.labelTh}`;
       menuExpiryLine.className = 'text-[10.5px] font-semibold text-amber-700 pl-5 leading-snug';
     } else if (realExpInfo.state === 'expired') {
-      menuExpiryLine.textContent = `⚠️ ${realExpInfo.fullText} • กดต่ออายุ`;
+      menuExpiryLine.innerHTML = `${warnAlertSvg}${escapeHtml(realExpInfo.fullText)} • ต่ออายุสิทธิ์`;
       menuExpiryLine.className = 'text-[10.5px] font-bold text-rose-600 pl-5 leading-snug';
     } else if (realExpInfo.state === 'warning') {
-      menuExpiryLine.textContent = `⏳ ใกล้หมดอายุ: ${realExpInfo.dateTimeText} (${realExpInfo.countdownText})`;
+      menuExpiryLine.innerHTML = `${clockSvg}ใกล้หมดอายุ: ${escapeHtml(realExpInfo.dateTimeText)} (${escapeHtml(realExpInfo.countdownText)})`;
       menuExpiryLine.className = 'text-[10.5px] font-bold text-amber-700 pl-5 leading-snug';
     } else if (realExpInfo.state === 'active') {
       menuExpiryLine.textContent = `${realExpInfo.fullText}`;
@@ -2184,10 +2226,10 @@ function syncMembershipTierBadgesUI() {
   }
   if (modalExpiryBanner && modalExpiryBannerTxt) {
     if (!info.previewTier && realExpInfo.state === 'warning') {
-      modalExpiryBannerTxt.textContent = `⏳ สิทธิ์แพ็กเกจของคุณจะหมดอายุในวันที่ ${realExpInfo.dateTimeText} (${realExpInfo.countdownText}) — ต่ออายุล่วงหน้าได้ทันทีโดยวันเดิมไม่หาย`;
+      modalExpiryBannerTxt.innerHTML = `${clockSvg}<span>สิทธิ์แพ็กเกจของคุณจะหมดอายุในวันที่ ${escapeHtml(realExpInfo.dateTimeText)} (${escapeHtml(realExpInfo.countdownText)}) — ต่ออายุล่วงหน้าได้ทันทีโดยทบวันคงเหลือให้ครบ</span>`;
       modalExpiryBanner.className = 'qf-exp-warn p-3 rounded-xl bg-amber-50 border border-amber-300 text-amber-950 text-xs font-semibold flex flex-col sm:flex-row sm:items-center justify-between gap-2 leading-relaxed';
     } else if (!info.previewTier && realExpInfo.state === 'expired') {
-      modalExpiryBannerTxt.textContent = `⚠️ แพ็กเกจพรีเมียมของคุณหมดอายุเมื่อ ${realExpInfo.dateTimeText} (พอร์ตที่บันทึกไว้ทั้งหมดยังอยู่ครบ) — กรอกรหัสหรือแจ้งโอนเพื่อต่ออายุได้ทันที`;
+      modalExpiryBannerTxt.innerHTML = `${warnAlertSvg}<span>แพ็กเกจพรีเมียมของคุณหมดอายุเมื่อ ${escapeHtml(realExpInfo.dateTimeText)} (พอร์ตที่บันทึกไว้ทั้งหมดยังอยู่ครบ) — กรอกรหัสสิทธิ์หรือแจ้งชำระเงินเพื่อต่ออายุได้ทันที</span>`;
       modalExpiryBanner.className = 'qf-exp-expired p-3 rounded-xl bg-rose-50 border border-rose-300 text-rose-900 text-xs font-semibold flex flex-col sm:flex-row sm:items-center justify-between gap-2 leading-relaxed';
     } else {
       modalExpiryBanner.classList.add('hidden');
@@ -2197,18 +2239,18 @@ function syncMembershipTierBadgesUI() {
     const showProNote = !info.previewTier && info.realPlanTier === 'pro' && realExpInfo.state !== 'none';
     cardExpiryNotePro.classList.toggle('hidden', !showProNote);
     if (showProNote) {
-      cardExpiryNotePro.textContent = realExpInfo.state === 'warning'
-        ? `⏳ ${realExpInfo.fullText}`
-        : realExpInfo.fullText;
+      cardExpiryNotePro.innerHTML = realExpInfo.state === 'warning'
+        ? `${clockSvg}${escapeHtml(realExpInfo.fullText)}`
+        : escapeHtml(realExpInfo.fullText);
     }
   }
   if (cardExpiryNoteAdv) {
     const showAdvNote = !info.previewTier && info.realPlanTier === 'advisor' && realExpInfo.state !== 'none';
     cardExpiryNoteAdv.classList.toggle('hidden', !showAdvNote);
     if (showAdvNote) {
-      cardExpiryNoteAdv.textContent = realExpInfo.state === 'warning'
-        ? `⏳ ${realExpInfo.fullText}`
-        : realExpInfo.fullText;
+      cardExpiryNoteAdv.innerHTML = realExpInfo.state === 'warning'
+        ? `${clockSvg}${escapeHtml(realExpInfo.fullText)}`
+        : escapeHtml(realExpInfo.fullText);
     }
   }
 
@@ -2218,10 +2260,10 @@ function syncMembershipTierBadgesUI() {
   }
   if (acctExpiryTxt) {
     if (realExpInfo.state === 'expired') {
-      acctExpiryTxt.textContent = `⚠️ ${realExpInfo.fullText} (ต่ออายุได้ตลอดเวลา)`;
+      acctExpiryTxt.innerHTML = `${warnAlertSvg}${escapeHtml(realExpInfo.fullText)} (ต่ออายุได้ตลอดเวลา)`;
       acctExpiryTxt.className = 'text-[11px] font-bold text-rose-600 leading-snug';
     } else if (realExpInfo.state === 'warning') {
-      acctExpiryTxt.textContent = `⏳ ใกล้หมดอายุ: ${realExpInfo.dateTimeText} (${realExpInfo.countdownText})`;
+      acctExpiryTxt.innerHTML = `${clockSvg}ใกล้หมดอายุ: ${escapeHtml(realExpInfo.dateTimeText)} (${escapeHtml(realExpInfo.countdownText)})`;
       acctExpiryTxt.className = 'text-[11px] font-bold text-amber-700 leading-snug';
     } else if (realExpInfo.state === 'active') {
       acctExpiryTxt.textContent = realExpInfo.fullText;
@@ -2279,11 +2321,12 @@ function syncMembershipTierBadgesUI() {
   const isLoggedIn = Boolean(currentUser && currentUser.id);
   const effectiveCardTier = info.planTier;
   const isRealLifetime = isLoggedIn && !info.previewTier && !info.planExpiresAt;
+  const ctaArrowSvg = '<svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>';
   if (btnModalLoginFree) {
     if (!isLoggedIn || effectiveCardTier === 'guest') {
-      btnModalLoginFree.textContent = 'สมัคร / เข้าสู่ระบบฟรี ➔';
+      btnModalLoginFree.innerHTML = `<span>สมัคร / เข้าสู่ระบบฟรี</span>${ctaArrowSvg}`;
       btnModalLoginFree.disabled = false;
-      btnModalLoginFree.className = 'w-full min-h-[40px] py-2 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition cursor-pointer';
+      btnModalLoginFree.className = 'w-full min-h-[40px] py-2 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs inline-flex items-center justify-center gap-1.5 transition cursor-pointer';
     } else if (effectiveCardTier === 'free') {
       btnModalLoginFree.textContent = '✓ แพ็กเกจปัจจุบันของคุณ';
       btnModalLoginFree.disabled = true;
@@ -2310,9 +2353,9 @@ function syncMembershipTierBadgesUI() {
       btnProSelect.disabled = true;
       btnProSelect.className = 'w-full min-h-[40px] py-2 px-3 rounded-xl bg-slate-200/80 text-slate-600 font-bold text-xs cursor-default';
     } else {
-      btnProSelect.textContent = 'อัปเกรดเป็น QuantFolio Pro ➔';
+      btnProSelect.innerHTML = `<span>อัปเกรดเป็น QuantFolio Pro</span>${ctaArrowSvg}`;
       btnProSelect.disabled = false;
-      btnProSelect.className = 'w-full min-h-[40px] py-2 px-3 rounded-xl bg-[#00D084] hover:bg-[#00B873] text-[#0A0D12] font-extrabold text-xs transition cursor-pointer';
+      btnProSelect.className = 'qf-primary-cta w-full min-h-[40px] py-2 px-3 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs inline-flex items-center justify-center gap-1.5 transition cursor-pointer';
     }
   }
   if (btnAdvSelect) {
@@ -2320,16 +2363,16 @@ function syncMembershipTierBadgesUI() {
       if (isRealLifetime) {
         btnAdvSelect.textContent = '✓ แพ็กเกจปัจจุบัน (สิทธิ์ถาวร)';
         btnAdvSelect.disabled = true;
-        btnAdvSelect.className = 'w-full min-h-[40px] py-2 px-3 rounded-xl bg-amber-300/20 text-amber-200 border border-amber-400/70 font-extrabold text-xs cursor-default';
+        btnAdvSelect.className = 'qf-advisor-active-btn w-full min-h-[40px] py-2 px-3 rounded-xl bg-amber-50 text-amber-900 border border-amber-300 font-bold text-xs cursor-default';
       } else {
         btnAdvSelect.textContent = '✓ แพ็กเกจปัจจุบัน (ต่ออายุ / กรอกรหัส)';
         btnAdvSelect.disabled = false;
-        btnAdvSelect.className = 'w-full min-h-[40px] py-2 px-3 rounded-xl bg-amber-300/20 hover:bg-amber-300/30 text-amber-200 border border-amber-400/70 font-extrabold text-xs transition cursor-pointer';
+        btnAdvSelect.className = 'qf-advisor-active-btn w-full min-h-[40px] py-2 px-3 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 font-bold text-xs transition cursor-pointer';
       }
     } else {
-      btnAdvSelect.textContent = 'อัปเกรดเป็น Advisor Pro ➔';
+      btnAdvSelect.innerHTML = `<span>อัปเกรดเป็น Advisor Pro</span>${ctaArrowSvg}`;
       btnAdvSelect.disabled = false;
-      btnAdvSelect.className = 'w-full min-h-[40px] py-2 px-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-xs transition cursor-pointer';
+      btnAdvSelect.className = 'qf-advisor-cta w-full min-h-[40px] py-2 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs inline-flex items-center justify-center gap-1.5 transition cursor-pointer';
     }
   }
 
@@ -2466,7 +2509,9 @@ function toggleProCoreFeatures(forceState = null) {
   const btn = document.getElementById('btn-toggle-core-features');
   if (btn) {
     btn.setAttribute('aria-expanded', isProCoreFeaturesExpanded ? 'true' : 'false');
-    btn.textContent = isProCoreFeaturesExpanded ? 'ซ่อนรายละเอียด ⌃' : 'แสดงคุณสมบัติพื้นฐานทั้งหมดที่รวมอยู่ ⌄';
+    btn.innerHTML = isProCoreFeaturesExpanded
+      ? '<span>ซ่อนรายละเอียด</span><svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg>'
+      : '<span>แสดงคุณสมบัติพื้นฐานทั้งหมดที่รวมอยู่</span><svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
   }
 }
 
@@ -2490,7 +2535,7 @@ function syncUpgradeRequestPriceHint() {
   }
   const hintEl = document.getElementById('req-expected-amount-hint');
   if (hintEl) {
-    hintEl.innerHTML = `💡 ยอดโอนแนะนำ: <b>฿${escapeHtml(formattedAmt)}</b> สำหรับ ${escapeHtml(plan.name)} (${escapeHtml(durVal)} วัน${escapeHtml(extraNote)})`;
+    hintEl.innerHTML = `<svg class="w-3.5 h-3.5 text-emerald-700 shrink-0 inline-block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><span>ยอดชำระแนะนำ: <b>฿${escapeHtml(formattedAmt)}</b> สำหรับ ${escapeHtml(plan.name)} (${escapeHtml(durVal)} วัน${escapeHtml(extraNote)})</span>`;
   }
 }
 
@@ -2628,7 +2673,7 @@ async function submitActivationCodeUpgrade() {
   } finally {
     if (btn) {
       btn.disabled = false;
-      btn.textContent = 'ยืนยันรหัสเปิดใช้งาน ➔';
+      btn.innerHTML = '<span>ยืนยันรหัสเปิดใช้งาน</span><svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>';
     }
   }
 }
@@ -2658,7 +2703,7 @@ async function submitUpgradeRequest() {
   try {
     if (btn) {
       btn.disabled = true;
-      btn.textContent = 'กำลังส่งแจ้งโอน...';
+      btn.textContent = 'กำลังส่งหลักฐานการชำระเงิน...';
     }
     const res = await fetch('/api/upgrade-requests', {
       method: 'POST',
@@ -2681,8 +2726,8 @@ async function submitUpgradeRequest() {
       const el = document.getElementById(id);
       if (el) el.value = '';
     });
-    showInlineModalAlert('req-submit-alert', '✓ ส่งข้อมูลแจ้งโอนเข้าคิวตรวจสอบแล้ว ผู้ดูแลจะตรวจสอบและอนุมัติสิทธิ์ให้เร็วที่สุด', 'success');
-    showPortfolioToast('ส่งแจ้งโอนเรียบร้อยแล้ว รอผู้ดูแลตรวจสอบ');
+    showInlineModalAlert('req-submit-alert', '✓ บันทึกข้อมูลแจ้งชำระเงินเข้าคิวตรวจสอบเรียบร้อยแล้ว ผู้ดูแลระบบจะตรวจสอบและอนุมัติสิทธิ์ให้โดยเร็ว', 'success');
+    showPortfolioToast('ส่งหลักฐานการชำระเงินเรียบร้อยแล้ว รอผู้ดูแลระบบตรวจสอบ');
     await loadMyUpgradeRequests();
     if (getUserTierInfo().isAdmin) {
       loadAdminConsoleOverview({ silent: true });
@@ -2692,7 +2737,7 @@ async function submitUpgradeRequest() {
   } finally {
     if (btn) {
       btn.disabled = false;
-      btn.textContent = 'ส่งแจ้งโอนให้ผู้ดูแลตรวจสอบ';
+      btn.innerHTML = '<span>ส่งหลักฐานการชำระเงินเพื่อตรวจสอบ</span><svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>';
     }
   }
 }
@@ -2715,11 +2760,12 @@ async function loadMyUpgradeRequests() {
     listEl.innerHTML = items.map(r => {
       const tierName = r.target_tier === 'advisor' ? 'Advisor Pro (IC/IP)' : 'QuantFolio Pro';
       const st = String(r.status || 'pending');
+      const pendingClockSvg = '<svg class="w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
       const stBadge = st === 'approved'
-        ? '<span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px]">✓ อนุมัติแล้ว</span>'
+        ? '<span class="qf-status-pill-approved inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200 font-semibold text-[10.5px]">✓ อนุมัติแล้ว</span>'
         : st === 'rejected'
-        ? '<span class="px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 font-bold text-[10px]">✕ ปฏิเสธ</span>'
-        : '<span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 font-bold text-[10px]">⏳ รอตรวจสอบ</span>';
+        ? '<span class="qf-status-pill-rejected inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-rose-50 text-rose-800 border border-rose-200 font-semibold text-[10.5px]">✕ ปฏิเสธ</span>'
+        : `<span class="qf-status-pill-pending inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 text-amber-900 border border-amber-200 font-semibold text-[10.5px]">${pendingClockSvg}<span>รอตรวจสอบ</span></span>`;
       const safeId = escapeHtml(r.id);
       const cancelBtn = st === 'pending'
         ? `<button type="button" data-req-id="${safeId}" onclick="cancelMyUpgradeRequest(this.dataset.reqId)" class="px-2.5 py-1 rounded-lg bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 text-[10.5px] font-bold transition cursor-pointer">ยกเลิกคำขอ</button>`
@@ -2799,7 +2845,7 @@ async function adminSetPreviewTier(targetTier) {
   updateAuthUI(currentUser);
   const info = getUserTierInfo();
   const msg = info.previewTier
-    ? `🧪 กำลังจำลองมุมมอง: ${info.labelTh} (สิทธิ์จริงของคุณไม่ถูกเปลี่ยน)`
+    ? `กำลังจำลองมุมมอง: ${info.labelTh} (สิทธิ์จริงของคุณไม่ถูกเปลี่ยน)`
     : `✓ กลับสู่สิทธิ์จริงของคุณ (${info.labelTh}) แล้ว`;
   showPortfolioToast(msg);
   showInlineModalAlert('admin-console-alert', msg, info.previewTier ? 'warning' : 'success');
@@ -2857,12 +2903,13 @@ function adminRenderRequestsList() {
   if (list.length === 0) {
     container.innerHTML = `
       <div class="p-5 rounded-xl bg-slate-50 border border-slate-200 text-center text-slate-500">
-        ยังไม่มีคำขอแจ้งโอน / อัปเกรดเข้ามาในระบบ
+        ยังไม่มีคำขอแจ้งชำระเงินหรืออัปเกรดในระบบ
       </div>
     `;
     return;
   }
 
+  const adminClockSvg = '<svg class="w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
   container.innerHTML = list.map(r => {
     const safeId = escapeHtml(r.id);
     const safeEmail = escapeHtml(r.email);
@@ -2870,10 +2917,10 @@ function adminRenderRequestsList() {
     const tierName = r.target_tier === 'advisor' ? 'Advisor Pro (IC/IP)' : 'QuantFolio Pro';
     const st = String(r.status || 'pending');
     const stPill = st === 'approved'
-      ? '<span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-900 font-bold text-[10.5px]">✓ อนุมัติแล้ว</span>'
+      ? '<span class="qf-status-pill-approved inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-900 border border-emerald-200 font-semibold text-[10.5px]">✓ อนุมัติแล้ว</span>'
       : st === 'rejected'
-      ? '<span class="px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 font-bold text-[10.5px]">✕ ปฏิเสธแล้ว</span>'
-      : '<span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 font-bold text-[10.5px]">⏳ รอตรวจสอบ</span>';
+      ? '<span class="qf-status-pill-rejected inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-rose-50 text-rose-800 border border-rose-200 font-semibold text-[10.5px]">✕ ปฏิเสธแล้ว</span>'
+      : `<span class="qf-status-pill-pending inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 text-amber-900 border border-amber-200 font-semibold text-[10.5px]">${adminClockSvg}<span>รอตรวจสอบ</span></span>`;
 
     // Strict XSS Prevention: escape all user fields & allow ONLY https:// for clickable slip links
     const httpsSlipUrl = sanitizeHttpsOnlyUrl(r.slip_ref);
@@ -2942,9 +2989,9 @@ function adminRenderUsersTable() {
     const safeName = escapeHtml(u.full_name || u.email);
     const tier = String(u.plan_tier || 'free');
     const tierPill = tier === 'advisor'
-      ? '<span class="px-2 py-0.5 rounded-md bg-amber-100 text-amber-950 border border-amber-300 font-extrabold text-[10.5px] whitespace-nowrap">★ Advisor Pro</span>'
+      ? '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-100 text-amber-950 border border-amber-300 font-extrabold text-[10.5px] whitespace-nowrap"><span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>Advisor Pro</span>'
       : tier === 'pro'
-      ? '<span class="px-2 py-0.5 rounded-md bg-[#E6FBF3] text-[#008A57] border border-[#00D084]/40 font-extrabold text-[10.5px] whitespace-nowrap">✦ QuantFolio Pro</span>'
+      ? '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#E6FBF3] text-[#008A57] border border-[#00D084]/40 font-extrabold text-[10.5px] whitespace-nowrap"><span class="w-1.5 h-1.5 rounded-full bg-[#00D084]"></span>QuantFolio Pro</span>'
       : '<span class="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200 font-bold text-[10.5px] whitespace-nowrap">Member ฟรี</span>';
     const adminTag = u.is_admin
       ? '<span class="ml-1 px-1.5 py-0.2 rounded bg-slate-900 text-[#34F5A8] font-mono text-[9.5px] font-extrabold">ADMIN</span>'
@@ -2960,7 +3007,7 @@ function adminRenderUsersTable() {
       expTxt = '<span class="font-mono text-[11px] font-semibold text-emerald-700 whitespace-nowrap">ถาวร</span>';
     } else if (expInfo.state === 'warning') {
       expTxt = `
-        <div class="text-amber-700 font-bold text-[11px] whitespace-nowrap">⏳ ${escapeHtml(expInfo.countdownText)}</div>
+        <div class="text-amber-700 font-bold text-[11px] whitespace-nowrap inline-flex items-center gap-1"><svg class="w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><span>${escapeHtml(expInfo.countdownText)}</span></div>
         <div class="font-mono text-[10px] text-slate-500 whitespace-nowrap">${escapeHtml(expInfo.dateTimeText)}</div>
       `;
     } else if (expInfo.state === 'active') {
@@ -3277,6 +3324,7 @@ window.adminRevokeActivationCode = adminRevokeActivationCode;
 window.copyActivationCodeText = copyActivationCodeText;
 window.adminUpdateCustomerTier = adminUpdateCustomerTier;
 window.refreshSavedPortfoliosUI = () => renderSavedPortfoliosList(savedPortfoliosList);
+window.isExplicitPortfolioEditing = isExplicitPortfolioEditing;
 
 // ปิด Dropdown บัญชีผู้ใช้เมื่อคลิกนอกพื้นที่
 document.addEventListener('click', (e) => {
