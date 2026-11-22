@@ -83,7 +83,7 @@ function getActiveUserTierInfo() {
     planTier: 'guest',
     isAdmin: false,
     labelTh: 'โหมดทดลองใช้ (Guest)',
-    badgeText: 'GUEST • 5 หุ้น',
+    badgeText: 'GUEST',
     maxAssets: 5,
     maxSavedPortfolios: 1,
     canViewNews: false,
@@ -120,7 +120,24 @@ function getDefaultDateRange(yearsBack = 3) {
 }
 
 const PRESETS = {
+  us_gold_mix: {
+    label: 'พอร์ตผสมสหรัฐฯ+ทองคำ',
+    tickers: ['SPY', 'QQQ', 'MSFT', 'GLD', 'TLT'],
+    get start() { return getDefaultDateRange(3).start; },
+    get end() { return getDefaultDateRange(3).end; },
+    currency: 'THB',
+    budget: 100000
+  },
+  thai_dividend: {
+    label: 'พอร์ตหุ้นไทยปันผล',
+    tickers: ['PTT.BK', 'ADVANC.BK', 'BDMS.BK', 'SCB.BK', 'CPALL.BK'],
+    get start() { return getDefaultDateRange(3).start; },
+    get end() { return getDefaultDateRange(3).end; },
+    currency: 'THB',
+    budget: 100000
+  },
   colab_original: {
+    label: 'US Tech + BTC',
     tickers: ['NVDA', 'TSLA', 'AMZN', 'BTC-USD', 'AAPL'],
     get start() { return getDefaultDateRange(3).start; },
     get end() { return getDefaultDateRange(3).end; },
@@ -128,13 +145,15 @@ const PRESETS = {
     budget: 100000
   },
   tech_titans: {
-    tickers: ['NVDA', 'AAPL', 'MSFT', 'AMZN', 'GOOGL', 'META', 'TSLA'],
+    label: 'Top 7 หุ้นสหรัฐฯ',
+    tickers: ['AAPL', 'MSFT', 'NVDA', 'GOOGL', 'AMZN', 'META', 'TSLA'],
     get start() { return getDefaultDateRange(3).start; },
     get end() { return getDefaultDateRange(3).end; },
     currency: 'THB',
     budget: 100000
   },
   all_weather: {
+    label: 'All-Weather',
     tickers: ['SPY', 'QQQ', 'GLD', 'TLT', 'DBC'],
     get start() { return getDefaultDateRange(3).start; },
     get end() { return getDefaultDateRange(3).end; },
@@ -142,7 +161,8 @@ const PRESETS = {
     budget: 100000
   },
   thai_set50: {
-    tickers: ['PTT.BK', 'AOT.BK', 'CPALL.BK', 'DELTA.BK', 'BDMS.BK'],
+    label: 'หุ้นไทย SET50',
+    tickers: ['DELTA.BK', 'PTT.BK', 'ADVANC.BK', 'GULF.BK', 'AOT.BK'],
     get start() { return getDefaultDateRange(3).start; },
     get end() { return getDefaultDateRange(3).end; },
     currency: 'THB',
@@ -150,20 +170,20 @@ const PRESETS = {
   }
 };
 
-// Dime! Obsidian Dark Mode vibrant financial color palette (25 distinct tones for Advisor Pro portfolios)
+// Institutional Wealth Asset Color Palette (25 composed tones — first 4 match Landing Page MSFT/NVDA/GLD/TLT, zero neon/hot-pink)
 const ASSET_COLORS = [
-  '#00D084', '#38BDF8', '#F59E0B', '#A78BFA', '#F472B6',
-  '#2DD4BF', '#FF5A5F', '#60A5FA', '#FBBF24', '#818CF8',
-  '#34D399', '#0EA5E9', '#FB923C', '#C084FC', '#FB7185',
-  '#14B8A6', '#F43F5E', '#3B82F6', '#EAB308', '#6366F1',
-  '#10B981', '#06B6D4', '#EA580C', '#E879F9', '#94A3B8'
+  '#059669', '#2563EB', '#D97706', '#64748B', '#4F46E5',
+  '#0D9488', '#BE123C', '#0284C7', '#7C3AED', '#CA8A04',
+  '#0891B2', '#475569', '#15803D', '#1D4ED8', '#B45309',
+  '#4338CA', '#0F766E', '#9F1239', '#0369A1', '#6D28D9',
+  '#A16207', '#0E7490', '#334155', '#166534', '#1E40AF'
 ];
 
 const STRATEGY_COLORS = {
-  max_sharpe: '#00D084',
-  min_volatility: '#38BDF8',
-  hrp: '#A78BFA',
-  equal_weight: '#94A3B8'
+  max_sharpe: '#059669',
+  min_volatility: '#2563EB',
+  hrp: '#6366F1',
+  equal_weight: '#64748B'
 };
 
 // Official Corporate Domain Map for Yahoo Finance / US / Global / Thai SET50 / Crypto Logo Resolution
@@ -286,17 +306,17 @@ function handleStockLogoError(imgEl) {
   }
 }
 
-function renderStockLogoBadge(ticker, fallbackColor = '#00D084', sizePx = 38) {
+function renderStockLogoBadge(ticker, fallbackColor = '#334155', sizePx = 36) {
   const clean = String(ticker || '').trim().toUpperCase();
   const safeTicker = escapeHtmlText(clean);
   const shortCode = escapeHtmlText(clean.replace('.BK', '').replace('-USD', '').slice(0, 4));
   const { primary, secondary, isCustomSvg } = getAssetLogoUrls(clean);
-  const fontSize = sizePx <= 30 ? '9.5px' : '11px';
+  const fontSize = sizePx <= 30 ? '9.5px' : '10.5px';
   const imgPadClass = isCustomSvg ? 'p-0' : 'p-1.5';
 
   return `
-    <div class="qf-stock-logo-wrap relative rounded-full overflow-hidden flex items-center justify-center shrink-0" style="width:${sizePx}px;height:${sizePx}px;background-color:${fallbackColor};">
-      <span class="qf-stock-logo-monogram font-mono font-bold text-white select-none" style="font-size:${fontSize};letter-spacing:-0.02em;">${shortCode}</span>
+    <div class="qf-stock-logo-wrap relative rounded-full overflow-hidden flex items-center justify-center shrink-0 bg-slate-100 border border-slate-200/90 text-slate-700" style="width:${sizePx}px;height:${sizePx}px;">
+      <span class="qf-stock-logo-monogram font-mono font-bold select-none tracking-tight" style="font-size:${fontSize};">${shortCode}</span>
       <img
         src="${primary}"
         data-fallback="${secondary}"
@@ -415,22 +435,22 @@ function updateMarketDataStatusPill() {
     if (state.resultStatus === 'stale') {
       pill.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0"></span><span>รอกดคำนวณใหม่</span>`;
       pill.title = `ผลล้าสมัย (${state.staleReason || 'แก้ไขพอร์ตแล้ว'}) • กดคำนวณเพื่ออัปเดตผลลัพธ์`;
-      pill.className = 'hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-100 text-amber-900 border border-amber-300 whitespace-nowrap';
+      pill.className = 'hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold text-amber-700 whitespace-nowrap tabular-nums';
     } else if (state.resultStatus === 'ready' && data) {
       const dateStr = latestEqDate || meta.end_date || '--';
       const livePart = timeText ? ` • อัปเดต ${timeText}` : '';
-      pill.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-[#00D084] shrink-0"></span><span>ข้อมูล ณ ${escapeHtmlText(dateStr)}</span>`;
+      pill.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-emerald-600 shrink-0"></span><span>ข้อมูล ณ ${escapeHtmlText(dateStr)}</span>`;
       pill.title = `ราคาปิด ณ ${dateStr}${livePart} • แหล่งข้อมูล Yahoo Finance`;
-      pill.className = 'hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-[#E6FBF3] text-[#008A57] border border-[#00D084]/40 whitespace-nowrap';
+      pill.className = 'hidden sm:inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 whitespace-nowrap tabular-nums';
     } else if (state.resultStatus === 'loading') {
-      pill.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse shrink-0"></span><span>กำลังคำนวณ...</span>`;
+      pill.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-slate-500 animate-pulse shrink-0"></span><span>กำลังคำนวณ...</span>`;
       pill.title = 'กำลังดึงราคาตลาดและคำนวณพอร์ต...';
-      pill.className = 'hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-blue-50 text-blue-800 border border-blue-200 whitespace-nowrap';
+      pill.className = 'hidden sm:inline-flex items-center gap-1.5 text-xs font-medium text-slate-600 whitespace-nowrap tabular-nums';
     } else {
       const datePart = latestEqDate ? `ข้อมูล ณ ${escapeHtmlText(latestEqDate)}` : 'พร้อมคำนวณ';
-      pill.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span><span>${datePart}</span>`;
+      pill.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-emerald-600 shrink-0"></span><span>${datePart}</span>`;
       pill.title = latestEqDate ? `ราคาปิดล่าสุด ${latestEqDate} • พร้อมคำนวณ` : 'พร้อมดึงราคาตลาด • กดคำนวณเพื่อดูผล';
-      pill.className = 'hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 whitespace-nowrap';
+      pill.className = 'hidden sm:inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 whitespace-nowrap tabular-nums';
     }
   }
 
@@ -672,11 +692,13 @@ document.addEventListener('DOMContentLoaded', () => {
     enterWorkspaceWithRiskProfile(initialRiskParam);
   }
   renderDimeWealthOverview();
+  hydratePopularAssetsFromCache();
   fetchLiveMarketRates();
   renderTickersList();
   updateSetupReadinessUI();
   if (state.appView === 'workspace') {
     fetchLiveQuotesForTickers();
+    fetchDynamicPopularAssets();
   }
 });
 
@@ -702,7 +724,9 @@ function toggleMobileChartBox(chartId, btnEl) {
   const willOpen = !el.classList.contains('qf-chart-open');
   el.classList.toggle('qf-chart-open', willOpen);
   if (btnEl) {
-    btnEl.innerText = willOpen ? '🔼 ซ่อนกราฟ' : '📊 กดเพื่อดูกราฟ';
+    btnEl.innerHTML = willOpen
+      ? '<svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg><span>ซ่อนกราฟ</span>'
+      : '<svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" x2="18" y1="20" y2="10"/><line x1="12" x2="12" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="14"/></svg><span>แสดงกราฟ</span>';
   }
   if (willOpen) {
     setTimeout(() => {
@@ -722,6 +746,7 @@ function getChartThemeTokens() {
   const dark = isDarkTheme();
   return {
     dark,
+    primary: dark ? '#10B981' : '#059669',
     plotBg: dark ? 'rgba(17, 22, 32, 0.55)' : '#FFFFFF',
     grid: dark ? '#222B3B' : '#F1F5F9',
     line: dark ? '#2D374B' : '#E2E8F0',
@@ -729,11 +754,11 @@ function getChartThemeTokens() {
     legendText: dark ? '#E2E8F0' : '#334155',
     donutBorder: dark ? '#131822' : '#FFFFFF',
     donutLabel: dark ? '#E2E8F0' : '#1E293B',
-    donutSub: dark ? '#94A3B8' : '#64748B',
+    donutSub: dark ? '#CBD5E1' : '#475569',
     wfLine: dark ? '#FBBF24' : '#0F172A',
     corrScale: dark
-      ? [[0.0, '#161D2B'], [0.5, '#0F4C5C'], [1.0, '#00D084']]
-      : [[0.0, '#EFF6FF'], [0.5, '#DBEAFE'], [1.0, '#00A86B']],
+      ? [[0.0, '#161D2B'], [0.5, '#0F4C5C'], [1.0, '#10B981']]
+      : [[0.0, '#EFF6FF'], [0.5, '#DBEAFE'], [1.0, '#059669']],
     corrText: dark ? '#F8FAFC' : '#0F172A',
     hoverLabel: {
       bgcolor: dark ? '#0F172A' : '#FFFFFF',
@@ -751,8 +776,8 @@ function applyAppTheme(mode, reRenderCharts = true) {
     localStorage.setItem('qf_theme_v2', state.theme);
   } catch (e) {}
 
-  const activeCls = 'inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-md bg-[#00D084] text-[#0A0D12] shadow-2xs transition cursor-pointer';
-  const inactiveCls = 'inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md text-slate-600 hover:text-slate-900 transition cursor-pointer';
+  const activeCls = 'qf-seg-btn qf-seg-active inline-flex items-center justify-center gap-1 px-2 py-1.5 text-xs font-semibold rounded-md transition cursor-pointer';
+  const inactiveCls = 'qf-seg-btn qf-seg-inactive inline-flex items-center justify-center gap-1 px-2 py-1.5 text-xs font-medium rounded-md transition cursor-pointer';
   const btnLight = document.getElementById('theme-btn-light');
   const btnDark = document.getElementById('theme-btn-dark');
   if (btnLight && btnDark) {
@@ -778,13 +803,21 @@ function applyAppTheme(mode, reRenderCharts = true) {
   }
 
   if (reRenderCharts && state.optData) {
-    const strat = state.optData.strategies?.[state.activeGoal];
-    if (strat) renderDonutAllocationChart(strat.weights, state.optData.metadata?.tickers || []);
-    renderDimeWealthOverview();
-    renderPortfolioGrowthChart();
-    renderEfficientFrontierPlot();
-    renderCorrelationAndGrowthPlots();
-    recalculateGoalProjection();
+    const redrawAllThemeCharts = () => {
+      if (!state.optData) return;
+      const strat = state.optData.strategies?.[state.activeGoal];
+      if (strat) renderDonutAllocationChart(strat.weights, state.optData.metadata?.tickers || []);
+      renderDimeWealthOverview();
+      renderPortfolioGrowthChart();
+      renderEfficientFrontierPlot();
+      renderCorrelationAndGrowthPlots();
+      recalculateGoalProjection();
+    };
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(redrawAllThemeCharts);
+    } else {
+      redrawAllThemeCharts();
+    }
   }
 }
 
@@ -1002,6 +1035,7 @@ function handleBudgetQuickUpdate() {
   const mainEl = document.getElementById('budget-input');
   const budget = parseNumericInput(mainEl?.value) || 100000;
   state.budget = budget;
+  setCanonicalFxField('budget', budget, state.currency);
   if (mainEl) {
     syncAllBudgetInputs(mainEl.value, 'budget-input');
   }
@@ -1102,7 +1136,7 @@ function applyPreset(presetKey, autoRun = true, preserveBudgetAndCurrency = fals
     cancelEditingSavedPortfolio();
   }
   const saveNameResetEl = document.getElementById('save-portfolio-name');
-  if (saveNameResetEl && p.label) {
+  if (saveNameResetEl) {
     saveNameResetEl.value = '';
   }
   if (p.tickers.length > maxAssets && typeof showPortfolioToastApp === 'function') {
@@ -1122,6 +1156,7 @@ function applyPreset(presetKey, autoRun = true, preserveBudgetAndCurrency = fals
       const formattedBudget = formatNumberWithCommas(p.budget, 0);
       syncAllBudgetInputs(formattedBudget, '');
       state.budget = p.budget;
+      setCanonicalFxField('budget', p.budget, state.currency);
     }
   }
 
@@ -1134,13 +1169,19 @@ function applyPreset(presetKey, autoRun = true, preserveBudgetAndCurrency = fals
     btn3Y.className = 'tf-btn px-1.5 py-0.5 rounded bg-slate-900 text-white font-semibold cursor-pointer';
   }
 
-  // Highlight active preset button
+  // Highlight active preset button (both inside drawer and Tab 1 1-click shortcut pills)
   document.querySelectorAll('.preset-btn').forEach(btn => {
     btn.className = 'preset-btn px-3 py-2 text-left text-[13px] rounded-xl bg-white hover:bg-slate-50 text-slate-800 font-semibold border border-slate-200 transition cursor-pointer';
   });
   const activeBtn = document.getElementById(`preset-btn-${presetKey}`);
   if (activeBtn) {
     activeBtn.className = 'preset-btn px-3 py-2 text-left text-[13px] rounded-xl bg-blue-50 text-blue-800 font-bold border border-blue-200 transition cursor-pointer';
+  }
+  document.querySelectorAll('.qf-quick-sample-pill').forEach(pill => {
+    pill.classList.toggle('active', pill.id === `quick-sample-${presetKey}`);
+  });
+  if (!autoRun && p.label && typeof showPortfolioToastApp === 'function' && p.tickers.length <= maxAssets) {
+    showPortfolioToastApp(`โหลดชุดตัวอย่าง "${p.label}" (${state.tickers.length} สินทรัพย์) แล้ว — กด "คำนวณพอร์ต" ได้ทันที`);
   }
 
   renderTickersList();
@@ -1219,7 +1260,7 @@ function setGlobalCurrency(targetCurr) {
 function syncCurrencyToggleButtons() {
   const isThb = state.currency === 'THB';
   const pairs = [
-    ['header-curr-thb', 'header-curr-usd', 'px-2 sm:px-2.5 py-1 text-[11px] sm:text-xs font-semibold rounded-lg bg-[#00D084] text-[#0A0D12] shadow-2xs transition cursor-pointer', 'px-2 sm:px-2.5 py-1 text-[11px] sm:text-xs font-medium rounded-lg text-slate-600 hover:text-slate-900 transition cursor-pointer']
+    ['header-curr-thb', 'header-curr-usd', 'qf-seg-btn qf-seg-active px-2 sm:px-2.5 py-1 text-[11px] sm:text-xs font-semibold rounded-md transition cursor-pointer', 'qf-seg-btn qf-seg-inactive px-2 sm:px-2.5 py-1 text-[11px] sm:text-xs font-medium rounded-md transition cursor-pointer']
   ];
 
   pairs.forEach(([thbId, usdId, activeCls, inactiveCls]) => {
@@ -1241,6 +1282,35 @@ function syncCurrencyToggleButtons() {
   });
 }
 
+function ensureCanonicalFxAnchorMap() {
+  if (!state.fxRoundTripAnchor || typeof state.fxRoundTripAnchor !== 'object' || !('budget' in state.fxRoundTripAnchor && typeof state.fxRoundTripAnchor.budget === 'object')) {
+    state.fxRoundTripAnchor = {
+      budget: null,
+      target: null,
+      dca: null
+    };
+  }
+  return state.fxRoundTripAnchor;
+}
+
+function setCanonicalFxField(fieldKey, numericValue, currency = state.currency) {
+  if (!['budget', 'target', 'dca'].includes(fieldKey)) return;
+  const num = Number(numericValue);
+  if (!Number.isFinite(num) || num < 0) return;
+  const curr = currency === 'USD' ? 'USD' : 'THB';
+  const map = ensureCanonicalFxAnchorMap();
+  map[fieldKey] = {
+    value: num,
+    baseCurrency: curr,
+    lastCurrency: curr,
+    lastDisplayed: num
+  };
+}
+
+if (typeof window !== 'undefined') {
+  window.setCanonicalFxField = setCanonicalFxField;
+}
+
 function updateCurrencySymbol(reRun = false) {
   const sel = document.getElementById('currency-select');
   const prevCurrency = state.currency;
@@ -1259,8 +1329,9 @@ function updateCurrencySymbol(reRun = false) {
   if (symEl) symEl.innerText = state.currencySymbol;
   syncCurrencyToggleButtons();
 
-  // Convert budget & custom holdings proportionally when switching between THB and USD
-  // P1-5: Preserve canonical base-currency inputs so THB <-> USD round-trips restore exact values with zero drift
+  // Convert budget & goal inputs proportionally when switching between THB and USD.
+  // [2.2] Maintain independent per-field canonical (unrounded value + baseCurrency) anchors so
+  // THB <-> USD <-> THB round-trips restore exact values with zero drift even if another field is edited.
   const fx = state.fxRate > 0 ? state.fxRate : 34.50;
   if (prevCurrency !== nextCurrency) {
     const convFactor = nextCurrency === 'USD' ? (1.0 / fx) : fx;
@@ -1272,37 +1343,42 @@ function updateCurrencySymbol(reRun = false) {
     const curTarget = targetEl ? (parseNumericInput(targetEl.value) || 1000000) : 1000000;
     const curDca = dcaEl ? (parseNumericInput(dcaEl.value) || 0) : 0;
 
-    let anchor = state.fxRoundTripAnchor;
-    const budgetEdited = !anchor || anchor.lastCurrency !== prevCurrency || Math.abs(curBudget - Number(anchor.lastBudget)) > 0.01;
-    const targetEdited = !anchor || anchor.lastCurrency !== prevCurrency || Math.abs(curTarget - Number(anchor.lastTarget)) > 0.5;
-    const dcaEdited = !anchor || anchor.lastCurrency !== prevCurrency || Math.abs(curDca - Number(anchor.lastDca)) > 0.5;
-    if (!anchor || budgetEdited || targetEdited || dcaEdited) {
-      anchor = {
-        baseCurrency: prevCurrency,
-        budget: budgetEdited ? curBudget : (anchor.baseCurrency === prevCurrency ? anchor.budget : curBudget),
-        target: targetEdited ? curTarget : (anchor.baseCurrency === prevCurrency ? anchor.target : curTarget),
-        dca: dcaEdited ? curDca : (anchor.baseCurrency === prevCurrency ? anchor.dca : curDca),
-        lastCurrency: prevCurrency,
-        lastBudget: curBudget,
-        lastTarget: curTarget,
-        lastDca: curDca
-      };
-      state.fxRoundTripAnchor = anchor;
-    }
+    const anchorMap = ensureCanonicalFxAnchorMap();
+    const resolveFieldConversion = (fieldKey, currentDisplayedVal, editTolerance, allowUsdDecimals) => {
+      let entry = anchorMap[fieldKey];
+      const wasEdited = !entry
+        || entry.lastCurrency !== prevCurrency
+        || Math.abs(currentDisplayedVal - Number(entry.lastDisplayed)) > editTolerance;
+      if (wasEdited) {
+        entry = {
+          value: currentDisplayedVal,
+          baseCurrency: prevCurrency,
+          lastCurrency: prevCurrency,
+          lastDisplayed: currentDisplayedVal
+        };
+        anchorMap[fieldKey] = entry;
+      }
 
-    const restoringBase = anchor.baseCurrency === nextCurrency;
-    const baseToNextFactor = nextCurrency === 'USD' ? (1.0 / fx) : fx;
+      let nextVal;
+      if (entry.baseCurrency === nextCurrency) {
+        nextVal = entry.value;
+      } else {
+        const factor = nextCurrency === 'USD' ? (1.0 / fx) : fx;
+        const rawConverted = entry.value * factor;
+        nextVal = (allowUsdDecimals && nextCurrency === 'USD')
+          ? Math.round(rawConverted * 100) / 100
+          : Math.round(rawConverted);
+      }
+      entry.lastCurrency = nextCurrency;
+      entry.lastDisplayed = nextVal;
+      return nextVal;
+    };
 
     if (budgetEl) {
-      const newBudget = restoringBase
-        ? anchor.budget
-        : (nextCurrency === 'USD'
-            ? Math.round((anchor.budget * baseToNextFactor) * 100) / 100
-            : Math.round(anchor.budget * baseToNextFactor));
+      const newBudget = resolveFieldConversion('budget', curBudget, 0.01, true);
       state.budget = newBudget;
       const formattedNew = formatNumberWithCommas(newBudget, nextCurrency === 'USD' ? 2 : 0);
       syncAllBudgetInputs(formattedNew, '');
-      anchor.lastBudget = newBudget;
     }
 
     Object.keys(state.customHoldings).forEach(t => {
@@ -1323,20 +1399,13 @@ function updateCurrencySymbol(reRun = false) {
       goalInitEl.value = formatNumberWithCommas(state.budget, 0);
     }
     if (targetEl) {
-      const newTarget = restoringBase
-        ? anchor.target
-        : Math.round(anchor.target * baseToNextFactor);
+      const newTarget = resolveFieldConversion('target', curTarget, 0.5, false);
       targetEl.value = formatNumberWithCommas(newTarget, 0);
-      anchor.lastTarget = newTarget;
     }
     if (dcaEl) {
-      const newDca = restoringBase
-        ? anchor.dca
-        : Math.round(anchor.dca * baseToNextFactor);
+      const newDca = resolveFieldConversion('dca', curDca, 0.5, false);
       dcaEl.value = formatNumberWithCommas(newDca, 0);
-      anchor.lastDca = newDca;
     }
-    anchor.lastCurrency = nextCurrency;
     fetchLiveMarketRates();
 
     // Immediately convert cached optData figures proportionally to prevent transient mixed currency symbol/number mismatch
@@ -1377,8 +1446,8 @@ function selectPrimaryInvestmentMode(modeKey) {
   const resolvedMode = ['new_capital', 'existing_portfolio', 'goal_based'].includes(modeKey) ? modeKey : 'new_capital';
   state.primaryMode = resolvedMode;
 
-  const activePillClass = 'cursor-pointer min-h-[40px] px-3.5 py-1.5 rounded-xl bg-[#00D084] text-[#0A0D12] font-bold text-sm transition inline-flex items-center gap-1.5 shadow-2xs';
-  const inactivePillClass = 'cursor-pointer min-h-[40px] px-3.5 py-1.5 rounded-xl bg-transparent hover:bg-white/70 text-slate-700 font-semibold text-sm transition inline-flex items-center gap-1.5';
+  const activePillClass = 'qf-seg-btn qf-seg-active cursor-pointer min-h-[36px] px-2 sm:px-3.5 py-1.5 rounded-lg font-semibold text-[11.5px] sm:text-xs transition inline-flex items-center justify-center gap-1.5 whitespace-nowrap';
+  const inactivePillClass = 'qf-seg-btn qf-seg-inactive cursor-pointer min-h-[36px] px-2 sm:px-3.5 py-1.5 rounded-lg font-medium text-[11.5px] sm:text-xs transition inline-flex items-center justify-center gap-1.5 whitespace-nowrap';
 
   ['new_capital', 'existing_portfolio', 'goal_based'].forEach(k => {
     const card = document.getElementById(`primary-mode-card-${k}`);
@@ -1432,6 +1501,9 @@ function toggleStockPickerDrawer(forceState) {
   if (btn) btn.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
   if (chev) chev.style.transform = shouldOpen ? 'rotate(180deg)' : 'rotate(0deg)';
   if (hint) hint.innerText = shouldOpen ? 'พับเก็บ' : 'กดเพื่อเปิดดู';
+  if (shouldOpen && typeof fetchDynamicPopularAssets === 'function') {
+    fetchDynamicPopularAssets();
+  }
 }
 
 function jumpToActivePrimaryModeResult() {
@@ -1469,8 +1541,8 @@ function switchStockPickerSource(sourceKey = 'catalog') {
       const isAct = k === activeKey;
       tabBtn.setAttribute('aria-selected', isAct ? 'true' : 'false');
       tabBtn.className = isAct
-        ? 'qf-source-tab px-3 py-1.5 rounded-lg font-bold bg-slate-900 text-[#00D084] shadow-2xs transition cursor-pointer'
-        : 'qf-source-tab px-3 py-1.5 rounded-lg font-semibold text-slate-700 hover:text-slate-900 transition cursor-pointer';
+        ? 'qf-source-tab qf-seg-btn qf-seg-active px-3 py-1 rounded-md font-semibold transition cursor-pointer'
+        : 'qf-source-tab qf-seg-btn qf-seg-inactive px-3 py-1 rounded-md font-medium transition cursor-pointer';
     }
   });
 }
@@ -1480,8 +1552,8 @@ function updateQuickBudgetHighlights(currentBudget) {
     const val = Number(btn.dataset.quickBudget || 0);
     const isMatch = val > 0 && Math.abs(val - currentBudget) < 0.01;
     btn.className = isMatch
-      ? 'qf-quick-budget-btn min-h-[34px] px-3 py-0.5 text-[13px] font-mono font-bold rounded-full bg-[#E6FBF3] text-emerald-900 border border-[#00D084] transition cursor-pointer tabular-nums'
-      : 'qf-quick-budget-btn min-h-[34px] px-3 py-0.5 text-[13px] font-mono font-semibold rounded-full bg-white border border-slate-300 hover:border-[#00D084] hover:text-emerald-800 text-slate-800 transition cursor-pointer tabular-nums';
+      ? 'qf-quick-budget-btn qf-budget-active min-h-[32px] px-2.5 py-0.5 text-xs font-mono font-semibold rounded-md bg-slate-900 text-white border border-slate-900 transition cursor-pointer tabular-nums'
+      : 'qf-quick-budget-btn min-h-[32px] px-2.5 py-0.5 text-xs font-mono font-medium rounded-md bg-white border border-slate-200 hover:border-slate-400 text-slate-700 transition cursor-pointer tabular-nums';
   });
 }
 
@@ -1493,21 +1565,21 @@ function updateSetupReadinessUI() {
   const maxWeightPct = sliderEl ? parseFloat(sliderEl.value) : 100;
   const maxWeight = maxWeightPct / 100.0;
 
-  // 1. Update Step 1 Assets Status Pill (Concise + Tier Max Quota)
+  // 1. Update Step 1 Assets Status Counter (Subtle Monospace Tag)
   const statusPill = document.getElementById('setup-assets-status-pill');
   const tierInfo = getActiveUserTierInfo();
   const maxAssets = Number(tierInfo.maxAssets || 5);
   if (statusPill) {
     if (tickerCount > maxAssets) {
-      statusPill.className = 'inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-50 text-amber-900 border border-amber-300 shrink-0';
-      statusPill.innerText = `${tickerCount}/${maxAssets} ตัว (เกินเพดาน)`;
+      statusPill.className = 'inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-mono font-semibold bg-amber-50 text-amber-900 border border-amber-300 shrink-0 tabular-nums';
+      statusPill.innerText = `${tickerCount}/${maxAssets} (เกินเพดาน)`;
     } else if (tickerCount >= 2) {
-      statusPill.className = 'inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#E6FBF3] text-emerald-900 border border-[#00D084]/40 shrink-0';
-      statusPill.innerText = `${tickerCount}/${maxAssets} ตัว ✓`;
+      statusPill.className = 'inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-mono font-semibold bg-slate-100 text-slate-700 border border-slate-200 shrink-0 tabular-nums';
+      statusPill.innerText = `${tickerCount}/${maxAssets}`;
     } else {
       const need = Math.max(1, 2 - tickerCount);
-      statusPill.className = 'inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-50 text-amber-900 border border-amber-300 shrink-0';
-      statusPill.innerText = `เพิ่มอีก ${need} ตัว`;
+      statusPill.className = 'inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-mono font-semibold bg-amber-50 text-amber-900 border border-amber-300 shrink-0 tabular-nums';
+      statusPill.innerText = `เพิ่มอีก ${need}`;
     }
   }
 
@@ -1581,9 +1653,9 @@ function selectGoal(goalKey) {
     const pill = document.getElementById(`top-pill-${k}`);
     if (pill) {
       if (k === resolvedKey) {
-        pill.className = 'top-goal-pill px-2.5 py-1.5 rounded-lg text-xs font-bold bg-[#00D084] text-[#07130E] shadow-xs transition cursor-pointer whitespace-nowrap text-center';
+        pill.className = 'top-goal-pill qf-seg-btn qf-seg-active px-2.5 py-1 rounded-md text-xs font-semibold transition cursor-pointer whitespace-nowrap text-center';
       } else {
-        pill.className = 'top-goal-pill px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white hover:bg-white/10 transition cursor-pointer whitespace-nowrap text-center';
+        pill.className = 'top-goal-pill qf-seg-btn qf-seg-inactive px-2.5 py-1 rounded-md text-xs font-medium transition cursor-pointer whitespace-nowrap text-center';
       }
     }
   });
@@ -1977,47 +2049,58 @@ function updateCustomTotalPortfolioLabel() {
   }
 }
 
+const POPULAR_ASSETS_LS_KEY = 'qf_popular_assets_v2';
+const POPULAR_ASSETS_CLIENT_TTL_MS = 24 * 60 * 60 * 1000;
+let _popularAssetsFetchPromise = null;
+let _popularAssetsFetchedLiveThisSession = false;
+
+const POPULAR_ASSETS_META_STATE = {
+  source: 'curated_fallback',
+  asOfDate: '',
+  updatedAt: '',
+  liveCategories: []
+};
+
 const STOCK_CATALOG_CATEGORIES = {
   thai_set50: [
+    { symbol: 'DELTA.BK', label: 'DELTA (เดลต้า)' },
     { symbol: 'PTT.BK', label: 'PTT (ปตท.)' },
     { symbol: 'ADVANC.BK', label: 'ADVANC (AIS)' },
-    { symbol: 'AOT.BK', label: 'AOT (ทอท.)' },
-    { symbol: 'BDMS.BK', label: 'BDMS (รพ.กรุงเทพ)' },
-    { symbol: 'CPALL.BK', label: 'CPALL (7-Eleven)' },
-    { symbol: 'DELTA.BK', label: 'DELTA (เดลต้า)' },
-    { symbol: 'SCB.BK', label: 'SCB (เอสซีบี เอกซ์)' },
-    { symbol: 'KBANK.BK', label: 'KBANK (กสิกรไทย)' },
-    { symbol: 'BBL.BK', label: 'BBL (กรุงเทพ)' },
-    { symbol: 'PTTEP.BK', label: 'PTTEP (ปตท.สผ.)' },
     { symbol: 'GULF.BK', label: 'GULF (กัลฟ์)' },
-    { symbol: 'SCC.BK', label: 'SCC (ปูนซิเมนต์ไทย)' },
+    { symbol: 'AOT.BK', label: 'AOT (ทอท.)' },
+    { symbol: 'KBANK.BK', label: 'KBANK (กสิกรไทย)' },
+    { symbol: 'KTB.BK', label: 'KTB (กรุงไทย)' },
+    { symbol: 'PTTEP.BK', label: 'PTTEP (ปตท.สผ.)' },
+    { symbol: 'SCB.BK', label: 'SCB (เอสซีบี เอกซ์)' },
+    { symbol: 'CPALL.BK', label: 'CPALL (7-Eleven)' },
+    { symbol: 'TRUE.BK', label: 'TRUE (ทรู)' },
+    { symbol: 'BBL.BK', label: 'BBL (กรุงเทพ)' },
+    { symbol: 'BDMS.BK', label: 'BDMS (รพ.กรุงเทพ)' },
     { symbol: 'CPN.BK', label: 'CPN (เซ็นทรัลพัฒนา)' },
+    { symbol: 'SCC.BK', label: 'SCC (ปูนซิเมนต์ไทย)' },
     { symbol: 'BH.BK', label: 'BH (รพ.บำรุงราษฎร์)' },
     { symbol: 'MINT.BK', label: 'MINT (ไมเนอร์)' },
-    { symbol: 'TISCO.BK', label: 'TISCO (ทิสโก้)' },
-    { symbol: 'INTUCH.BK', label: 'INTUCH (อินทัช)' },
-    { symbol: 'LH.BK', label: 'LH (แลนด์ แอนด์ เฮ้าส์)' }
+    { symbol: 'TISCO.BK', label: 'TISCO (ทิสโก้)' }
   ],
   us_equities: [
-    { symbol: 'NVDA', label: 'NVDA (NVIDIA)' },
     { symbol: 'AAPL', label: 'AAPL (Apple)' },
     { symbol: 'MSFT', label: 'MSFT (Microsoft)' },
-    { symbol: 'AMZN', label: 'AMZN (Amazon)' },
+    { symbol: 'NVDA', label: 'NVDA (NVIDIA)' },
     { symbol: 'GOOGL', label: 'GOOGL (Alphabet)' },
+    { symbol: 'AMZN', label: 'AMZN (Amazon)' },
     { symbol: 'META', label: 'META (Meta)' },
     { symbol: 'TSLA', label: 'TSLA (Tesla)' },
+    { symbol: 'AVGO', label: 'AVGO (Broadcom)' },
     { symbol: 'BRK-B', label: 'BRK-B (Berkshire)' },
+    { symbol: 'LLY', label: 'LLY (Eli Lilly)' },
+    { symbol: 'WMT', label: 'WMT (Walmart)' },
     { symbol: 'JPM', label: 'JPM (JPMorgan)' },
     { symbol: 'V', label: 'V (Visa)' },
     { symbol: 'MA', label: 'MA (Mastercard)' },
     { symbol: 'COST', label: 'COST (Costco)' },
-    { symbol: 'AVGO', label: 'AVGO (Broadcom)' },
     { symbol: 'AMD', label: 'AMD' },
     { symbol: 'NFLX', label: 'NFLX (Netflix)' },
-    { symbol: 'JNJ', label: 'JNJ (Johnson & Johnson)' },
-    { symbol: 'KO', label: 'KO (Coca-Cola)' },
-    { symbol: 'PG', label: 'PG (P&G)' },
-    { symbol: 'WMT', label: 'WMT (Walmart)' }
+    { symbol: 'KO', label: 'KO (Coca-Cola)' }
   ],
   etf_gold_bonds: [
     { symbol: 'SPY', label: 'SPY (S&P 500 ETF)' },
@@ -2034,10 +2117,162 @@ const STOCK_CATALOG_CATEGORIES = {
   crypto: [
     { symbol: 'BTC-USD', label: 'BTC-USD (Bitcoin)' },
     { symbol: 'ETH-USD', label: 'ETH-USD (Ethereum)' },
+    { symbol: 'BNB-USD', label: 'BNB-USD (BNB)' },
+    { symbol: 'XRP-USD', label: 'XRP-USD (XRP)' },
     { symbol: 'SOL-USD', label: 'SOL-USD (Solana)' },
-    { symbol: 'BNB-USD', label: 'BNB-USD (BNB)' }
+    { symbol: 'ADA-USD', label: 'ADA-USD (Cardano)' }
   ]
 };
+
+function formatThaiShortDateFromIso(dateStr) {
+  const m = String(dateStr || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return '';
+  const thaiMonths = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+  const yearBe = Number(m[1]) + 543;
+  const monthIdx = Number(m[2]) - 1;
+  const day = Number(m[3]);
+  if (monthIdx < 0 || monthIdx > 11) return '';
+  return `${day} ${thaiMonths[monthIdx]} ${yearBe}`;
+}
+
+function syncDynamicPresetSubtitles() {
+  const thSub = document.getElementById('preset-sub-thai_set50');
+  if (thSub && Array.isArray(PRESETS.thai_set50?.tickers) && PRESETS.thai_set50.tickers.length > 0) {
+    thSub.innerText = PRESETS.thai_set50.tickers
+      .slice(0, 5)
+      .map(s => String(s).replace(/\.BK$/i, ''))
+      .join(', ');
+  }
+  const usSub = document.getElementById('preset-sub-tech_titans');
+  if (usSub && Array.isArray(PRESETS.tech_titans?.tickers) && PRESETS.tech_titans.tickers.length > 0) {
+    const syms = PRESETS.tech_titans.tickers.slice(0, 5).join(', ');
+    usSub.innerText = PRESETS.tech_titans.tickers.length > 5 ? `${syms}...` : syms;
+  }
+}
+
+function updatePopularAssetsMetaCaption() {
+  const metaEl = document.getElementById('popular-assets-meta');
+  if (!metaEl) return;
+  const activeCat = state.activeCatalogCategory || 'thai_set50';
+  if (activeCat === 'etf_gold_bonds') {
+    metaEl.innerHTML = '<span>คัดสรรครบทุกกลุ่มสินทรัพย์หลัก (ETF หุ้น / ทองคำ / พันธบัตร / REIT)</span>';
+    return;
+  }
+  const isLiveCat = Array.isArray(POPULAR_ASSETS_META_STATE.liveCategories)
+    && POPULAR_ASSETS_META_STATE.liveCategories.includes(activeCat);
+  const thaiDate = formatThaiShortDateFromIso(POPULAR_ASSETS_META_STATE.asOfDate);
+  if (isLiveCat && thaiDate) {
+    metaEl.innerHTML = `<span>จัดอันดับอัตโนมัติตามมูลค่าตลาด (Top Market Cap) • อัปเดต ${escapeHtmlText(thaiDate)}</span>`;
+  } else {
+    metaEl.innerHTML = '<span>จัดอันดับตามมูลค่าตลาด (Top Market Cap) • รายการมาตรฐาน</span>';
+  }
+}
+
+function applyPopularAssetsPayload(payload) {
+  if (!payload || typeof payload !== 'object') return false;
+  const cats = payload.categories;
+  if (cats && typeof cats === 'object') {
+    ['thai_set50', 'us_equities', 'etf_gold_bonds', 'crypto'].forEach(catKey => {
+      const list = cats[catKey];
+      if (Array.isArray(list) && list.length >= 3) {
+        const cleaned = list
+          .filter(it => it && typeof it.symbol === 'string' && it.symbol.trim())
+          .map(it => ({
+            symbol: String(it.symbol).trim().toUpperCase(),
+            label: String(it.label || it.symbol).trim()
+          }));
+        if (cleaned.length >= 3) {
+          STOCK_CATALOG_CATEGORIES[catKey] = cleaned;
+        }
+      }
+    });
+  }
+
+  const dynPresets = payload.presets;
+  if (dynPresets && typeof dynPresets === 'object') {
+    if (Array.isArray(dynPresets.thai_set50) && dynPresets.thai_set50.length >= 3) {
+      PRESETS.thai_set50.tickers = dynPresets.thai_set50.map(s => String(s).trim().toUpperCase()).filter(Boolean);
+    }
+    if (Array.isArray(dynPresets.tech_titans) && dynPresets.tech_titans.length >= 3) {
+      PRESETS.tech_titans.tickers = dynPresets.tech_titans.map(s => String(s).trim().toUpperCase()).filter(Boolean);
+    }
+  }
+
+  POPULAR_ASSETS_META_STATE.source = String(payload.source || 'curated_fallback');
+  POPULAR_ASSETS_META_STATE.asOfDate = String(payload.as_of_date || '');
+  POPULAR_ASSETS_META_STATE.updatedAt = String(payload.updated_at || '');
+  POPULAR_ASSETS_META_STATE.liveCategories = Array.isArray(payload.live_categories) ? payload.live_categories : [];
+
+  syncDynamicPresetSubtitles();
+  renderQuickStockCatalog();
+  return true;
+}
+
+function hydratePopularAssetsFromCache() {
+  try {
+    localStorage.removeItem('qf_popular_assets_v1');
+    const raw = localStorage.getItem(POPULAR_ASSETS_LS_KEY);
+    if (!raw) {
+      syncDynamicPresetSubtitles();
+      return false;
+    }
+    const parsed = JSON.parse(raw);
+    const savedAt = Number(parsed?.savedAt || 0);
+    if (parsed?.payload && savedAt > 0 && (Date.now() - savedAt) < POPULAR_ASSETS_CLIENT_TTL_MS) {
+      applyPopularAssetsPayload(parsed.payload);
+      return true;
+    }
+  } catch (e) {}
+  syncDynamicPresetSubtitles();
+  return false;
+}
+
+async function fetchDynamicPopularAssets(forceRefresh = false) {
+  if (!forceRefresh && _popularAssetsFetchedLiveThisSession) return;
+  if (_popularAssetsFetchPromise) return _popularAssetsFetchPromise;
+
+  // Skip network call if fresh 24h client cache already exists and not forced
+  if (!forceRefresh) {
+    try {
+      const raw = localStorage.getItem(POPULAR_ASSETS_LS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const savedAt = Number(parsed?.savedAt || 0);
+        if (parsed?.payload && savedAt > 0 && (Date.now() - savedAt) < POPULAR_ASSETS_CLIENT_TTL_MS) {
+          const hasLive = Array.isArray(parsed.payload.live_categories) && parsed.payload.live_categories.length > 0;
+          if (hasLive) {
+            _popularAssetsFetchedLiveThisSession = true;
+            return;
+          }
+        }
+      }
+    } catch (e) {}
+  }
+
+  _popularAssetsFetchPromise = (async () => {
+    try {
+      const url = forceRefresh ? '/api/popular-assets?refresh=true' : '/api/popular-assets';
+      const res = await fetch(url, { cache: 'default' });
+      if (!res.ok) return;
+      const payload = await res.json();
+      if (applyPopularAssetsPayload(payload)) {
+        _popularAssetsFetchedLiveThisSession = true;
+        try {
+          localStorage.setItem(POPULAR_ASSETS_LS_KEY, JSON.stringify({
+            savedAt: Date.now(),
+            payload
+          }));
+        } catch (e) {}
+      }
+    } catch (e) {
+      // Silent graceful fallback to built-in institutional catalog
+    } finally {
+      _popularAssetsFetchPromise = null;
+    }
+  })();
+
+  return _popularAssetsFetchPromise;
+}
 
 function selectStockCatalogCategory(catKey = 'thai_set50') {
   const validCats = Object.keys(STOCK_CATALOG_CATEGORIES);
@@ -2048,8 +2283,8 @@ function selectStockCatalogCategory(catKey = 'thai_set50') {
     const tabBtn = document.getElementById(`stock-cat-tab-${k}`);
     if (tabBtn) {
       tabBtn.className = k === nextCat
-        ? 'px-2.5 py-1 rounded-lg font-bold bg-[#00D084] text-[#0A0D12] transition cursor-pointer'
-        : 'px-2.5 py-1 rounded-lg font-medium text-slate-600 hover:text-slate-900 transition cursor-pointer';
+        ? 'qf-seg-btn qf-seg-active px-2.5 py-1 rounded-md font-semibold transition cursor-pointer'
+        : 'qf-seg-btn qf-seg-inactive px-2.5 py-1 rounded-md font-medium transition cursor-pointer';
     }
   });
   renderQuickStockCatalog();
@@ -2092,6 +2327,7 @@ function renderQuickStockCatalog() {
       </button>
     `;
   }).join('');
+  updatePopularAssetsMetaCaption();
 }
 
 // Selected Tickers List in Left Sidebar (Shows both THB and USD prices clearly)
@@ -2148,32 +2384,32 @@ function renderTickersList() {
     }
 
     const isUp = (q.change_pct || 0) >= 0;
-    const chgColor = isUp ? 'text-emerald-700 bg-emerald-50 border-emerald-200' : 'text-rose-700 bg-rose-50 border-rose-200';
+    const chgColor = isUp ? 'text-emerald-700 bg-emerald-50/80 border-emerald-200/80' : 'text-rose-700 bg-rose-50/80 border-rose-200/80';
     const chgSign = isUp ? '+' : '';
     const chgBadge = q.change_pct !== undefined
-      ? `<span class="text-[11px] sm:text-xs font-mono font-semibold px-1.5 sm:px-2 py-0.5 rounded-md border whitespace-nowrap shrink-0 ${chgColor}">${chgSign}${q.change_pct.toFixed(2)}%</span>`
+      ? `<span class="text-[10px] sm:text-[11px] font-mono font-semibold px-1.5 py-0.5 rounded border whitespace-nowrap shrink-0 tabular-nums ${chgColor}">${chgSign}${q.change_pct.toFixed(2)}%</span>`
       : '';
 
     const safeTicker = escapeHtmlText(ticker);
     const safeName = escapeHtmlText(name !== ticker ? name : (isThai ? 'หุ้นไทย (SET)' : 'Global Asset'));
     const avatarBg = ASSET_COLORS[idx % ASSET_COLORS.length];
     return `
-      <div class="px-3 sm:px-4 py-3 flex items-center justify-between gap-2 sm:gap-3 hover:bg-slate-50/90 transition">
-        <div class="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
-          ${renderStockLogoBadge(ticker, avatarBg, 38)}
+      <div class="px-3 sm:px-4 py-2.5 flex items-center justify-between gap-2 sm:gap-3 hover:bg-slate-50/90 transition">
+        <div class="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+          ${renderStockLogoBadge(ticker, avatarBg, 32)}
           <div class="min-w-0 flex-1">
-            <div class="flex items-center gap-1.5 sm:gap-2 flex-wrap">
-              <span class="font-bold text-sm sm:text-base font-mono text-slate-900 tracking-tight whitespace-nowrap">${safeTicker}</span>
+            <div class="flex items-center gap-1.5 flex-nowrap">
+              <span class="font-bold text-[13px] sm:text-sm font-mono text-slate-900 tracking-tight whitespace-nowrap shrink-0">${safeTicker}</span>
               ${chgBadge}
             </div>
-            <div class="text-xs sm:text-[13px] text-slate-600 truncate mt-0.5">${safeName}</div>
+            <div class="text-[11.5px] sm:text-xs text-slate-500 truncate mt-0.5">${safeName}</div>
           </div>
         </div>
-        <div class="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
-          <div class="text-right leading-tight">
+        <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          <div class="text-right leading-tight tabular-nums">
             ${priceHtml}
           </div>
-          <button data-ticker="${safeTicker}" onclick="removeTicker(this.dataset.ticker)" title="ลบออก" aria-label="ลบ ${safeTicker} ออกจากพอร์ต" class="text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg p-1.5 transition cursor-pointer shrink-0">
+          <button data-ticker="${safeTicker}" onclick="removeTicker(this.dataset.ticker)" title="ลบออก" aria-label="ลบ ${safeTicker} ออกจากพอร์ต" class="text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md p-1.5 transition cursor-pointer shrink-0">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
           </button>
         </div>
@@ -2225,6 +2461,18 @@ async function fetchLiveQuotesForTickers() {
   }
 }
 
+function resetPortfolioNameOnTickerMutation() {
+  // Preserve name & editing context ONLY when user explicitly clicked "แก้ไขพอร์ตเดิม" from Cloud Vault.
+  if (typeof window !== 'undefined' && typeof window.isExplicitPortfolioEditing === 'function' && window.isExplicitPortfolioEditing()) {
+    return;
+  }
+  if (typeof cancelEditingSavedPortfolio === 'function') {
+    cancelEditingSavedPortfolio();
+  }
+  const saveNameEl = document.getElementById('save-portfolio-name');
+  if (saveNameEl) saveNameEl.value = '';
+}
+
 function addTicker(symbol) {
   const clean = symbol.trim().toUpperCase();
   if (!clean) return;
@@ -2260,6 +2508,7 @@ function addTicker(symbol) {
       return;
     }
     state.tickers.push(clean);
+    resetPortfolioNameOnTickerMutation();
     renderTickersList();
     updateMaxWeightLabel(document.getElementById('max-weight-slider')?.value || 100);
     markResultsStale(`เพิ่มสินทรัพย์ ${clean}`);
@@ -2275,6 +2524,7 @@ function addTickerFromInput() {
 
 function removeTicker(symbol) {
   state.tickers = state.tickers.filter(t => t !== symbol);
+  resetPortfolioNameOnTickerMutation();
   renderTickersList();
   updateMaxWeightLabel(document.getElementById('max-weight-slider')?.value || 100);
   markResultsStale(`ลบสินทรัพย์ ${symbol}`);
@@ -2686,8 +2936,8 @@ function setOrderExecutionUnitMode(mode) {
   state.executionUnitMode = nextMode;
   const btnFrac = document.getElementById('order-unit-mode-fractional');
   const btnWhole = document.getElementById('order-unit-mode-whole');
-  const activeCls = 'px-2.5 py-1.5 rounded-lg bg-[#00D084] text-[#0A0D12] font-semibold transition cursor-pointer';
-  const inactiveCls = 'px-2.5 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 font-medium transition cursor-pointer';
+  const activeCls = 'qf-seg-btn qf-seg-active px-2.5 py-1.5 rounded-lg font-semibold transition cursor-pointer';
+  const inactiveCls = 'qf-seg-btn qf-seg-inactive px-2.5 py-1.5 rounded-lg font-medium transition cursor-pointer';
   if (btnFrac) btnFrac.className = state.executionUnitMode === 'fractional' ? activeCls : inactiveCls;
   if (btnWhole) btnWhole.className = state.executionUnitMode === 'whole' ? activeCls : inactiveCls;
   if (state.optData) renderActiveGoalView();
@@ -3016,7 +3266,7 @@ function renderActiveGoalView() {
   if (compactKpiEl) compactKpiEl.innerText = `${retSign}${retPct}%/ปี`;
   const kpiRetEl = document.getElementById('kpi-return');
   kpiRetEl.innerText = `${retSign}${retPct}%`;
-  kpiRetEl.className = `font-mono font-extrabold tracking-tight mt-1.5 tabular-nums ${strat.expected_return >= 0 ? 'text-[#00E593]' : 'text-[#FF6B70]'}`;
+  kpiRetEl.className = `font-mono font-extrabold tracking-tight mt-1.5 tabular-nums ${strat.expected_return >= 0 ? 'qf-primary-text' : 'qf-kpi-rose-text'}`;
 
   const estProfit = budget * strat.expected_return;
   const profitSign = estProfit >= 0 ? '+' : '-';
@@ -3025,8 +3275,8 @@ function renderActiveGoalView() {
     ? `≈ ${profitSign}${state.currencySymbol} ••••••/ปี`
     : `≈ ${profitSign}${formatMoney(Math.abs(estProfit), 0, true)}/ปี`;
   kpiProfitEl.className = estProfit >= 0
-    ? 'text-[11px] sm:text-xs text-[#A7F3D0] bg-[#00D084]/15 border border-[#00D084]/35 rounded-full px-2.5 py-0.5 mt-2 inline-block font-semibold tabular-nums max-w-full truncate'
-    : 'text-[11px] sm:text-xs text-rose-200 bg-rose-500/20 border border-rose-400/40 rounded-full px-2.5 py-0.5 mt-2 inline-block font-semibold tabular-nums max-w-full truncate';
+    ? 'qf-kpi-sub-tag qf-kpi-tag-emerald text-[11px] sm:text-xs font-mono font-semibold rounded-md border px-2 py-0.5 mt-2 inline-block tabular-nums max-w-full truncate'
+    : 'qf-kpi-sub-tag qf-kpi-tag-rose text-[11px] sm:text-xs font-mono font-semibold rounded-md border px-2 py-0.5 mt-2 inline-block tabular-nums max-w-full truncate';
 
   // KPI 2: Volatility & Risk Badge
   const volPct = (strat.volatility * 100).toFixed(2);
@@ -3034,13 +3284,13 @@ function renderActiveGoalView() {
   const riskBadge = document.getElementById('kpi-risk-badge');
   if (strat.volatility < 0.16) {
     riskBadge.innerText = 'ความเสี่ยงต่ำ';
-    riskBadge.className = 'inline-block text-[11px] sm:text-xs font-semibold px-2.5 py-0.5 rounded-full bg-[#00D084]/15 text-[#6EE7B7] border border-[#00D084]/35 mt-2 max-w-full truncate';
+    riskBadge.className = 'qf-kpi-sub-tag qf-kpi-tag-emerald inline-block text-[11px] sm:text-xs font-semibold px-2 py-0.5 rounded-md border mt-2 max-w-full truncate';
   } else if (strat.volatility <= 0.28) {
     riskBadge.innerText = 'ความเสี่ยงปานกลาง';
-    riskBadge.className = 'inline-block text-[11px] sm:text-xs font-semibold px-2.5 py-0.5 rounded-full bg-amber-400/15 text-amber-200 border border-amber-400/35 mt-2 max-w-full truncate';
+    riskBadge.className = 'qf-kpi-sub-tag qf-kpi-tag-amber inline-block text-[11px] sm:text-xs font-semibold px-2 py-0.5 rounded-md border mt-2 max-w-full truncate';
   } else {
     riskBadge.innerText = 'ความเสี่ยงสูง';
-    riskBadge.className = 'inline-block text-[11px] sm:text-xs font-semibold px-2.5 py-0.5 rounded-full bg-rose-500/20 text-rose-200 border border-rose-400/40 mt-2 max-w-full truncate';
+    riskBadge.className = 'qf-kpi-sub-tag qf-kpi-tag-rose inline-block text-[11px] sm:text-xs font-semibold px-2 py-0.5 rounded-md border mt-2 max-w-full truncate';
   }
 
   // KPI 3: Historical Max Drawdown in BAHT (Clean Hero Summary; full Peak->Trough in Tab 4 & Tooltip)
@@ -3068,13 +3318,13 @@ function renderActiveGoalView() {
   const srBadge = document.getElementById('kpi-sharpe-badge');
   if (strat.sharpe_ratio >= 1.5) {
     srBadge.innerText = 'คุ้มค่าดีเยี่ยม';
-    srBadge.className = 'inline-block text-[11px] sm:text-xs font-semibold px-2.5 py-0.5 rounded-full bg-[#00D084]/15 text-[#6EE7B7] border border-[#00D084]/35 mt-2 max-w-full truncate';
+    srBadge.className = 'qf-kpi-sub-tag qf-kpi-tag-emerald inline-block text-[11px] sm:text-xs font-semibold px-2 py-0.5 rounded-md border mt-2 max-w-full truncate';
   } else if (strat.sharpe_ratio >= 1.0) {
     srBadge.innerText = 'คุ้มค่าดี';
-    srBadge.className = 'inline-block text-[11px] sm:text-xs font-semibold px-2.5 py-0.5 rounded-full bg-blue-400/15 text-blue-200 border border-blue-400/35 mt-2 max-w-full truncate';
+    srBadge.className = 'qf-kpi-sub-tag qf-kpi-tag-blue inline-block text-[11px] sm:text-xs font-semibold px-2 py-0.5 rounded-md border mt-2 max-w-full truncate';
   } else {
     srBadge.innerText = 'คุ้มค่าระดับปานกลาง';
-    srBadge.className = 'inline-block text-[11px] sm:text-xs font-semibold px-2.5 py-0.5 rounded-full bg-white/10 text-slate-200 border border-white/15 mt-2 max-w-full truncate';
+    srBadge.className = 'qf-kpi-sub-tag qf-kpi-tag-neutral inline-block text-[11px] sm:text-xs font-semibold px-2 py-0.5 rounded-md border mt-2 max-w-full truncate';
   }
 
   // Donut Chart of Portfolio Weights
@@ -3084,17 +3334,11 @@ function renderActiveGoalView() {
   const plan = computeRebalancePlan(strat, data);
   state.lastRebalancePlan = plan;
 
-  // Update 5-Tab Nav Trade Plan badge count (strictly ONLY when results are fresh & ready)
+  // Keep Trade Plan tab label clean without "N รายการ" pill clutter
   const navTradeBadge = document.getElementById('nav-trade-count-badge');
   if (navTradeBadge) {
-    const tradeCount = (plan.sellOrders?.length || 0) + (plan.buyOrders?.length || 0);
-    if (state.resultStatus === 'ready' && tradeCount > 0) {
-      navTradeBadge.innerHTML = `${Number(tradeCount)}<span class="hidden md:inline"> รายการ</span>`;
-      navTradeBadge.classList.remove('hidden');
-    } else {
-      navTradeBadge.innerText = '';
-      navTradeBadge.classList.add('hidden');
-    }
+    navTradeBadge.innerText = '';
+    navTradeBadge.classList.add('hidden');
   }
 
   // Update Summary KPI Box & Order Assumptions (respects Privacy Mode)
@@ -3476,7 +3720,176 @@ function formatShareUnits(val, maxFrac = 4) {
   return num.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: maxFrac });
 }
 
+function computePortfolioEntryReadiness(data = state.optData, goalKey = state.activeGoal) {
+  if (!data || !data.strategies) return null;
+  const activeStrat = data.strategies[goalKey] || {};
+  const weights = activeStrat.weights || {};
+  const assetStats = Array.isArray(data.asset_stats) ? data.asset_stats : [];
+  const intelAssets = (data.market_intelligence && data.market_intelligence.assets) || {};
+  const statMap = {};
+  assetStats.forEach(s => { if (s && s.ticker) statMap[s.ticker] = s; });
+
+  let posW = 0;
+  let neuW = 0;
+  let ovbW = 0;
+  let cauW = 0;
+  let totalW = 0;
+  const trancheTickers = [];
+  const cautiousTickers = [];
+
+  Object.entries(weights).forEach(([ticker, rawW]) => {
+    const w = Number(rawW) || 0;
+    if (w <= 0.0001) return;
+    totalW += w;
+    const dec = (statMap[ticker] && statMap[ticker].decision) || intelAssets[ticker] || {};
+    const lvl = dec.signal_level || 'NEUTRAL_ACCUMULATE';
+    if (lvl === 'POSITIVE_BUY') {
+      posW += w;
+    } else if (lvl === 'OVERBOUGHT_TRANCHE') {
+      ovbW += w;
+      trancheTickers.push(ticker);
+    } else if (lvl === 'CAUTIOUS_SHIELD') {
+      cauW += w;
+      trancheTickers.push(ticker);
+      cautiousTickers.push(ticker);
+    } else {
+      neuW += w;
+    }
+  });
+
+  if (totalW <= 0) return null;
+  const positivePct = Number(((posW / totalW) * 100).toFixed(1));
+  const neutralPct = Number(((neuW / totalW) * 100).toFixed(1));
+  const overboughtPct = Number(((ovbW / totalW) * 100).toFixed(1));
+  const cautiousPct = Number(((cauW / totalW) * 100).toFixed(1));
+  const favorablePct = Number((positivePct + neutralPct).toFixed(1));
+  const cautionTotalPct = Number((overboughtPct + cautiousPct).toFixed(1));
+
+  const tierInfo = typeof getActiveUserTierInfo === 'function' ? getActiveUserTierInfo() : { canViewNews: false };
+  const hasLiveNews = Boolean(tierInfo.canViewNews);
+  const blActiveOnGoal = Boolean(state.useNewsAdjustment && goalKey === 'max_sharpe');
+  const sourceCaptionTh = hasLiveNews
+    ? 'ผสานสัญญาณข่าวตลาด + แนวโน้มราคา & RSI (ถ่วงน้ำหนักตาม % เงินลงทุนจริง)'
+    : 'ประเมินจากแนวโน้มราคา & RSI (เข้าสู่ระบบฟรีเพื่อเพิ่มสัญญาณข่าวตลาด)';
+
+  let level = 'favorable';
+  let badgeTh = 'จังหวะเอื้อต่อการเข้าตามแผน';
+  let tagCls = 'qf-kpi-tag-emerald';
+  let headlineTh = `เงินลงทุนส่วนใหญ่ (${favorablePct.toFixed(0)}%) อยู่ในโซนน่าสะสม/สมดุล เอื้อต่อการเข้าลงทุนตามแผน`;
+  let actionTh = 'สามารถทยอยส่งคำสั่งตามแผนหรือสะสมรายเดือน (DCA) ได้ตามวินัย โดยติดตามข่าวและทบทวนพอร์ตทุกไตรมาส';
+  let pdfNoteTh = 'จังหวะราคาโดยรวมอยู่ในเกณฑ์สมดุล สามารถทยอยเข้าลงทุนตามสัดส่วนแผนหรือ DCA ตามวินัย';
+
+  if (cautiousPct >= 40) {
+    level = 'cautious';
+    badgeTh = 'ควรระวัง / รอจังหวะ';
+    tagCls = 'qf-kpi-tag-rose';
+    const topCaut = cautiousTickers.slice(0, 3).join(', ');
+    headlineTh = `เงินลงทุน ${cautiousPct.toFixed(0)}% อยู่ในโซนควรระวัง (${topCaut || 'สินทรัพย์หลัก'})`;
+    actionTh = 'แนะนำชะลอการเข้าซื้อก้อนเดียว พิจารณาแบ่งซื้ออย่างน้อย 3 ไม้ ตรวจข่าวรายตัวก่อนตัดสินใจ หรือเทียบแผนผันผวนต่ำ (Min Vol)';
+    pdfNoteTh = `เงินลงทุน ${cautiousPct.toFixed(0)}% อยู่ในโซนควรระวัง แนะนำแบ่งไม้เข้าลงทุนอย่างน้อย 3 ไม้หรือทบทวนแผนผันผวนต่ำ`;
+  } else if (cautionTotalPct >= 30) {
+    level = 'tranche';
+    badgeTh = 'ควรทยอยแบ่งไม้ซื้อ (2–3 ไม้)';
+    tagCls = 'qf-kpi-tag-amber';
+    const topTranche = trancheTickers.slice(0, 3).join(', ');
+    headlineTh = `เงินลงทุน ${cautionTotalPct.toFixed(0)}% อยู่ในโซนราคาตึงตัว/ควรระวัง (${topTranche || 'สินทรัพย์หลัก'})`;
+    actionTh = 'เพื่อลดความเสี่ยงไล่ราคา แนะนำแบ่งงบทยอยซื้อ 2–3 ไม้แทนการเข้าซื้อครั้งเดียว 100% (ดูยอดแนะนำต่อไม้ในการ์ดด้านล่าง)';
+    pdfNoteTh = `เงินลงทุน ${cautionTotalPct.toFixed(0)}% อยู่ในโซนราคาตึงตัว/ควรระวัง แนะนำทยอยแบ่งซื้อ 2–3 ไม้เพื่อลดความเสี่ยงไล่ราคา`;
+  }
+
+  return {
+    level,
+    badgeTh,
+    tagCls,
+    headlineTh,
+    actionTh,
+    pdfNoteTh,
+    positivePct,
+    neutralPct,
+    overboughtPct,
+    cautiousPct,
+    favorablePct,
+    cautionTotalPct,
+    trancheTickers,
+    cautiousTickers,
+    hasLiveNews,
+    blActiveOnGoal,
+    sourceCaptionTh
+  };
+}
+
+function inspectTickerOnInsightsTab(ticker) {
+  const clean = String(ticker || '').trim().toUpperCase();
+  if (clean) {
+    state.insightsSelectedTicker = clean;
+    state.insightsNewsExpanded = false;
+  }
+  switchAppTab('insights');
+  if (typeof renderNewsAndSignalSection === 'function') {
+    renderNewsAndSignalSection();
+  }
+  setTimeout(() => {
+    const grid = document.getElementById('insights-stock-cards-grid');
+    if (grid) {
+      grid.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, 90);
+}
+
+function renderPortfolioEntryReadinessBox(containerId, readiness, compactForTradePlan = false) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  if (!readiness) {
+    el.classList.add('hidden');
+    el.innerHTML = '';
+    return;
+  }
+  el.classList.remove('hidden');
+
+  const segsHtml = [
+    { pct: readiness.positivePct, cls: 'bg-emerald-600', title: `น่าสะสม ${readiness.positivePct.toFixed(1)}%` },
+    { pct: readiness.neutralPct, cls: 'bg-blue-500', title: `สมดุล ${readiness.neutralPct.toFixed(1)}%` },
+    { pct: readiness.overboughtPct, cls: 'bg-amber-500', title: `ราคาตึง/แบ่งไม้ ${readiness.overboughtPct.toFixed(1)}%` },
+    { pct: readiness.cautiousPct, cls: 'bg-rose-500', title: `ควรระวัง ${readiness.cautiousPct.toFixed(1)}%` }
+  ].filter(s => s.pct > 0).map(s => `<div class="h-full ${s.cls}" style="width:${s.pct.toFixed(1)}%" title="${escapeHtmlText(s.title)}"></div>`).join('');
+
+  const rightActionHtml = compactForTradePlan
+    ? `<button type="button" onclick="switchAppTab('insights')" class="shrink-0 px-3 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 text-xs font-semibold transition cursor-pointer whitespace-nowrap self-start sm:self-center">ตรวจข่าว &amp; จังหวะ (แท็บ 3) ➔</button>`
+    : (readiness.level === 'cautious' && state.activeGoal !== 'min_volatility'
+        ? `<button type="button" onclick="selectGoal('min_volatility')" class="shrink-0 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition cursor-pointer whitespace-nowrap self-start sm:self-center">ลองดูแผนผันผวนต่ำ ➔</button>`
+        : `<button type="button" onclick="switchAppTab('trade-plan')" class="shrink-0 px-3 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 text-xs font-semibold transition cursor-pointer whitespace-nowrap self-start sm:self-center">กลับไปดูใบสั่งซื้อ (แท็บ 2) ➔</button>`);
+
+  el.className = 'p-3.5 sm:p-4 rounded-xl bg-slate-50 border border-slate-200/90 space-y-2.5';
+  el.innerHTML = `
+    <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-2.5">
+      <div class="space-y-1 min-w-0">
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class="text-[11px] font-semibold text-slate-500">ความพร้อมจังหวะเข้าลงทุนทั้งพอร์ต</span>
+          <span class="px-2 py-0.5 rounded-md border text-[11px] font-bold ${readiness.tagCls}">${escapeHtmlText(readiness.badgeTh)}</span>
+        </div>
+        <div class="text-xs sm:text-[13px] font-semibold text-slate-900 leading-snug">${escapeHtmlText(readiness.headlineTh)}</div>
+        <div class="text-xs text-slate-600 leading-relaxed">${escapeHtmlText(readiness.actionTh)}</div>
+      </div>
+      ${rightActionHtml}
+    </div>
+    <div class="space-y-1.5 pt-0.5">
+      <div class="w-full h-2 rounded-full bg-slate-200/80 overflow-hidden flex">${segsHtml}</div>
+      <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[11px] text-slate-600">
+        <div class="flex flex-wrap items-center gap-x-3 gap-y-0.5 font-mono tabular-nums">
+          <span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-emerald-600"></span>น่าสะสม ${readiness.positivePct.toFixed(0)}%</span>
+          <span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-blue-500"></span>สมดุล ${readiness.neutralPct.toFixed(0)}%</span>
+          <span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-amber-500"></span>ราคาตึง ${readiness.overboughtPct.toFixed(0)}%</span>
+          <span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-rose-500"></span>ควรระวัง ${readiness.cautiousPct.toFixed(0)}%</span>
+        </div>
+        <span class="text-[10.5px] text-slate-500">${escapeHtmlText(readiness.sourceCaptionTh)}</span>
+      </div>
+    </div>
+  `;
+}
+
 function renderOrderChecklistCards(sortedItems, data) {
+  const readiness = computePortfolioEntryReadiness(data, state.activeGoal);
+  renderPortfolioEntryReadinessBox('tab2-entry-readiness-strip', readiness, true);
   const grid = document.getElementById('orders-checklist-cards-grid');
   if (!grid) return;
 
@@ -3537,12 +3950,25 @@ function renderOrderChecklistCards(sortedItems, data) {
     }
 
     let sigBadge = '';
+    let trancheHintHtml = '';
     if (dec.signal_badge_th) {
-      let sigCls = 'bg-slate-100 text-slate-700 border-slate-200';
-      if (dec.signal_level === 'POSITIVE_BUY') sigCls = 'bg-emerald-50 text-emerald-800 border-emerald-200';
-      else if (dec.signal_level === 'OVERBOUGHT_TRANCHE') sigCls = 'bg-amber-50 text-amber-800 border-amber-200';
-      else if (dec.signal_level === 'CAUTIOUS_SHIELD') sigCls = 'bg-rose-50 text-rose-800 border-rose-200';
-      sigBadge = `<span class="inline-block text-xs font-semibold px-2.5 py-1 rounded-md border ${sigCls}">${escapeHtmlText(dec.signal_badge_th)}</span>`;
+      let sigCls = 'bg-slate-100 text-slate-700 border-slate-200 hover:border-slate-400';
+      if (dec.signal_level === 'POSITIVE_BUY') sigCls = 'qf-kpi-tag-emerald hover:opacity-90';
+      else if (dec.signal_level === 'OVERBOUGHT_TRANCHE') sigCls = 'qf-kpi-tag-amber hover:opacity-90';
+      else if (dec.signal_level === 'CAUTIOUS_SHIELD') sigCls = 'qf-kpi-tag-rose hover:opacity-90';
+      sigBadge = `<button type="button" data-ticker="${safeTicker}" onclick="inspectTickerOnInsightsTab(this.dataset.ticker)" title="คลิกเพื่อดูข่าวและโซนราคาของ ${safeTicker} ในแท็บ 3" class="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-md border transition cursor-pointer ${sigCls}"><span>${escapeHtmlText(dec.signal_badge_th)}</span><span class="text-[10px] opacity-75">↗</span></button>`;
+
+      if (item.action === 'BUY' && Number(item.trade_amount || 0) > 0 && (dec.signal_level === 'OVERBOUGHT_TRANCHE' || dec.signal_level === 'CAUTIOUS_SHIELD')) {
+        const trancheN = dec.signal_level === 'CAUTIOUS_SHIELD' ? 3 : 2;
+        const perTrancheAmt = Math.abs(Number(item.trade_amount || 0)) / trancheN;
+        const perTrancheTxt = state.balancePrivacyHidden
+          ? `${state.currencySymbol} ••••••`
+          : formatMoney(perTrancheAmt, 0, true);
+        const hintLabel = dec.signal_level === 'CAUTIOUS_SHIELD'
+          ? `แนะนำแบ่ง ${trancheN} ไม้ ≈ ${perTrancheTxt}/ไม้ • เช็กข่าวก่อนเข้า`
+          : `แนะนำแบ่ง ${trancheN} ไม้ ≈ ${perTrancheTxt}/ไม้`;
+        trancheHintHtml = `<span class="text-[11px] font-mono text-slate-600 leading-tight">${escapeHtmlText(hintLabel)}</span>`;
+      }
     }
 
     return `
@@ -3581,7 +4007,7 @@ function renderOrderChecklistCards(sortedItems, data) {
             })()}
           </div>
         </div>
-        ${sigBadge ? `<div class="flex items-center pt-0.5">${sigBadge}</div>` : ''}
+        ${sigBadge ? `<div class="flex flex-wrap items-center justify-between gap-2 pt-0.5">${sigBadge}${trancheHintHtml}</div>` : ''}
       </div>
     `;
   }).join('');
@@ -3759,6 +4185,42 @@ function renderBacktestStressCard() {
     const scaledRemTxt = maskIfPrivate(formatMoney(scaledRemaining, 0, true), true);
     stressNoteEl.innerHTML = `<span class="font-semibold text-slate-700">จำลองเทียบเงินต้น:</span> หากเข้าลงทุนเงินต้น <span class="font-mono font-semibold text-slate-900">${budgetTxt}</span> ตรงจุดสูงสุดพอดี จะย่อตัวราว <span class="font-mono font-semibold text-rose-600">-${scaledLossTxt}</span> เหลือประมาณ <span class="font-mono font-semibold text-emerald-700">${scaledRemTxt}</span>`;
   }
+
+  // Actionable Stress-Test Bridge: compare active strategy MDD vs safer alternatives (Min Vol / HRP)
+  const saferBoxEl = document.getElementById('bt-stress-safer-plan-box');
+  if (saferBoxEl) {
+    const activeMddNum = Math.abs(Number(strat.max_drawdown || 0) * 100);
+    const candidates = [
+      { key: 'min_volatility', label: 'ผันผวนต่ำ (Min Volatility)' },
+      { key: 'hrp', label: 'กระจายเสี่ยงสมดุล (HRP)' }
+    ].filter(c => c.key !== state.activeGoal && data.strategies?.[c.key]);
+
+    let bestSafer = null;
+    candidates.forEach(c => {
+      const mddVal = Math.abs(Number(data.strategies[c.key].max_drawdown || 0) * 100);
+      if (!bestSafer || mddVal < bestSafer.mddVal) {
+        bestSafer = { ...c, mddVal };
+      }
+    });
+
+    if (bestSafer && (activeMddNum - bestSafer.mddVal) >= 2.0) {
+      const diffPts = (activeMddNum - bestSafer.mddVal).toFixed(1);
+      saferBoxEl.className = 'p-3.5 rounded-xl bg-slate-50 border border-slate-200/90 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs';
+      saferBoxEl.innerHTML = `
+        <div class="text-slate-700 leading-relaxed">
+          <span class="font-semibold text-slate-900">รับการย่อตัว -${activeMddNum.toFixed(1)}% ไม่ไหว?</span>
+          แผน <b>${escapeHtmlText(bestSafer.label)}</b> เคยย่อตัวน้อยกว่าที่ <span class="font-mono font-bold qf-primary-text">-${bestSafer.mddVal.toFixed(1)}%</span> (ลดความเสี่ยงช่วงวิกฤตลง ${diffPts}%)
+        </div>
+        <button type="button" onclick="selectGoal('${bestSafer.key}')" class="shrink-0 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition cursor-pointer whitespace-nowrap self-start sm:self-center">
+          ลองสลับดูแผน${escapeHtmlText(bestSafer.key === 'min_volatility' ? 'ผันผวนต่ำ' : 'กระจายสมดุล')} ➔
+        </button>
+      `;
+      saferBoxEl.classList.remove('hidden');
+    } else {
+      saferBoxEl.classList.add('hidden');
+      saferBoxEl.innerHTML = '';
+    }
+  }
 }
 
 function switchBacktestChartMode(mode) {
@@ -3767,13 +4229,10 @@ function switchBacktestChartMode(mode) {
   const btnDd = document.getElementById('btn-bt-chart-drawdown');
 
   if (btnWealth && btnDd) {
-    if (mode === 'wealth') {
-      btnWealth.className = 'px-3 py-1 rounded-lg bg-[#00D084] text-[#0A0D12] font-semibold transition cursor-pointer';
-      btnDd.className = 'px-3 py-1 rounded-lg text-slate-600 hover:text-slate-900 font-medium transition cursor-pointer';
-    } else {
-      btnDd.className = 'px-3 py-1 rounded-lg bg-[#FF5A5F] text-white font-semibold transition cursor-pointer';
-      btnWealth.className = 'px-3 py-1 rounded-lg text-slate-600 hover:text-slate-900 font-medium transition cursor-pointer';
-    }
+    const activeCls = 'qf-seg-btn qf-seg-active px-3 py-1 rounded-lg font-semibold transition cursor-pointer';
+    const inactiveCls = 'qf-seg-btn qf-seg-inactive px-3 py-1 rounded-lg font-medium transition cursor-pointer';
+    btnWealth.className = mode === 'wealth' ? activeCls : inactiveCls;
+    btnDd.className = mode === 'wealth' ? inactiveCls : activeCls;
   }
 
   renderPortfolioGrowthChart();
@@ -4084,17 +4543,17 @@ function renderStrategyCompareTable() {
           <div class="flex items-center gap-1.5 flex-wrap">
             <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background-color: ${STRATEGY_COLORS[key]}"></span>
             <span class="font-bold text-slate-900">${thaiStrategyLabel[key] || s.short_name}</span>
-            ${isSelected ? `<span class="text-[10px] font-extrabold px-1.5 py-0.5 rounded-full bg-[#00D084] text-[#0A0D12] whitespace-nowrap">เลือกอยู่</span>` : ''}
+            ${isSelected ? `<span class="text-[10px] font-semibold px-1.5 py-0.5 rounded-md qf-kpi-tag-emerald border whitespace-nowrap">เลือกอยู่</span>` : ''}
           </div>
         </td>
         <td class="py-2.5 px-2.5 text-right tabular-nums whitespace-nowrap">
-          <div class="font-bold ${s.expected_return >= 0 ? 'text-emerald-700' : 'text-rose-700'}">${(s.expected_return * 100).toFixed(2)}%</div>
+          <div class="font-bold ${s.expected_return >= 0 ? 'qf-primary-text' : 'qf-kpi-rose-text'}">${(s.expected_return * 100).toFixed(2)}%</div>
           <div class="text-[10px] text-slate-500">~${annualProfitTxt}/ปี</div>
         </td>
         <td class="py-2.5 px-2.5 text-right text-slate-700 font-semibold tabular-nums whitespace-nowrap">${(s.volatility * 100).toFixed(2)}%</td>
-        <td class="py-2.5 px-2.5 text-right bg-rose-50/35 tabular-nums">
-          <div class="font-bold text-rose-700 whitespace-nowrap">-${mddBahtTxt}</div>
-          <div class="text-[10px] text-rose-600 leading-tight whitespace-nowrap">${(s.max_drawdown * 100).toFixed(1)}% • จุดต่ำสุด ${minRemTxt}</div>
+        <td class="py-2.5 px-2.5 text-right tabular-nums">
+          <div class="font-bold qf-kpi-rose-text whitespace-nowrap">-${mddBahtTxt}</div>
+          <div class="text-[10px] text-slate-500 leading-tight whitespace-nowrap">${(s.max_drawdown * 100).toFixed(1)}% • จุดต่ำสุด ${minRemTxt}</div>
         </td>
         <td class="py-2.5 px-2.5 text-right font-bold text-blue-700 tabular-nums whitespace-nowrap">${s.sharpe_ratio.toFixed(2)}</td>
         <td class="py-2.5 px-2.5 text-right font-bold text-slate-900 tabular-nums whitespace-nowrap">${finalValTxt}</td>
@@ -4134,18 +4593,19 @@ function renderEfficientFrontierPlot() {
     }
   ];
 
+  const ct = getChartThemeTokens();
+  const primaryChartGreen = isDarkTheme() ? '#10B981' : '#059669';
   if (ef.curve && ef.curve.length > 0) {
     traces.push({
       x: ef.curve.map(p => p.vol),
       y: ef.curve.map(p => p.ret),
       mode: 'lines',
       name: 'แนวพอร์ตที่คุ้มค่าที่สุด',
-      line: { color: '#00D084', width: 2.8 },
+      line: { color: primaryChartGreen, width: 2.6 },
       hoverinfo: 'skip'
     });
   }
 
-  const ct = getChartThemeTokens();
   traces.push({
     x: data.asset_stats.map(a => a.volatility),
     y: data.asset_stats.map(a => a.expected_return),
@@ -4159,10 +4619,10 @@ function renderEfficientFrontierPlot() {
   });
 
   const markerConfigs = [
-    { key: 'max_sharpe', label: 'คุ้มความเสี่ยง', color: '#00D084', symbol: 'star', size: 16, ax: 44, ay: -34 },
-    { key: 'min_volatility', label: 'ผันผวนต่ำ', color: '#38BDF8', symbol: 'diamond', size: 13, ax: -44, ay: 28 },
-    { key: 'hrp', label: 'กระจายสมดุล', color: '#A78BFA', symbol: 'circle', size: 13, ax: -58, ay: -20 },
-    { key: 'equal_weight', label: 'แบ่งเท่ากัน', color: '#FBBF24', symbol: 'square', size: 11, ax: 48, ay: 26 }
+    { key: 'max_sharpe', label: 'คุ้มความเสี่ยง', color: primaryChartGreen, symbol: 'star', size: 15, ax: 44, ay: -34 },
+    { key: 'min_volatility', label: 'ผันผวนต่ำ', color: '#2563EB', symbol: 'diamond', size: 13, ax: -44, ay: 28 },
+    { key: 'hrp', label: 'กระจายสมดุล', color: '#6366F1', symbol: 'circle', size: 13, ax: -58, ay: -20 },
+    { key: 'equal_weight', label: 'แบ่งเท่ากัน', color: '#D97706', symbol: 'square', size: 11, ax: 48, ay: 26 }
   ];
 
   const frontierAnnotations = [];
@@ -4418,12 +4878,12 @@ function renderGrowth100Plot() {
 
 function toggleGrowthScale(isLog) {
   state.growthLogScale = isLog;
-  document.getElementById('btn-scale-log').className = isLog
-    ? 'px-2.5 py-1 rounded-lg bg-[#00D084] text-[#0A0D12] font-extrabold cursor-pointer'
-    : 'px-2.5 py-1 rounded-lg text-slate-600 font-semibold cursor-pointer';
-  document.getElementById('btn-scale-linear').className = !isLog
-    ? 'px-2.5 py-1 rounded-lg bg-[#00D084] text-[#0A0D12] font-extrabold cursor-pointer'
-    : 'px-2.5 py-1 rounded-lg text-slate-600 font-semibold cursor-pointer';
+  const activeCls = 'qf-seg-btn qf-seg-active px-2.5 py-1 rounded-lg font-semibold cursor-pointer';
+  const inactiveCls = 'qf-seg-btn qf-seg-inactive px-2.5 py-1 rounded-lg font-medium cursor-pointer';
+  const btnLog = document.getElementById('btn-scale-log');
+  const btnLin = document.getElementById('btn-scale-linear');
+  if (btnLog) btnLog.className = isLog ? activeCls : inactiveCls;
+  if (btnLin) btnLin.className = !isLog ? activeCls : inactiveCls;
 
   renderGrowth100Plot();
 }
@@ -4505,14 +4965,14 @@ function downloadOrderCSV() {
 function switchTab(tabId) {
   document.querySelectorAll('.tab-pane').forEach(el => el.classList.add('hidden'));
   document.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.className = 'tab-btn min-h-[40px] px-3.5 py-1.5 rounded-xl text-xs font-semibold text-slate-500 hover:text-slate-900 whitespace-nowrap transition cursor-pointer';
+    btn.className = 'tab-btn qf-seg-btn qf-seg-inactive min-h-[40px] px-3.5 py-1.5 rounded-xl text-xs font-medium whitespace-nowrap transition cursor-pointer';
   });
 
   const pane = document.getElementById(`tab-content-${tabId}`);
   const btn = document.getElementById(`tab-btn-${tabId}`);
   if (pane) pane.classList.remove('hidden');
   if (btn) {
-    btn.className = 'tab-btn min-h-[40px] px-3.5 py-1.5 rounded-xl text-xs font-extrabold bg-[#00D084] text-[#0A0D12] whitespace-nowrap transition cursor-pointer';
+    btn.className = 'tab-btn qf-seg-btn qf-seg-active min-h-[40px] px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition cursor-pointer';
   }
 
   setTimeout(() => {
@@ -4526,7 +4986,7 @@ function switchTab(tabId) {
   }, 50);
 }
 
-// UI Helpers (3-Step Stepper + Top Progress Bar + Zero-Jump Skeleton Shimmer)
+// UI Helpers (Minimal Institutional Progress Card + Top Progress Bar + Skeleton Shimmer)
 function setLoadingStageVisual(stageIdx, pct, title, subtitle) {
   const pctBadge = document.getElementById('loading-pct-badge');
   const progFill = document.getElementById('loading-progress-fill');
@@ -4539,35 +4999,6 @@ function setLoadingStageVisual(stageIdx, pct, title, subtitle) {
   if (topFill) topFill.style.width = `${pct}%`;
   if (titleEl && title) titleEl.innerText = title;
   if (subEl && subtitle) subEl.innerText = subtitle;
-
-  const activeCls = 'qf-load-step active px-2.5 py-1.5 rounded-xl bg-[#E6FBF3] text-[#008A57] border border-[#00D084]/40 font-semibold flex items-center gap-1.5 truncate';
-  const doneCls = 'qf-load-step px-2.5 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold flex items-center gap-1.5 truncate';
-  const waitCls = 'qf-load-step px-2.5 py-1.5 rounded-xl bg-slate-50 text-slate-500 border border-slate-200/80 font-medium flex items-center gap-1.5 truncate';
-
-  [1, 2, 3].forEach(idx => {
-    const el = document.getElementById(`load-step-${idx}`);
-    if (!el) return;
-    const circle = el.querySelector('span:first-child');
-    if (idx < stageIdx) {
-      el.className = doneCls;
-      if (circle) {
-        circle.className = 'w-4 h-4 rounded-full bg-[#00D084] text-[#0A0D12] text-[10px] font-bold flex items-center justify-center shrink-0';
-        circle.innerText = '✓';
-      }
-    } else if (idx === stageIdx) {
-      el.className = activeCls;
-      if (circle) {
-        circle.className = 'w-4 h-4 rounded-full bg-[#00D084] text-[#0A0D12] text-[10px] font-bold flex items-center justify-center shrink-0';
-        circle.innerText = String(idx);
-      }
-    } else {
-      el.className = waitCls;
-      if (circle) {
-        circle.className = 'w-4 h-4 rounded-full bg-slate-200 text-slate-600 text-[10px] font-bold flex items-center justify-center shrink-0';
-        circle.innerText = String(idx);
-      }
-    }
-  });
 }
 
 function toggleSkeletonCards(active) {
@@ -4603,20 +5034,20 @@ function showLoading(show, useCenteredOverlay = false) {
     }
 
     toggleSkeletonCards(true);
-    setLoadingStageVisual(1, 18, '1/3 กำลังดึงข้อมูลราคาตลาดและอัตราแลกเปลี่ยน...', 'จัดแนวปฏิทินราคาปิดจริงและอัตราแลกเปลี่ยน USD/THB');
+    setLoadingStageVisual(1, 18, 'กำลังดึงราคาตลาดและอัตราแลกเปลี่ยน...', 'อัปเดตข้อมูลราคาปิดล่าสุดและค่าเงิน USD/THB');
 
-    // Smooth asymptotic progress + real elapsed clock (never snaps to 90% and freezes)
+    // Smooth asymptotic progress + real elapsed clock
     state.loadingElapsedTimer = setInterval(() => {
       const elapsedSec = (performance.now() - state.loadingStartTime) / 1000;
       if (timerEl) timerEl.innerText = `${elapsedSec.toFixed(1)} วิ`;
 
       const smoothPct = Math.min(92, Math.round(18 + 74 * (1 - Math.exp(-elapsedSec / 2.2))));
       if (elapsedSec < 0.75) {
-        setLoadingStageVisual(1, smoothPct, '1/3 กำลังดึงข้อมูลราคาตลาดและอัตราแลกเปลี่ยน...', 'จัดแนวปฏิทินราคาปิดจริงและอัตราแลกเปลี่ยน USD/THB');
+        setLoadingStageVisual(1, smoothPct, 'กำลังดึงราคาตลาดและอัตราแลกเปลี่ยน...', 'อัปเดตข้อมูลราคาปิดล่าสุดและค่าเงิน USD/THB');
       } else if (elapsedSec < 1.7) {
-        setLoadingStageVisual(2, smoothPct, '2/3 กำลังคำนวณสัดส่วนทั้ง 4 กลยุทธ์...', 'วิเคราะห์ Markowitz, Min Volatility, HRP และความสัมพันธ์รายหุ้น');
+        setLoadingStageVisual(2, smoothPct, 'กำลังคำนวณสัดส่วนทั้ง 4 กลยุทธ์...', 'ประมวลผล Max Sharpe, Min Volatility, HRP และ 1/N');
       } else {
-        setLoadingStageVisual(3, smoothPct, '3/3 กำลังสร้างใบสั่งซื้อ-ขาย ข่าว และทดสอบย้อนหลัง...', 'คำนวณ Walk-Forward OOS และสรุปสัญญาณรายสินทรัพย์');
+        setLoadingStageVisual(3, smoothPct, 'กำลังจัดทำใบสั่งซื้อ–ขายและทดสอบย้อนหลัง...', 'สรุปคำสั่งซื้อ–ขาย สัญญาณตลาด และผลจำลองย้อนหลัง');
       }
     }, 100);
 
@@ -4994,6 +5425,8 @@ function renderBlackLittermanControlsPanel() {
   const deltaVal = Number(bl.risk_aversion_delta ?? 2.5).toFixed(2);
   const tauVal = Number(bl.tau ?? 0.05).toFixed(2);
 
+  const lockSvgSm = '<svg class="w-3 h-3 inline-block shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
+
   panel.innerHTML = `
     <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
       <div class="flex-1 space-y-1.5">
@@ -5001,7 +5434,7 @@ function renderBlackLittermanControlsPanel() {
           <div class="flex items-center gap-2 flex-wrap">
             <label for="bl-confidence-slider" class="text-xs sm:text-[13px] font-bold text-slate-900">ระดับความเชื่อมั่นในมุมมอง (Confidence Slider)</label>
             <span class="px-2 py-0.5 rounded-md bg-slate-200/80 text-slate-700 text-[10px] font-semibold" title="Black-Litterman Prior: HRP Equilibrium • δ=${deltaVal} • τ=${tauVal}">ฐานสมดุลความเสี่ยง HRP</span>
-            ${!tierInfo.canCustomizeBlViews ? `<button type="button" onclick="openProUpgradeModal('อัปเกรดเป็น QuantFolio Pro เพื่อปลดล็อกการเลื่อนระดับความเชื่อมั่น 0%–100% และตั้งมุมมองรายหุ้นเอง', 'pro')" class="px-2 py-0.5 rounded-md bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 text-[10px] font-bold transition cursor-pointer">🔒 ปลดล็อก PRO</button>` : ''}
+            ${!tierInfo.canCustomizeBlViews ? `<button type="button" onclick="openProUpgradeModal('อัปเกรดเป็น QuantFolio Pro เพื่อปลดล็อกการเลื่อนระดับความเชื่อมั่น 0%–100% และตั้งมุมมองรายหุ้นเอง', 'pro')" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 text-[10px] font-bold transition cursor-pointer">${lockSvgSm}<span>ปลดล็อก PRO</span></button>` : ''}
           </div>
           <div class="flex items-center gap-2">
             <span id="bl-confidence-tier-pill" class="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px] font-semibold">${tierLabel}</span>
@@ -5030,8 +5463,8 @@ function renderBlackLittermanControlsPanel() {
         <button type="button" id="btn-bl-autofill" onclick="fillBLViewsFromSignals()" class="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 text-slate-800 border border-slate-200 text-xs font-semibold transition cursor-pointer">
           เติมค่าจากข่าว &amp; เทคนิค
         </button>
-        <button type="button" id="btn-bl-reset-neutral" onclick="resetBLViewsNeutral()" class="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 text-slate-600 border border-slate-200 text-xs font-semibold transition cursor-pointer">
-          รีเซ็ตเป็นกลาง (0%)${!tierInfo.canCustomizeBlViews ? ' 🔒' : ''}
+        <button type="button" id="btn-bl-reset-neutral" onclick="resetBLViewsNeutral()" class="inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 text-slate-600 border border-slate-200 text-xs font-semibold transition cursor-pointer">
+          <span>รีเซ็ตเป็นกลาง (0%)</span>${!tierInfo.canCustomizeBlViews ? lockSvgSm : ''}
         </button>
       </div>
     </div>
@@ -5065,13 +5498,10 @@ function toggleNewsSignalAdjustment(enable) {
   const btnOn = document.getElementById('btn-news-adj-on');
   const btnOff = document.getElementById('btn-news-adj-off');
   if (btnOn && btnOff) {
-    if (state.useNewsAdjustment) {
-      btnOn.className = 'px-3.5 py-1.5 rounded-lg font-extrabold bg-[#00D084] text-[#0A0D12] transition cursor-pointer';
-      btnOff.className = 'px-3.5 py-1.5 rounded-lg font-semibold text-slate-600 hover:text-slate-900 transition cursor-pointer';
-    } else {
-      btnOn.className = 'px-3.5 py-1.5 rounded-lg font-semibold text-slate-600 hover:text-slate-900 transition cursor-pointer';
-      btnOff.className = 'px-3.5 py-1.5 rounded-lg font-extrabold bg-[#00D084] text-[#0A0D12] transition cursor-pointer';
-    }
+    const activeCls = 'qf-seg-btn qf-seg-active px-3.5 py-1.5 rounded-lg font-semibold transition cursor-pointer';
+    const inactiveCls = 'qf-seg-btn qf-seg-inactive px-3.5 py-1.5 rounded-lg font-medium transition cursor-pointer';
+    btnOn.className = state.useNewsAdjustment ? activeCls : inactiveCls;
+    btnOff.className = state.useNewsAdjustment ? inactiveCls : activeCls;
   }
 
   refreshAdvancedSummaryLabel();
@@ -5150,13 +5580,10 @@ function renderNewsAndSignalSection() {
   const btnOn = document.getElementById('btn-news-adj-on');
   const btnOff = document.getElementById('btn-news-adj-off');
   if (btnOn && btnOff) {
-    if (state.useNewsAdjustment) {
-      btnOn.className = 'px-3.5 py-1.5 rounded-lg font-extrabold bg-[#00D084] text-[#0A0D12] transition cursor-pointer';
-      btnOff.className = 'px-3.5 py-1.5 rounded-lg font-semibold text-slate-600 hover:text-slate-900 transition cursor-pointer';
-    } else {
-      btnOn.className = 'px-3.5 py-1.5 rounded-lg font-semibold text-slate-600 hover:text-slate-900 transition cursor-pointer';
-      btnOff.className = 'px-3.5 py-1.5 rounded-lg font-extrabold bg-[#00D084] text-[#0A0D12] transition cursor-pointer';
-    }
+    const activeCls = 'qf-seg-btn qf-seg-active px-3.5 py-1.5 rounded-lg font-semibold transition cursor-pointer';
+    const inactiveCls = 'qf-seg-btn qf-seg-inactive px-3.5 py-1.5 rounded-lg font-medium transition cursor-pointer';
+    btnOn.className = state.useNewsAdjustment ? activeCls : inactiveCls;
+    btnOff.className = state.useNewsAdjustment ? inactiveCls : activeCls;
   }
 
   // Truthful strategy-aware news impact metadata
@@ -5216,15 +5643,20 @@ function renderNewsAndSignalSection() {
           </div>`
         : `<div class="text-[11px] text-emerald-800/90">สัดส่วน Black-Litterman ใกล้เคียงกับสัดส่วนสถิติอดีตล้วน</div>`;
       impactBanner.innerHTML = `
-        <div class="space-y-1">
-          <div class="font-bold text-emerald-950 flex items-center gap-1.5 flex-wrap" title="He-Litterman + Idzorek (2005) • Prior: HRP Equilibrium • δ=${blDeltaStr} • τ=0.05">
-            <span class="px-2 py-0.5 rounded-md bg-[#00D084] text-[#0A0D12] text-[11px] font-extrabold">กำลังใช้โมเดล Black-Litterman บน Max Sharpe</span>
-            <span>ความเชื่อมั่น ${blConfPct}% • อิงพอร์ตฐานสมดุล HRP</span>
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div class="space-y-1 min-w-0">
+            <div class="font-bold text-emerald-950 flex items-center gap-1.5 flex-wrap" title="He-Litterman + Idzorek (2005) • Prior: HRP Equilibrium • δ=${blDeltaStr} • τ=0.05">
+              <span class="px-2 py-0.5 rounded-md qf-kpi-tag-emerald border text-[11px] font-bold">กำลังใช้โมเดล Black-Litterman บน Max Sharpe</span>
+              <span>ความเชื่อมั่น ${blConfPct}% • อิงพอร์ตฐานสมดุล HRP</span>
+            </div>
+            <p class="text-emerald-900/90">
+              ผสานมุมมองรายตัวที่ท้ายการ์ดด้านล่างเข้ากับพอร์ตฐานสมดุล <strong>เฉพาะแผน Max Sharpe</strong> (ส่วนแผนผันผวนต่ำ, HRP และ 1/N คงสัดส่วนสถิติอดีตล้วน 100%)
+            </p>
+            ${shiftChipsHtml}
           </div>
-          <p class="text-emerald-900/90">
-            ผสานมุมมองรายตัวที่ท้ายการ์ดด้านล่างเข้ากับพอร์ตฐานสมดุล <strong>เฉพาะแผน Max Sharpe</strong> (ส่วนแผนผันผวนต่ำ, HRP และ 1/N คงสัดส่วนสถิติอดีตล้วน 100%)
-          </p>
-          ${shiftChipsHtml}
+          <button type="button" onclick="switchAppTab('trade-plan')" class="shrink-0 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition cursor-pointer whitespace-nowrap self-start sm:self-center">
+            ดูใบสั่งซื้อ-ขายที่อัปเดตแล้ว (แท็บ 2) ➔
+          </button>
         </div>
       `;
     } else {
@@ -5248,6 +5680,10 @@ function renderNewsAndSignalSection() {
       `;
     }
   }
+
+  // Render Money-Weighted Portfolio Entry Readiness Verdict directly below impact banner
+  const tab3Readiness = computePortfolioEntryReadiness(data, state.activeGoal);
+  renderPortfolioEntryReadinessBox('insights-portfolio-readiness-card', tab3Readiness, false);
 
   // Render Sleek Single-Bar Black-Litterman Confidence Slider Panel
   renderBlackLittermanControlsPanel();
@@ -5537,8 +5973,9 @@ function renderNewsAndSignalSection() {
                     ดูข่าว (${stockNewsCount}) ↓
                   </button>
                   ` : `
-                  <button type="button" onclick="openSupabaseConfigModal('signup')" class="text-[11px] font-semibold text-amber-700 hover:underline cursor-pointer">
-                    🔒 ล็อกอินฟรีดูข่าว
+                  <button type="button" onclick="openSupabaseConfigModal('signup')" class="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 hover:underline cursor-pointer">
+                    <svg class="w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    <span>ล็อกอินฟรีดูข่าว</span>
                   </button>
                   `}
                 </div>
@@ -5566,7 +6003,7 @@ function renderNewsAndSignalSection() {
                 <div class="font-bold ${sentTextCls} mt-0.5">${sentPlain}</div>
                 <div class="text-[11px] text-slate-500 mt-0.5">คะแนน ${sentScore >= 0 ? '+' : ''}${sentScore.toFixed(2)} (${stockNewsCount} ข่าว)</div>
                 ` : `
-                <div class="font-bold text-amber-700 mt-0.5">🔒 สำหรับสมาชิก (ฟรี)</div>
+                <div class="inline-flex items-center gap-1 font-bold text-amber-700 mt-0.5"><svg class="w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg><span>สำหรับสมาชิก (ฟรี)</span></div>
                 <button type="button" onclick="openSupabaseConfigModal('signup')" class="text-[11px] font-semibold text-[#008A57] hover:underline mt-0.5 cursor-pointer">เข้าสู่ระบบเพื่อดูข่าว ➔</button>
                 `}
               </div>
@@ -6041,6 +6478,7 @@ function setAppView(viewName = 'landing', shouldScroll = true) {
     if (missingAnyQuote && !state.quotesLoading) {
       fetchLiveQuotesForTickers();
     }
+    fetchDynamicPopularAssets();
   }
   if (window.lucide) {
     lucide.createIcons();
@@ -6493,8 +6931,8 @@ function setGlobalViewDepth(mode) {
   const isPro = mode === 'pro';
   state.viewDepth = isPro ? 'pro' : 'simple';
 
-  const activeCls = 'px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-[#00D084] text-[#0A0D12] shadow-2xs transition cursor-pointer inline-flex items-center gap-1 whitespace-nowrap';
-  const inactiveCls = 'px-2.5 py-1.5 rounded-lg text-[11px] font-medium text-slate-600 hover:text-slate-900 transition cursor-pointer inline-flex items-center gap-1 whitespace-nowrap';
+  const activeCls = 'qf-seg-btn qf-seg-active px-2.5 py-1 rounded-md text-[11px] font-semibold transition cursor-pointer inline-flex items-center gap-1 whitespace-nowrap';
+  const inactiveCls = 'qf-seg-btn qf-seg-inactive px-2.5 py-1 rounded-md text-[11px] font-medium transition cursor-pointer inline-flex items-center gap-1 whitespace-nowrap';
 
   const btnSimple = document.getElementById('view-depth-btn-simple');
   const btnPro = document.getElementById('view-depth-btn-pro');
@@ -6699,7 +7137,8 @@ function renderStrategyComparisonCard(data, strat, budget) {
   const cZero = dark ? '#475569' : '#94A3B8';
   const cAxisTxt = dark ? '#94A3B8' : '#64748B';
   const cLabelNorm = dark ? '#CBD5E1' : '#334155';
-  const cLabelAct = dark ? '#00E593' : '#008A57';
+  const cLabelAct = dark ? '#34D399' : '#047857';
+  const cBarActive = dark ? '#10B981' : '#059669';
   const cValNorm = dark ? '#E2E8F0' : '#0F172A';
   const cBarOther = dark ? '#334155' : '#CBD5E1';
   const cBarBase = dark ? '#52637A' : '#64748B';
@@ -6743,23 +7182,23 @@ function renderStrategyComparisonCard(data, strat, budget) {
     const barH = Math.max(5, Math.abs(zeroY - valY));
 
     const fillVal = isNeg
-      ? '#EF4444'
-      : (isActive ? 'url(#qfVbarActiveGrad)' : (r.isBaseline ? cBarBase : cBarOther));
+      ? '#E11D48'
+      : (isActive ? cBarActive : (r.isBaseline ? cBarBase : cBarOther));
 
     const valLabelY = isNeg ? Math.min(plotBottom - 4, zeroY + barH + 16) : Math.max(24, barTop - 9);
-    const valColor = isNeg ? '#EF4444' : (isActive ? cLabelAct : cValNorm);
+    const valColor = isNeg ? '#E11D48' : (isActive ? cLabelAct : cValNorm);
 
     const bestPillSvg = (isBest && !isNeg) ? `
       <rect x="${(cx - 25).toFixed(1)}" y="${Math.max(4, valLabelY - 28).toFixed(1)}" width="50" height="17" rx="8.5"
-        fill="${dark ? '#112922' : '#E6FBF3'}" stroke="${dark ? '#00D084' : '#00D084'}" stroke-width="1" />
+        fill="${dark ? 'rgba(16, 185, 129, 0.14)' : '#ECFDF5'}" stroke="${dark ? 'rgba(16, 185, 129, 0.40)' : '#A7F3D0'}" stroke-width="1" />
       <text x="${cx.toFixed(1)}" y="${Math.max(15.5, valLabelY - 16.5).toFixed(1)}" text-anchor="middle"
-        fill="${dark ? '#6EE7B7' : '#008A57'}" font-size="9.5" font-weight="700" font-family="Anuphan, Plus Jakarta Sans, sans-serif">${bestLabel}</text>
+        fill="${dark ? '#34D399' : '#047857'}" font-size="9.5" font-weight="700" font-family="Anuphan, Plus Jakarta Sans, sans-serif">${bestLabel}</text>
     ` : '';
 
     const activeDotPillSvg = isActive ? `
-      <rect x="${(cx - 26).toFixed(1)}" y="${(plotBottom + 32).toFixed(1)}" width="52" height="17" rx="8.5" fill="#00D084" />
+      <rect x="${(cx - 26).toFixed(1)}" y="${(plotBottom + 32).toFixed(1)}" width="52" height="17" rx="8.5" fill="${cBarActive}" />
       <text x="${cx.toFixed(1)}" y="${(plotBottom + 43.5).toFixed(1)}" text-anchor="middle"
-        fill="#07130E" font-size="9.5" font-weight="800" font-family="Anuphan, Plus Jakarta Sans, sans-serif">กำลังใช้</text>
+        fill="${dark ? '#052E16' : '#FFFFFF'}" font-size="9.5" font-weight="700" font-family="Anuphan, Plus Jakarta Sans, sans-serif">กำลังใช้</text>
     ` : (r.isBaseline ? `
       <text x="${cx.toFixed(1)}" y="${(plotBottom + 43).toFixed(1)}" text-anchor="middle"
         fill="${cAxisTxt}" font-size="9.5" font-weight="600" font-family="Anuphan, Plus Jakarta Sans, sans-serif">ไม่จัดสัดส่วน</text>
@@ -6774,7 +7213,7 @@ function renderStrategyComparisonCard(data, strat, budget) {
         <rect class="qf-vbar-hover-bg" x="${(slotX + 4).toFixed(1)}" y="${(plotTop - 36).toFixed(1)}" width="${(colSlotW - 8).toFixed(1)}" height="${(plotBottom - plotTop + 88).toFixed(1)}" rx="12" />
         ${bestPillSvg}
         <rect class="qf-vbar-rect" x="${bx.toFixed(1)}" y="${barTop.toFixed(1)}" width="${barW.toFixed(1)}" height="${barH.toFixed(1)}" rx="8"
-          fill="${fillVal}" ${isActive ? 'filter="url(#qfVbarShadow)"' : ''} />
+          fill="${fillVal}" />
         <text x="${cx.toFixed(1)}" y="${valLabelY.toFixed(1)}" text-anchor="middle"
           fill="${valColor}" stroke="${cStageBg}" stroke-width="5" stroke-linejoin="round" paint-order="stroke"
           font-size="13" font-weight="800" font-family="JetBrains Mono, monospace">${formatMetricVal(r.val, true)}</text>
@@ -6814,15 +7253,6 @@ function renderStrategyComparisonCard(data, strat, budget) {
 
   barsEl.innerHTML = `
     <svg viewBox="0 0 ${W} ${H}" class="w-full h-auto block select-none overflow-visible" role="img" aria-label="กราฟแท่งแนวตั้งเปรียบเทียบแผนพอร์ตทั้ง 4 แบบ">
-      <defs>
-        <linearGradient id="qfVbarActiveGrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="#00E593" />
-          <stop offset="100%" stop-color="#00A86B" />
-        </linearGradient>
-        <filter id="qfVbarShadow" x="-15%" y="-10%" width="130%" height="130%">
-          <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#00D084" flood-opacity="0.28" />
-        </filter>
-      </defs>
       ${gridSvg}
       ${baselineLineSvg}
       ${colsSvg}
@@ -7050,8 +7480,8 @@ function renderDimeWealthOverview() {
       : `${primaryStr} <span class="hidden sm:inline text-xs font-normal text-slate-500">(${secondaryStr})</span>`;
 
     const weightPill = isZero
-      ? `<span class="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-200/80 text-slate-600 tabular-nums">ไม่จัดสรร 0%</span>`
-      : `<span class="text-xs font-bold px-2 py-0.5 rounded-full bg-[#E6FBF3] text-[#008A57] border border-[#00D084]/30 tabular-nums">${wPct}%</span>`;
+      ? `<span class="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-slate-100 text-slate-500 border border-slate-200/80 tabular-nums">ไม่จัดสรร 0%</span>`
+      : `<span class="text-xs font-mono font-semibold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200/90 tabular-nums">${wPct}%</span>`;
 
     const barWidth = isZero ? 0 : Math.max(2, Math.min(100, wPctNum));
 
@@ -7108,13 +7538,13 @@ function toggleTradePlanViewMode(mode) {
 
   if (btnCards) {
     btnCards.className = nextMode === 'cards'
-      ? 'px-2.5 py-1.5 rounded-lg bg-[#00D084] text-[#0A0D12] font-semibold transition cursor-pointer inline-flex items-center gap-1'
-      : 'px-2.5 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 font-medium transition cursor-pointer inline-flex items-center gap-1';
+      ? 'qf-seg-btn qf-seg-active px-2.5 py-1.5 rounded-lg font-semibold transition cursor-pointer inline-flex items-center gap-1'
+      : 'qf-seg-btn qf-seg-inactive px-2.5 py-1.5 rounded-lg font-medium transition cursor-pointer inline-flex items-center gap-1';
   }
   if (btnTable) {
     btnTable.className = nextMode === 'table'
-      ? 'px-2.5 py-1.5 rounded-lg bg-[#00D084] text-[#0A0D12] font-semibold transition cursor-pointer inline-flex items-center gap-1'
-      : 'px-2.5 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 font-medium transition cursor-pointer inline-flex items-center gap-1';
+      ? 'qf-seg-btn qf-seg-active px-2.5 py-1.5 rounded-lg font-semibold transition cursor-pointer inline-flex items-center gap-1'
+      : 'qf-seg-btn qf-seg-inactive px-2.5 py-1.5 rounded-lg font-medium transition cursor-pointer inline-flex items-center gap-1';
   }
 }
 
@@ -7211,8 +7641,8 @@ function setGoalInflationRate(rate, shouldRecalc = true) {
     if (!btn) return;
     const isActive = Math.abs(state.goalInflationRate - r) < 0.05;
     btn.className = isActive
-      ? 'px-2.5 py-1 rounded-lg bg-[#00D084] text-[#0A0D12] font-bold transition cursor-pointer'
-      : 'px-2.5 py-1 rounded-lg text-slate-600 hover:text-slate-900 font-semibold transition cursor-pointer';
+      ? 'qf-seg-btn qf-seg-active px-2.5 py-1 rounded-lg font-semibold transition cursor-pointer'
+      : 'qf-seg-btn qf-seg-inactive px-2.5 py-1 rounded-lg font-medium transition cursor-pointer';
   });
 
   const helperEl = document.getElementById('goal-inflation-helper');
@@ -7239,15 +7669,22 @@ function applyGoalBasedTemplate(templateKey, shouldScroll = false) {
   const stripBudgetEl = document.getElementById('strip-budget-input');
   const goalInitEl = document.getElementById('save-initial-budget');
 
-  const formattedBudget = formatNumberWithCommas(isThb ? tpl.budget_thb : tpl.budget_usd, 0);
+  const tplBudget = isThb ? tpl.budget_thb : tpl.budget_usd;
+  const tplTarget = isThb ? tpl.target_thb : tpl.target_usd;
+  const tplDca = isThb ? tpl.dca_thb : tpl.dca_usd;
+  const formattedBudget = formatNumberWithCommas(tplBudget, 0);
   if (nameEl) nameEl.value = tpl.name;
   if (catEl) catEl.value = tpl.category;
-  if (targetEl) targetEl.value = formatNumberWithCommas(isThb ? tpl.target_thb : tpl.target_usd, 0);
-  if (dcaEl) dcaEl.value = formatNumberWithCommas(isThb ? tpl.dca_thb : tpl.dca_usd, 0);
+  if (targetEl) targetEl.value = formatNumberWithCommas(tplTarget, 0);
+  if (dcaEl) dcaEl.value = formatNumberWithCommas(tplDca, 0);
   if (yearsEl) yearsEl.value = tpl.years;
   if (budgetEl) budgetEl.value = formattedBudget;
   if (stripBudgetEl) stripBudgetEl.value = formattedBudget;
   if (goalInitEl) goalInitEl.value = formattedBudget;
+  state.budget = tplBudget;
+  setCanonicalFxField('budget', tplBudget, state.currency);
+  setCanonicalFxField('target', tplTarget, state.currency);
+  setCanonicalFxField('dca', tplDca, state.currency);
 
   if (typeof cancelEditingSavedPortfolio === 'function') {
     cancelEditingSavedPortfolio();
@@ -7804,16 +8241,18 @@ function renderGoalProjectionChart(m) {
     hovertemplate: isPrivate ? `%{x}: %{y:+.1f}%<extra>กรณีตลาดดี</extra>` : `%{x}: ${sym}%{y:,.0f}<extra>กรณีตลาดดี</extra>`
   };
 
+  const dcaPrimary = isDarkTheme() ? '#10B981' : '#059669';
+  const dcaFill = isDarkTheme() ? 'rgba(16, 185, 129, 0.14)' : 'rgba(5, 150, 105, 0.10)';
   const traceBase = {
     x: m.yearsAxis,
     y: yBase,
     name: hasInfl ? `มูลค่าจริงหลังเงินเฟ้อ (Base)` : 'พอร์ตคาดการณ์ (Base)',
     type: 'scatter',
     mode: 'lines+markers',
-    marker: { size: 6, color: '#00D084' },
-    line: { color: '#00D084', width: 3 },
+    marker: { size: 6, color: dcaPrimary },
+    line: { color: dcaPrimary, width: 2.8 },
     fill: 'tonexty',
-    fillcolor: 'rgba(0, 208, 132, 0.12)',
+    fillcolor: dcaFill,
     hovertemplate: isPrivate ? `%{x}: %{y:+.1f}%<extra>พอร์ตคาดการณ์</extra>` : `%{x}: ${sym}%{y:,.0f}<extra>พอร์ตคาดการณ์</extra>`
   };
 
@@ -7823,7 +8262,7 @@ function renderGoalProjectionChart(m) {
     name: 'กรณีตลาดซบเซา (Conservative)',
     type: 'scatter',
     mode: 'lines',
-    line: { color: '#FF5A5F', width: 1.8, dash: 'dot' },
+    line: { color: '#E11D48', width: 1.8, dash: 'dot' },
     hovertemplate: isPrivate ? `%{x}: %{y:+.1f}%<extra>กรณีตลาดซบเซา</extra>` : `%{x}: ${sym}%{y:,.0f}<extra>กรณีตลาดซบเซา</extra>`
   };
 
@@ -7972,11 +8411,23 @@ function evaluatePdfFairDealingCompliance(metrics, opts = {}) {
   });
 
   const annualVol = Number(m.annualVol || 0);
+  const volPctText = `${(annualVol * 100).toFixed(2)}%/ปี`;
   const volExceedsSuitability = suitMeta.maxVol !== null && annualVol > (suitMeta.maxVol + 0.002);
   const highRiskExceedsSuitability = !suitMeta.allowHighRisk && highRiskTickers.length > 0;
   const vulnerableHighRiskAlert = segMeta.isVulnerable && (annualVol > 0.14 || highRiskTickers.length > 0);
   const suitabilityMismatch = Boolean(volExceedsSuitability || highRiskExceedsSuitability || vulnerableHighRiskAlert);
   const icPlainScopeWarning = Boolean((opts.licenseType || 'ic_plain') === 'ic_plain' && highRiskTickers.length > 0);
+
+  // [2.3] Single-source compliance warning text shared identically between Config Modal live badge and PDF Page 2
+  const hrSuffix = highRiskTickers.length ? ` หรือสินทรัพย์เสี่ยงสูง (${highRiskTickers.join(', ')})` : '';
+  let mismatchReasonText = '';
+  if ((volExceedsSuitability || highRiskExceedsSuitability) && vulnerableHighRiskAlert) {
+    mismatchReasonText = `ความผันผวนพอร์ต (${volPctText})${hrSuffix} สูงกว่าระดับความเสี่ยงที่ระบุ (${suitMeta.label}) และสูงกว่าเกณฑ์แนะนำสำหรับผู้ลงทุนเปราะบาง (≤ 14%/ปี) ควรอธิบายความเสี่ยงและบันทึกความยินยอมเพิ่มเติม`;
+  } else if (volExceedsSuitability || highRiskExceedsSuitability) {
+    mismatchReasonText = `ความผันผวนพอร์ต (${volPctText})${hrSuffix} สูงกว่าระดับความเสี่ยงที่ระบุ (${suitMeta.label}) ผู้ลงทุนต้องรับทราบคำเตือนความเสี่ยงก่อนตัดสินใจ`;
+  } else if (vulnerableHighRiskAlert) {
+    mismatchReasonText = `ความผันผวนพอร์ต (${volPctText})${hrSuffix} สูงกว่าเกณฑ์แนะนำสำหรับผู้ลงทุนเปราะบาง (≤ 14%/ปี) ควรอธิบายความเสี่ยงและบันทึกความยินยอมเพิ่มเติม`;
+  }
 
   let allocationScopeCode = 'SIMULATION';
   if (isIpLicense) {
@@ -7994,6 +8445,8 @@ function evaluatePdfFairDealingCompliance(metrics, opts = {}) {
     segMeta,
     suitMeta,
     annualVol,
+    volPctText,
+    mismatchReasonText,
     highRiskTickers,
     foreignTickers,
     volExceedsSuitability,
@@ -8114,38 +8567,32 @@ function syncPdfReportModeFields() {
     clientSuitability
   });
 
+  const alertTriIcon = '<svg class="w-3.5 h-3.5 inline-block align-[-2px] mr-1 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>';
+  const shieldAlertIcon = '<svg class="w-3.5 h-3.5 inline-block align-[-2px] mr-1 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>';
+
   if (licenseHintEl) {
     if (licenseType === 'ip') {
       licenseHintEl.innerHTML = `<span class="font-bold text-emerald-800">สิทธิ์ผู้วางแผนการลงทุน (IP กลุ่ม 5):</span> ตามคู่มือ ก.ล.ต. หน้า 6 สามารถออกแบบแผนและจัดพอร์ตเฉพาะเจาะจงให้กับลูกค้าเฉพาะราย (<b>Customized Asset Allocation / Executive Investment Proposal</b>) ได้ โดยต้องมีการตรวจสอบตามระเบียบบริษัท`;
     } else if (comp.icPlainScopeWarning) {
-      licenseHintEl.innerHTML = `<span class="font-bold text-amber-800">⚠️ แจ้งเตือนขอบเขต IC Plain (ตารางหน้า 7):</span> พอร์ตนี้มีสินทรัพย์เสี่ยงสูง/ดิจิทัล (<b>${escapeHtmlText(comp.highRiskTickers.join(', '))}</b>) ซึ่งอยู่นอกกลุ่มตราสารทั่วไปไม่ซับซ้อน และผู้ทำหน้าที่ <b>IC ห้ามจัดพอร์ตเฉพาะเจาะจงรายบุคคล</b> (นำเสนอได้เฉพาะ <b>Basic Asset Allocation</b> มาตรฐานตามหลักวิชาการ หน้า 6 และ 8)`;
+      licenseHintEl.innerHTML = `<span class="font-bold text-amber-800">${alertTriIcon}แจ้งเตือนขอบเขต IC Plain (ตารางหน้า 7):</span> พอร์ตนี้มีสินทรัพย์เสี่ยงสูง/ดิจิทัล (<b>${escapeHtmlText(comp.highRiskTickers.join(', '))}</b>) ซึ่งอยู่นอกกลุ่มตราสารทั่วไปไม่ซับซ้อน และผู้ทำหน้าที่ <b>IC ห้ามจัดพอร์ตเฉพาะเจาะจงรายบุคคล</b> (นำเสนอได้เฉพาะ <b>Basic Asset Allocation</b> มาตรฐานตามหลักวิชาการ หน้า 6 และ 8)`;
     } else {
       licenseHintEl.innerHTML = `<span class="font-bold text-blue-800">ขอบเขตผู้แนะนำการลงทุน (${escapeHtmlText(comp.licenseMeta.shortLabel)}):</span> ตามคู่มือ ก.ล.ต. หน้า 6 และ 8 (ข้อไม่ควรทำ Don't) ผู้ทำหน้าที่ IC <b>ไม่สามารถจัดพอร์ตแบบเฉพาะเจาะจงรายบุคคลได้</b> ระบบจะออกเอกสารในรูปแบบ <b>สำรับการลงทุนเบื้องต้นตามหลักวิชาการมาตรฐาน (Basic Asset Allocation)</b> อัตโนมัติ`;
     }
   }
 
   if (suitBadgeEl) {
-    const volPct = (comp.annualVol * 100).toFixed(1);
+    const volPctText = comp.volPctText || `${(comp.annualVol * 100).toFixed(2)}%/ปี`;
     const notes = [];
     if (comp.segMeta.isVulnerable) {
-      notes.push(`🛡️ <b>ผู้ลงทุนเปราะบาง (อายุ ≥ 60 ปี / ความรู้จำกัด):</b> ระบบจะเพิ่มกรอบแจ้งเตือนความระมัดระวังพิเศษ การอธิบายโอกาสขาดทุนสูงสุด และห้ามเร่งรัดการตัดสินใจ (หน้า 2, 6, 8)`);
+      notes.push(`<span class="text-amber-800">${shieldAlertIcon}<b>ผู้ลงทุนเปราะบาง (อายุ ≥ 60 ปี / ความรู้จำกัด):</b></span> ระบบจะเพิ่มกรอบแจ้งเตือนความระมัดระวังพิเศษ การอธิบายโอกาสขาดทุนสูงสุด และห้ามเร่งรัดการตัดสินใจ (หน้า 2, 6, 8)`);
     } else if (comp.segMeta.isSenior) {
       notes.push(`ผู้ลงทุนอายุ ≥ 60 ปีที่มีประสบการณ์และระบุเจตจำนง (กลุ่มที่ 5 ตามคู่มือหน้า 6)`);
     }
     if (comp.suitabilityMismatch) {
-      const hrPart = comp.highRiskTickers.length ? ` หรือสินทรัพย์เสี่ยงสูง (${escapeHtmlText(comp.highRiskTickers.join(', '))})` : '';
-      let mismatchReason = '';
-      if ((comp.volExceedsSuitability || comp.highRiskExceedsSuitability) && comp.vulnerableHighRiskAlert) {
-        mismatchReason = `ความผันผวนพอร์ต (${volPct}%/ปี)${hrPart} สูงกว่าระดับความเสี่ยงที่เลือก (${escapeHtmlText(comp.suitMeta.label)}) และสูงกว่าเกณฑ์แนะนำผู้ลงทุนเปราะบาง (≤ 14%/ปี)`;
-      } else if (comp.volExceedsSuitability || comp.highRiskExceedsSuitability) {
-        mismatchReason = `ความผันผวนพอร์ต (${volPct}%/ปี)${hrPart} สูงกว่าระดับความเสี่ยงที่เลือก (${escapeHtmlText(comp.suitMeta.label)})`;
-      } else {
-        mismatchReason = `ความผันผวนพอร์ต (${volPct}%/ปี)${hrPart} สูงกว่าเกณฑ์แนะนำสำหรับผู้ลงทุนเปราะบาง (≤ 14%/ปี)`;
-      }
-      notes.push(`⚠️ <b>แจ้งเตือน Suitability &amp; Mis-selling Prevention:</b> ${mismatchReason} ระบบจะแสดงป้ายเตือนความเสี่ยงบนหน้า PDF`);
+      notes.push(`<span class="text-rose-700">${alertTriIcon}<b>แจ้งเตือนความเหมาะสม (Mis-selling Prevention):</b></span> ${escapeHtmlText(comp.mismatchReasonText)} • ป้ายเตือนชุดนี้จะแสดงตรงกันบน PDF หน้า 2`);
       suitBadgeEl.className = 'px-2.5 py-1.5 rounded-lg bg-amber-50 border border-amber-300 text-[11px] text-amber-950 leading-snug';
     } else {
-      notes.push(`✓ ความผันผวนพอร์ต (${volPct}%/ปี) อยู่ในกรอบความเหมาะสมที่เลือก${comp.requiresKnowledgeAssessment ? ` • มีสินทรัพย์เสี่ยงสูง (${escapeHtmlText(comp.highRiskTickers.join(', '))}) ต้องทำ Knowledge Assessment` : ''}`);
+      notes.push(`✓ ความผันผวนพอร์ต (${volPctText}) อยู่ในกรอบความสามารถรับความเสี่ยง (${escapeHtmlText(comp.suitMeta.label)})${comp.requiresKnowledgeAssessment ? ` • มีสินทรัพย์เสี่ยงสูง (${escapeHtmlText(comp.highRiskTickers.join(', '))}) ต้องทำ Knowledge Assessment` : ''}`);
       suitBadgeEl.className = comp.segMeta.isVulnerable
         ? 'px-2.5 py-1.5 rounded-lg bg-amber-50/70 border border-amber-200 text-[11px] text-amber-950 leading-snug'
         : 'px-2.5 py-1.5 rounded-lg bg-emerald-50/70 border border-emerald-200 text-[11px] text-emerald-950 leading-snug';
@@ -8429,33 +8876,18 @@ function openInstitutionalPdfInNewTab() {
 
 function buildPdfMasterLogoInlineSvg() {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72" width="42" height="42" fill="none" style="flex-shrink:0;">
-    <defs>
-      <linearGradient id="pdf-lg-frame" x1="0" y1="0" x2="72" y2="72" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#0C6B4E"/><stop offset="48%" stop-color="#0D4B4F"/><stop offset="100%" stop-color="#084E3A"/></linearGradient>
-      <linearGradient id="pdf-lg-bg" x1="6" y1="6" x2="66" y2="66" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#172236"/><stop offset="55%" stop-color="#0E1525"/><stop offset="100%" stop-color="#090D16"/></linearGradient>
-      <linearGradient id="pdf-lg-b3" x1="0" y1="24.5" x2="0" y2="54" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#68FBC1"/><stop offset="100%" stop-color="#00C47C"/></linearGradient>
-      <linearGradient id="pdf-lg-ln" x1="19" y1="35.2" x2="52" y2="16.6" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#2CE09B"/><stop offset="60%" stop-color="#A7F3D0"/><stop offset="100%" stop-color="#FFFFFF"/></linearGradient>
-    </defs>
-    <rect x="1" y="1" width="70" height="70" rx="22" fill="url(#pdf-lg-frame)" stroke="#00D084" stroke-opacity="0.5" stroke-width="1.4"/>
-    <rect x="5" y="5" width="62" height="62" rx="17" fill="url(#pdf-lg-bg)"/>
-    <rect x="5.8" y="5.8" width="60.4" height="60.4" rx="16.2" stroke="#FFFFFF" stroke-opacity="0.16" stroke-width="1"/>
-    <line x1="16.5" y1="54.8" x2="55.5" y2="54.8" stroke="#94A3B8" stroke-opacity="0.34" stroke-width="1.35" stroke-linecap="round"/>
-    <rect x="19" y="40.5" width="7.8" height="13.5" rx="3.2" fill="#2EC990" fill-opacity="0.72"/>
-    <rect x="32.1" y="32.5" width="7.8" height="21.5" rx="3.2" fill="#22E59B" fill-opacity="0.9"/>
-    <rect x="45.2" y="24.5" width="7.8" height="29.5" rx="3.2" fill="url(#pdf-lg-b3)"/>
-    <path d="M19 35.2 C25.8 33.2 31 26.8 37 25.6 C43 24.4 47.2 19.8 52 16.6" stroke="url(#pdf-lg-ln)" stroke-width="2.7" stroke-linecap="round"/>
-    <circle cx="52" cy="16.6" r="5.6" fill="#00D084" fill-opacity="0.30"/>
-    <circle cx="52" cy="16.6" r="3.2" fill="#00F59B"/>
+    <rect x="2" y="2" width="68" height="68" rx="18" fill="#059669"/>
+    <line x1="16.5" y1="53.5" x2="55.5" y2="53.5" stroke="#FFFFFF" stroke-opacity="0.34" stroke-width="1.5" stroke-linecap="round"/>
+    <rect x="19" y="39.5" width="7.8" height="12.5" rx="2.6" fill="#FFFFFF" fill-opacity="0.62"/>
+    <rect x="32.1" y="31.5" width="7.8" height="20.5" rx="2.6" fill="#FFFFFF" fill-opacity="0.82"/>
+    <rect x="45.2" y="23.5" width="7.8" height="28.5" rx="2.6" fill="#FFFFFF"/>
+    <path d="M19 34.5 C25.8 32.5 31 26.2 37 25.0 C43 23.8 47.2 19.4 52 16.2" stroke="#FFFFFF" stroke-width="2.6" stroke-linecap="round"/>
+    <circle cx="52" cy="16.2" r="3.4" fill="#FFFFFF"/>
   </svg>`;
 }
 
 function buildPdfAllocationDonutSvg(dcaSchedule) {
-  const palette = [
-    '#00B873', '#2563EB', '#6366F1', '#D97706', '#0EA5E9',
-    '#EC4899', '#14B8A6', '#7C3AED', '#DC2626', '#059669',
-    '#0284C7', '#EA580C', '#4F46E5', '#DB2777', '#0D9488',
-    '#CA8A04', '#9333EA', '#E11D48', '#16A34A', '#0891B2',
-    '#B45309', '#4338CA', '#BE185D', '#15803D', '#64748B'
-  ];
+  const palette = ASSET_COLORS;
   const items = Array.isArray(dcaSchedule) && dcaSchedule.length > 0 ? dcaSchedule : [];
   const totalPct = items.reduce((acc, it) => acc + Number(it.weightPct || 0), 0) || 100;
   const radius = 44;
@@ -8797,26 +9229,19 @@ function openPrintableGoalReport(options = {}) {
   const finalCommentaryHtml = escapeHtmlText(customCommentary || autoCommentary).replace(/\n/g, '<br/>');
 
   // Build Fair Dealing, Client Segmentation, Suitability & Product Complexity Guardrail Strip (Page 2 Section 4)
-  const volPctText = `${(comp.annualVol * 100).toFixed(2)}%/ปี`;
+  const volPctText = comp.volPctText || `${(comp.annualVol * 100).toFixed(2)}%/ปี`;
   const scopeBadgeText = !isAdvisorMode
     ? 'Self-Directed Simulation (รายงานจำลองเพื่อการศึกษา)'
     : (isIpLicense
         ? 'Customized Asset Allocation (ออกแบบและจัดพอร์ตเฉพาะรายโดย IP • หน้า 6 ข้อ 3.2)'
         : 'Basic Asset Allocation (สำรับการลงทุนเบื้องต้นตามหลักวิชาการมาตรฐานโดย IC • ห้ามจัดพอร์ตเฉพาะเจาะจงรายบุคคล หน้า 6 และ 8)');
-  const hrTextPdf = comp.highRiskTickers.length ? ` หรือสินทรัพย์เสี่ยงสูง (${escapeHtmlText(comp.highRiskTickers.join(', '))})` : '';
-  let pdfMismatchReason = '';
-  if ((comp.volExceedsSuitability || comp.highRiskExceedsSuitability) && comp.vulnerableHighRiskAlert) {
-    pdfMismatchReason = `ความผันผวนพอร์ต (${volPctText})${hrTextPdf} สูงกว่าระดับความเสี่ยงที่ระบุ (${escapeHtmlText(comp.suitMeta.label)}) และสูงกว่าเกณฑ์แนะนำผู้ลงทุนเปราะบาง (≤ 14%/ปี)`;
-  } else if (comp.volExceedsSuitability || comp.highRiskExceedsSuitability) {
-    pdfMismatchReason = `ความผันผวนพอร์ต (${volPctText})${hrTextPdf} สูงกว่าระดับความเสี่ยงที่ระบุ (${escapeHtmlText(comp.suitMeta.label)})`;
-  } else if (comp.vulnerableHighRiskAlert) {
-    pdfMismatchReason = `ความผันผวนพอร์ต (${volPctText})${hrTextPdf} สูงกว่าเกณฑ์แนะนำสำหรับผู้ลงทุนเปราะบาง (≤ 14%/ปี)`;
-  }
+  const pdfAlertTriSvg = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#BE123C" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-1.5px;margin-right:3px;"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>';
+  const pdfShieldAlertSvg = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#92400E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-1.5px;margin-right:3px;"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>';
   const suitStatusHtml = comp.suitabilityMismatch
-    ? `<span style="color:#BE123C;font-weight:700;">⚠️ แจ้งเตือนความเหมาะสม (Mis-selling Prevention):</span> ${pdfMismatchReason} ผู้ลงทุนต้องรับทราบคำเตือนความเสี่ยงก่อนตัดสินใจ`
+    ? `<span style="color:#BE123C;font-weight:700;">${pdfAlertTriSvg}แจ้งเตือนความเหมาะสม (Mis-selling Prevention):</span> ${escapeHtmlText(comp.mismatchReasonText)}`
     : `<span style="color:#008A57;font-weight:700;">✓ ความเหมาะสมในการลงทุน (Suitability):</span> ความผันผวนพอร์ต (${volPctText}) อยู่ในกรอบความสามารถรับความเสี่ยง (${escapeHtmlText(comp.suitMeta.label)})`;
   const vulnerableLineHtml = comp.segMeta.isVulnerable
-    ? `<div style="margin-top:3px;color:#92400E;font-weight:600;">🛡️ มาตรการดูแลผู้ลงทุนเปราะบาง (Vulnerable Investors อายุ ≥ 60 ปี • หน้า 2, 6, 8): ชี้แจงโอกาสขาดทุนสูงสุด (${mddPctStr}) สภาพคล่อง เงื่อนไขผลิตภัณฑ์อย่างระมัดระวังเป็นพิเศษ และให้เวลาตัดสินใจโดยไม่เร่งรัด</div>`
+    ? `<div style="margin-top:3px;color:#92400E;font-weight:600;">${pdfShieldAlertSvg}มาตรการดูแลผู้ลงทุนเปราะบาง (Vulnerable Investors อายุ ≥ 60 ปี • หน้า 2, 6, 8): ชี้แจงโอกาสขาดทุนสูงสุด (${mddPctStr}) สภาพคล่อง เงื่อนไขผลิตภัณฑ์อย่างระมัดระวังเป็นพิเศษ และให้เวลาตัดสินใจโดยไม่เร่งรัด</div>`
     : '';
   const productRiskLineHtml = (comp.requiresKnowledgeAssessment || comp.hasFxRisk || comp.icPlainScopeWarning)
     ? `<div style="margin-top:3px;color:#334155;"><b>การเปิดเผยความเสี่ยงผลิตภัณฑ์:</b> ${comp.requiresKnowledgeAssessment ? `มีสินทรัพย์ผันผวนสูง/ซับซ้อน (${escapeHtmlText(comp.highRiskTickers.join(', '))}) ต้องทำแบบประเมินความรู้ (Knowledge Assessment หน้า 3) • ` : ''}${comp.hasFxRisk ? `มีการลงทุนต่างประเทศที่มีความเสี่ยงอัตราแลกเปลี่ยน (FX Risk)` : ''}${comp.icPlainScopeWarning ? ` • <span style="color:#B45309;font-weight:700;">หมายเหตุใบอนุญาต IC Plain (ตารางหน้า 7): แนะนำได้เฉพาะตราสารไม่ซับซ้อน</span>` : ''}</div>`
@@ -8825,7 +9250,20 @@ function openPrintableGoalReport(options = {}) {
     ? `<div style="margin-top:3px;color:#0F172A;"><b>กระบวนการขายตามหลัก Fair Dealing (หน้า 8):</b> ${comp.chkFactsheet ? '☑' : '☐'} ส่งมอบหนังสือชี้ชวนส่วนสรุปข้อมูลสำคัญ (Factsheet) &amp; ชี้แจงระดับความเสี่ยง • ${comp.chkKnowledge ? '☑' : '☐'} ตรวจสอบ Suitability / Knowledge Assessment • ${comp.chkNoforce ? '☑' : '☐'} คำนึงถึงอายุ/สภาพคล่อง ไม่ยึดผลตอบแทนตัวเองเป็นหลัก และไม่เร่งรัดการตัดสินใจ</div>`
     : '';
 
+  const pdfReadiness = computePortfolioEntryReadiness(state.optData, state.activeGoal);
+  const pdfBlConfPct = Math.round((Number.isFinite(state.blConfidence) ? state.blConfidence : 0.5) * 100);
+  const pdfModelModeLabel = (state.useNewsAdjustment && state.activeGoal === 'max_sharpe')
+    ? `Black-Litterman (${pdfBlConfPct}%)`
+    : 'สถิติราคาปิดย้อนหลังล้วน';
+  const pdfMarketReadinessStripHtml = pdfReadiness
+    ? `<div style="margin-top:5px;padding:6px 10px;border-radius:7px;background:#F8FAFC;border:1px solid #CBD5E1;font-size:8.6px;line-height:1.45;color:#334155;">
+        <div><b>ความพร้อมจังหวะเข้าลงทุน ณ วันจัดทำ (${escapeHtmlText(pdfReadiness.badgeTh)}):</b> น่าสะสม ${pdfReadiness.positivePct.toFixed(0)}% • สมดุล ${pdfReadiness.neutralPct.toFixed(0)}% • ราคาตึง ${pdfReadiness.overboughtPct.toFixed(0)}% • ควรระวัง ${pdfReadiness.cautiousPct.toFixed(0)}% &nbsp;|&nbsp; <b>โหมดคำนวณ:</b> ${escapeHtmlText(pdfModelModeLabel)}</div>
+        <div style="margin-top:2px;color:#475569;">${escapeHtmlText(pdfReadiness.pdfNoteTh)}</div>
+      </div>`
+    : '';
+
   const fairDealingStripHtml = `
+    ${pdfMarketReadinessStripHtml}
     <div style="margin-top:6px;padding:7px 10px;border-radius:7px;background:${comp.suitabilityMismatch || comp.segMeta.isVulnerable ? '#FFFBEB' : '#F1F5F9'};border:1px solid ${comp.suitabilityMismatch || comp.segMeta.isVulnerable ? '#FCD34D' : '#CBD5E1'};font-size:8.8px;line-height:1.45;color:#334155;">
       <div><b>ประเภทผู้ลงทุน:</b> ${escapeHtmlText(comp.segMeta.fullLabel)} • <b>ขอบเขตสำรับการลงทุน:</b> ${escapeHtmlText(scopeBadgeText)}</div>
       <div style="margin-top:2px;">${suitStatusHtml}</div>
@@ -8843,10 +9281,10 @@ function openPrintableGoalReport(options = {}) {
     : buildPdfMasterLogoInlineSvg();
 
   const pdfDisclaimerHtml = isIpLicense
-    ? `<strong>ข้อสงวนสิทธิ์ (Disclaimer — ผู้วางแผนการลงทุน IP):</strong> เอกสารฉบับนี้เป็นการออกแบบแผนการลงทุนและจัดพอร์ตการลงทุนเฉพาะเจาะจงรายบุคคล (Customized Asset Allocation) จัดทำโดย <strong>${escapeHtmlText(advisorName)}</strong> (${escapeHtmlText(comp.licenseMeta.shortLabel)} • เลขที่ใบอนุญาต ${escapeHtmlText(licenseNo)}${firmName ? ` • ${escapeHtmlText(firmName)}` : ''}) ตามหลักเกณฑ์การให้บริการตามหลัก Fair Dealing ของสำนักงาน ก.ล.ต. โดยการนำไปปฏิบัติต้องผ่านกระบวนการตรวจสอบตามระเบียบของผู้ประกอบธุรกิจ <strong>ผลการจำลองย้อนหลัง (Backtest) และประมาณการในอนาคตไม่รับประกันผลตอบแทนที่จะเกิดขึ้นจริง</strong> ผู้ลงทุนควรศึกษาหนังสือชี้ชวนส่วนสรุปข้อมูลสำคัญ (Factsheet) เงื่อนไขผลตอบแทน และความเสี่ยงก่อนตัดสินใจลงทุน`
+    ? `<strong>ข้อสงวนสิทธิ์ (Disclaimer — โหมดผู้วางแผนการลงทุน IP):</strong> QuantFolio เป็นเพียงซอฟต์แวร์เครื่องมือช่วยคำนวณเชิงปริมาณเท่านั้น ส่วนคำแนะนำการลงทุน การออกแบบแผนจัดพอร์ตเฉพาะราย (Customized Asset Allocation) และการประเมินความเหมาะสม (Suitability &amp; Fair Dealing) อยู่ภายใต้ความรับผิดชอบของผู้มีใบอนุญาตที่ระบุในเอกสารนี้ คือ <strong>${escapeHtmlText(advisorName)}</strong> (${escapeHtmlText(comp.licenseMeta.shortLabel)} • เลขที่ใบอนุญาต ${escapeHtmlText(licenseNo)}${firmName ? ` • ${escapeHtmlText(firmName)}` : ''}) โดยการนำไปปฏิบัติต้องผ่านกระบวนการตรวจสอบตามระเบียบของผู้ประกอบธุรกิจ <strong>ผลการจำลองย้อนหลัง (Backtest) ไม่รับประกันผลตอบแทนในอนาคต</strong> ผู้ลงทุนควรศึกษาหนังสือชี้ชวนส่วนสรุปข้อมูลสำคัญ (Factsheet) เงื่อนไขผลตอบแทน และความเสี่ยงก่อนตัดสินใจลงทุน`
     : (isIcLicense
-        ? `<strong>ข้อสงวนสิทธิ์ (Disclaimer — ผู้แนะนำการลงทุน IC / Basic Asset Allocation):</strong> เอกสารฉบับนี้จัดทำโดย <strong>${escapeHtmlText(advisorName)}</strong> (${escapeHtmlText(comp.licenseMeta.shortLabel)} • เลขที่ใบอนุญาต ${escapeHtmlText(licenseNo)}${firmName ? ` • ${escapeHtmlText(firmName)}` : ''}) เพื่อนำเสนอ<strong>สำรับการลงทุนเบื้องต้นในรูปแบบมาตรฐานตามหลักวิชาการอันเป็นที่ยอมรับ (Basic Asset Allocation: Modern Portfolio Theory และ Hierarchical Risk Parity) เท่านั้น มิใช่การออกแบบแผนหรือจัดพอร์ตการลงทุนแบบเฉพาะเจาะจงให้กับลูกค้าเฉพาะราย</strong> (ซึ่งตามเกณฑ์ ก.ล.ต. หน้า 6 และ 8 สงวนไว้เฉพาะผู้วางแผนการลงทุน IP) <strong>ผลการจำลองย้อนหลังและประมาณการไม่รับประกันผลตอบแทนในอนาคต</strong> ผู้ลงทุนควรศึกษาหนังสือชี้ชวน (Factsheet) และความเสี่ยงก่อนตัดสินใจลงทุน`
-        : `<strong>ข้อสงวนสิทธิ์ (Disclaimer):</strong> เอกสารฉบับนี้เป็นรายงานจำลองเพื่อการศึกษาและประกอบการวางแผนส่วนตัว จัดทำด้วยแบบจำลองคณิตศาสตร์การเงิน (Modern Portfolio Theory ของ Harry Markowitz และ Hierarchical Risk Parity ของ Marcos López de Prado) อ้างอิงข้อมูลราคาปิดรายวันจาก Yahoo Finance เท่านั้น QuantFolio ไม่ใช่ผู้ให้คำแนะนำการลงทุนที่ได้รับใบอนุญาต <strong>ผลการจำลองย้อนหลัง (Backtest) และประมาณการในอนาคตไม่รับประกันผลตอบแทนที่จะเกิดขึ้นจริง และไม่ใช่คำแนะนำการลงทุนเฉพาะบุคคล</strong> ผู้ลงทุนควรศึกษาข้อมูลและประเมินความเสี่ยงก่อนตัดสินใจลงทุน`);
+        ? `<strong>ข้อสงวนสิทธิ์ (Disclaimer — โหมดผู้แนะนำการลงทุน IC / Basic Asset Allocation):</strong> QuantFolio เป็นเพียงซอฟต์แวร์เครื่องมือช่วยคำนวณเชิงปริมาณเท่านั้น ส่วนคำแนะนำการลงทุน การนำเสนอ<strong>สำรับการลงทุนเบื้องต้นในรูปแบบมาตรฐานตามหลักวิชาการ (Basic Asset Allocation — มิใช่การจัดพอร์ตเฉพาะเจาะจงรายบุคคลตามเกณฑ์ ก.ล.ต. หน้า 6 และ 8)</strong> และการประเมินความเหมาะสม (Suitability &amp; Fair Dealing) อยู่ภายใต้ความรับผิดชอบของผู้มีใบอนุญาตที่ระบุในเอกสารนี้ คือ <strong>${escapeHtmlText(advisorName)}</strong> (${escapeHtmlText(comp.licenseMeta.shortLabel)} • เลขที่ใบอนุญาต ${escapeHtmlText(licenseNo)}${firmName ? ` • ${escapeHtmlText(firmName)}` : ''}) <strong>ผลการจำลองย้อนหลัง (Backtest) ไม่รับประกันผลตอบแทนในอนาคต</strong> ผู้ลงทุนควรศึกษาหนังสือชี้ชวน (Factsheet) และความเสี่ยงก่อนตัดสินใจลงทุน`
+        : `<strong>ข้อสงวนสิทธิ์ (Disclaimer):</strong> QuantFolio เป็นซอฟต์แวร์เครื่องมือคำนวณเชิงปริมาณเพื่อการศึกษาและประกอบการวิเคราะห์ข้อมูลเท่านั้น ไม่ใช่ผู้ให้คำแนะนำการลงทุนที่ได้รับใบอนุญาต และไม่ใช่คำแนะนำการลงทุนเฉพาะบุคคล <strong>ผลการจำลองย้อนหลัง (Backtest) ไม่รับประกันผลตอบแทนในอนาคต</strong> การลงทุนมีความเสี่ยง ผู้ใช้งานควรตรวจสอบความถูกต้องของข้อมูลและใช้วิจารณญาณก่อนตัดสินใจลงทุน`);
 
   const buildReportDoc = (embedInOverlay) => `
     <!DOCTYPE html>
@@ -8888,15 +9326,15 @@ function openPrintableGoalReport(options = {}) {
           align-items: center;
           justify-content: space-between;
           gap: 12px;
-          border-bottom: 2px solid #00D084;
+          border-bottom: 2px solid #059669;
           box-shadow: 0 6px 20px rgba(2, 6, 23, 0.35);
         }
         .toolbar-info { font-size: 12px; color: #CBD5E1; }
         .toolbar-info strong { color: #FFFFFF; }
         .toolbar-actions { display: flex; align-items: center; gap: 10px; }
         .btn-print {
-          background: #00D084;
-          color: #07130E;
+          background: #059669;
+          color: #FFFFFF;
           border: none;
           border-radius: 10px;
           padding: 9px 18px;
@@ -8905,7 +9343,7 @@ function openPrintableGoalReport(options = {}) {
           font-weight: 700;
           cursor: pointer;
         }
-        .btn-print:hover { background: #00E593; }
+        .btn-print:hover { background: #047857; }
         .btn-close {
           background: #1E293B;
           color: #E2E8F0;
@@ -8941,11 +9379,11 @@ function openPrintableGoalReport(options = {}) {
           break-after: page;
         }
         .masthead {
-          background: linear-gradient(135deg, #0B1220 0%, #121E33 100%);
+          background: #0F172A;
           color: #FFFFFF;
           border-radius: 12px;
           padding: 14px 16px;
-          border-bottom: 3px solid #00D084;
+          border-bottom: 3px solid #059669;
           display: flex;
           align-items: center;
           justify-content: space-between;
@@ -8957,7 +9395,7 @@ function openPrintableGoalReport(options = {}) {
           font-size: 9px;
           font-weight: 600;
           letter-spacing: 0.12em;
-          color: #34F5A8;
+          color: #34D399;
           text-transform: uppercase;
         }
         .doc-title {
@@ -9260,7 +9698,7 @@ function openPrintableGoalReport(options = {}) {
             <div class="masthead">
               <div class="brand-row">
                 ${logoHtml}
-                <div>
+                <div style="min-width:0;">
                   <div class="eyebrow">${escapeHtmlText(brandEyebrowPrefix)} • ${docModeEyebrow}</div>
                   <div class="doc-title">${docModeTitleTh}</div>
                 </div>
@@ -9510,11 +9948,18 @@ function openPrintableGoalReport(options = {}) {
   const overlayTitle = document.getElementById('pdf-a4-preview-header-title');
   const tierInfo = getActiveUserTierInfo();
   const printLabelEl = document.getElementById('btn-print-a4-preview-label');
+  const printIconEl = document.getElementById('btn-print-a4-preview-icon');
   const openTabBtnEl = document.getElementById('btn-open-pdf-new-tab');
   if (printLabelEl) {
     printLabelEl.innerText = tierInfo.canDownloadSimPdf
       ? 'สั่งพิมพ์ / บันทึกเป็น PDF'
-      : '🔒 เข้าสู่ระบบฟรีเพื่อพิมพ์ / ดาวน์โหลด PDF';
+      : 'เข้าสู่ระบบฟรีเพื่อพิมพ์ / ดาวน์โหลด PDF';
+  }
+  if (printIconEl) {
+    printIconEl.setAttribute('data-lucide', tierInfo.canDownloadSimPdf ? 'printer' : 'lock');
+    if (window.lucide && typeof window.lucide.createIcons === 'function') {
+      window.lucide.createIcons();
+    }
   }
   if (openTabBtnEl) {
     // Declutter #1: In Guest mode hide duplicate secondary lock button so only 1 clear primary green signup CTA appears
@@ -9576,6 +10021,8 @@ if (typeof window !== 'undefined') {
     selectStockCatalogCategory,
     toggleCatalogTicker,
     renderQuickStockCatalog,
+    fetchDynamicPopularAssets,
+    applyPopularAssetsPayload,
     filterInsightsByTicker,
     selectLandingRiskProfile,
     selectLandingRiskProfileByStep,
@@ -9590,7 +10037,11 @@ if (typeof window !== 'undefined') {
     computeRebalancePlan,
     allocateExactIntegers,
     computeGoalProjectionMetrics,
+    computePortfolioEntryReadiness,
+    inspectTickerOnInsightsTab,
     evaluatePdfFairDealingCompliance,
+    setCanonicalFxField,
+    resetPortfolioNameOnTickerMutation,
     escapeHtmlText,
     sanitizeExternalUrl
   };
