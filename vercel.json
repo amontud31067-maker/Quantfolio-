@@ -10,7 +10,8 @@
           "index.html",
           "app.js",
           "styles.css",
-          "supabase_auth.js"
+          "supabase_auth.js",
+          "quantfolio-logo.svg"
         ]
       }
     }

@@ -24,7 +24,7 @@ from typing import List, Optional, Dict, Any, Tuple
 from fastapi import FastAPI, HTTPException, Query, Depends, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 import yfinance as yf
 import optimizer as _opt_module
@@ -2500,6 +2500,7 @@ PUBLIC_ROOT_ALLOWLIST = frozenset({
     "app.js",
     "styles.css",
     "supabase_auth.js",
+    "quantfolio-logo.svg",
 })
 
 
@@ -2535,12 +2536,39 @@ NO_CACHE_HEADERS = {
 }
 
 
+_BUILTIN_QUANTFOLIO_LOGO_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72" fill="none">
+  <!-- Solid Institutional Emerald Brand Squircle (#059669 Light Primary) -->
+  <rect id="qf-logo-frame" x="2" y="2" width="68" height="68" rx="18" fill="#059669"/>
+  <rect x="2.75" y="2.75" width="66.5" height="66.5" rx="17.25" stroke="#FFFFFF" stroke-opacity="0.16" stroke-width="1.5"/>
+  <!-- Subtle White Baseline -->
+  <line x1="16" y1="54.5" x2="56" y2="54.5" stroke="#FFFFFF" stroke-opacity="0.32" stroke-width="1.5" stroke-linecap="round"/>
+  <!-- Ascending Quantitative Bars (Pure White Tiered Opacity) -->
+  <rect x="18.5" y="40" width="8.5" height="13.5" rx="3" fill="#FFFFFF" fill-opacity="0.68"/>
+  <rect x="31.75" y="31.5" width="8.5" height="22" rx="3" fill="#FFFFFF" fill-opacity="0.86"/>
+  <rect x="45" y="23.5" width="8.5" height="30" rx="3" fill="#FFFFFF"/>
+  <!-- Crisp Rising Quantitative Curve & Target Node -->
+  <path d="M18.5 34.5 C25.5 32.5 31 26.2 37.2 24.8 C43.2 23.4 47.4 19 52.2 16" stroke="#FFFFFF" stroke-width="2.75" stroke-linecap="round"/>
+  <circle cx="52.2" cy="16" r="3.4" fill="#FFFFFF"/>
+</svg>"""
+
+
 @app.get("/static/{filename:path}")
 def serve_static_file(filename: str):
     path = _find_asset(filename)
     if path:
-        return FileResponse(path, headers=NO_CACHE_HEADERS)
+        media_type = "image/svg+xml" if str(filename).lower().endswith(".svg") else None
+        return FileResponse(path, media_type=media_type, headers=NO_CACHE_HEADERS)
+    if os.path.basename(str(filename)) == "quantfolio-logo.svg":
+        return Response(content=_BUILTIN_QUANTFOLIO_LOGO_SVG, media_type="image/svg+xml", headers=NO_CACHE_HEADERS)
     raise HTTPException(status_code=404, detail=f"File {filename} not found")
+
+
+@app.get("/quantfolio-logo.svg")
+def serve_root_logo_svg():
+    path = _find_asset("quantfolio-logo.svg")
+    if path:
+        return FileResponse(path, media_type="image/svg+xml", headers=NO_CACHE_HEADERS)
+    return Response(content=_BUILTIN_QUANTFOLIO_LOGO_SVG, media_type="image/svg+xml", headers=NO_CACHE_HEADERS)
 
 
 @app.get("/styles.css")
